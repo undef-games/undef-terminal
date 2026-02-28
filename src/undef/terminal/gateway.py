@@ -47,10 +47,7 @@ def _require_websockets():
     try:
         import websockets  # noqa: F401
     except ImportError as exc:
-        raise ImportError(
-            "websockets is required for gateway support: "
-            "pip install 'undef-terminal[cli]'"
-        ) from exc
+        raise ImportError("websockets is required for gateway support: pip install 'undef-terminal[cli]'") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +114,7 @@ class TelnetWsGateway:
         _require_websockets()
         self._ws_url = ws_url
 
-    async def start(self, host: str = "0.0.0.0", port: int = 2112) -> asyncio.AbstractServer:  # noqa: S104
+    async def start(self, host: str = "0.0.0.0", port: int = 2112) -> asyncio.AbstractServer:  # noqa: S104  # nosec B104
         """Start the TCP listener and return the server object.
 
         Args:
@@ -175,13 +172,12 @@ class SshWsGateway:
             import asyncssh  # noqa: F401
         except ImportError as exc:
             raise ImportError(
-                "asyncssh is required for SSH gateway support: "
-                "pip install 'undef-terminal[ssh]'"
+                "asyncssh is required for SSH gateway support: pip install 'undef-terminal[ssh]'"
             ) from exc
         self._ws_url = ws_url
         self._server_key = server_key
 
-    async def start(self, host: str = "0.0.0.0", port: int = 2222) -> object:  # noqa: S104
+    async def start(self, host: str = "0.0.0.0", port: int = 2222) -> object:  # noqa: S104  # nosec B104
         """Start the SSH server and return the server object.
 
         Args:
@@ -208,9 +204,7 @@ class SshWsGateway:
                 async with websockets.connect(ws_url) as ws:
                     t1 = asyncio.create_task(_ssh_to_ws(process, ws))
                     t2 = asyncio.create_task(_ws_to_ssh(ws, process))
-                    _done, pending = await asyncio.wait(
-                        [t1, t2], return_when=asyncio.FIRST_COMPLETED
-                    )
+                    _done, pending = await asyncio.wait([t1, t2], return_when=asyncio.FIRST_COMPLETED)
                     for task in pending:
                         task.cancel()
                     await asyncio.gather(*pending, return_exceptions=True)

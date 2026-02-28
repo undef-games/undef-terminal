@@ -51,19 +51,21 @@ def _cmd_proxy(args: argparse.Namespace) -> None:
         from undef.terminal.transports.base import ConnectionTransport
     except ImportError as exc:
         print(  # noqa: T201
-            f"error: missing dependency — {exc}\n"
-            "install the cli extra: pip install 'undef-terminal[cli]'",
+            f"error: missing dependency — {exc}\ninstall the cli extra: pip install 'undef-terminal[cli]'",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    transport_factory: type[ConnectionTransport] | None = None
+    from collections.abc import Callable
+
+    transport_factory: Callable[[], ConnectionTransport] | None = None
     if args.transport == "ssh":
         try:
-            from undef.terminal.transports.ssh import SSHTransport
+            import importlib
 
-            transport_factory = SSHTransport
-        except ImportError:
+            _ssh_mod = importlib.import_module("undef.terminal.transports.ssh")
+            transport_factory = _ssh_mod.SSHTransport  # type: ignore[assignment]
+        except (ImportError, AttributeError):
             print(  # noqa: T201
                 "error: SSH transport requires asyncssh: pip install 'undef-terminal[ssh]'",
                 file=sys.stderr,
@@ -72,7 +74,7 @@ def _cmd_proxy(args: argparse.Namespace) -> None:
     else:
         from undef.terminal.transports.telnet import TelnetTransport
 
-        transport_factory = TelnetTransport
+        transport_factory = TelnetTransport  # type: ignore[assignment]
 
     proxy = WsTerminalProxy(
         args.host,
@@ -84,8 +86,7 @@ def _cmd_proxy(args: argparse.Namespace) -> None:
     app.include_router(proxy.create_router(args.path))
 
     print(  # noqa: T201
-        f"undefterm proxy  {args.transport}://{args.host}:{args.bbs_port}"
-        f"  →  ws://{args.bind}:{args.port}{args.path}"
+        f"undefterm proxy  {args.transport}://{args.host}:{args.bbs_port}  →  ws://{args.bind}:{args.port}{args.path}"
     )
 
     uvicorn.run(app, host=args.bind, port=args.port, log_level="warning")
@@ -102,8 +103,7 @@ def _cmd_listen(args: argparse.Namespace) -> None:
         from undef.terminal.gateway import SshWsGateway, TelnetWsGateway
     except ImportError as exc:
         print(  # noqa: T201
-            f"error: missing dependency — {exc}\n"
-            "install the cli extra: pip install 'undef-terminal[cli]'",
+            f"error: missing dependency — {exc}\ninstall the cli extra: pip install 'undef-terminal[cli]'",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -115,8 +115,9 @@ def _cmd_listen(args: argparse.Namespace) -> None:
         print("error: at least one of --port or --ssh-port must be non-zero", file=sys.stderr)  # noqa: T201
         sys.exit(1)
 
-    asyncio.run(_run_listen(args.ws_url, args.bind, telnet_port, ssh_port, args.server_key,
-                            TelnetWsGateway, SshWsGateway))
+    asyncio.run(
+        _run_listen(args.ws_url, args.bind, telnet_port, ssh_port, args.server_key, TelnetWsGateway, SshWsGateway)
+    )
 
 
 async def _run_listen(
@@ -175,15 +176,13 @@ def _build_parser() -> argparse.ArgumentParser:
     proxy_p = sub.add_parser(
         "proxy",
         help="browser WS → remote telnet/SSH (start a WS server)",
-        description=(
-            "Accept browser WebSocket connections and proxy them "
-            "to a remote telnet/SSH host."
-        ),
+        description=("Accept browser WebSocket connections and proxy them to a remote telnet/SSH host."),
     )
     proxy_p.add_argument("host", metavar="HOST", help="remote BBS hostname or IP")
     proxy_p.add_argument("bbs_port", metavar="PORT", type=int, help="remote BBS port")
     proxy_p.add_argument(
-        "--port", "-p",
+        "--port",
+        "-p",
         metavar="PORT",
         type=int,
         default=8765,
@@ -192,7 +191,7 @@ def _build_parser() -> argparse.ArgumentParser:
     proxy_p.add_argument(
         "--bind",
         metavar="ADDR",
-        default="0.0.0.0",  # noqa: S104
+        default="0.0.0.0",  # noqa: S104  # nosec B104
         help="bind address (default: 0.0.0.0)",
     )
     proxy_p.add_argument(
@@ -214,13 +213,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "listen",
         help="telnet/SSH client → remote WS server (start a TCP/SSH listener)",
         description=(
-            "Accept traditional telnet and/or SSH clients and proxy them "
-            "to a remote WebSocket terminal server."
+            "Accept traditional telnet and/or SSH clients and proxy them to a remote WebSocket terminal server."
         ),
     )
     listen_p.add_argument("ws_url", metavar="WS_URL", help="upstream WebSocket terminal URL")
     listen_p.add_argument(
-        "--port", "-p",
+        "--port",
+        "-p",
         metavar="PORT",
         type=int,
         default=2112,
@@ -236,7 +235,7 @@ def _build_parser() -> argparse.ArgumentParser:
     listen_p.add_argument(
         "--bind",
         metavar="ADDR",
-        default="0.0.0.0",  # noqa: S104
+        default="0.0.0.0",  # noqa: S104  # nosec B104
         help="bind address (default: 0.0.0.0)",
     )
     listen_p.add_argument(

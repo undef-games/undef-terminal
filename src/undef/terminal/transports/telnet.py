@@ -231,9 +231,7 @@ _DEFAULT_CONNECT_TIMEOUT_S: float = 30.0
 OPT_BINARY: int = 0
 OPT_ECHO: int = ECHO
 OPT_SGA_OPT: int = SGA
-OPT_TTYPE: int = 24
 OPT_NAWS: int = NAWS
-TTYPE_IS: int = 0
 
 
 class TelnetTransport:

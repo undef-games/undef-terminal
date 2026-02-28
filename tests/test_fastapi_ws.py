@@ -102,9 +102,7 @@ class TestCreateWsTerminalRouter:
 
         with (
             pytest.raises(ValueError),
-            TestClient(make_app(handler), raise_server_exceptions=True).websocket_connect(
-                "/ws/terminal"
-            ),
+            TestClient(make_app(handler), raise_server_exceptions=True).websocket_connect("/ws/terminal"),
         ):
             pass
 

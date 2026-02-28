@@ -212,7 +212,7 @@ def test_worker_invalid_json_ignored() -> None:
         worker.send_text("not json {{{{")
         # Connection still alive — valid message goes through
         worker.send_json({"type": "term", "data": "alive", "ts": 0.0})
-            # No crash
+        # No crash
 
 
 # ---------------------------------------------------------------------------

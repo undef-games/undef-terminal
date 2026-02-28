@@ -52,15 +52,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 try:
     from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 except ImportError as _e:
-    raise ImportError(
-        "fastapi is required for WebSocket support: "
-        "pip install 'undef-terminal[websocket]'"
-    ) from _e
+    raise ImportError("fastapi is required for WebSocket support: pip install 'undef-terminal[websocket]'") from _e
 
 from undef.terminal.transports.base import ConnectionTransport
 from undef.terminal.transports.websocket import WebSocketStreamReader, WebSocketStreamWriter
@@ -191,7 +188,9 @@ class WsTerminalProxy:
     ) -> None:
         from undef.terminal.transports.telnet import TelnetTransport
 
-        factory = self._transport_factory or TelnetTransport
+        factory: Callable[[], ConnectionTransport] = self._transport_factory or cast(
+            Callable[[], ConnectionTransport], TelnetTransport
+        )
         transport = factory()
         await transport.connect(self._host, self._port)
         t_b2r = asyncio.create_task(self._browser_to_remote(reader, transport))

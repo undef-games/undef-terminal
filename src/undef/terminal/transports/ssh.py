@@ -54,7 +54,7 @@ class SSHStreamReader:
             return b""
         if isinstance(data, str):
             return data.encode("latin-1", errors="replace")
-        return data  # type: ignore[return-value]
+        return data
 
 
 class SSHStreamWriter:

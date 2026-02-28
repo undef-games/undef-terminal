@@ -31,13 +31,21 @@ class TestParser:
         assert args.transport == "telnet"
 
     def test_proxy_all_options(self) -> None:
-        args = _build_parser().parse_args([
-            "proxy", "bbs.example.com", "23",
-            "--port", "9000",
-            "--bind", "127.0.0.1",
-            "--path", "/ws/bbs",
-            "--transport", "ssh",
-        ])
+        args = _build_parser().parse_args(
+            [
+                "proxy",
+                "bbs.example.com",
+                "23",
+                "--port",
+                "9000",
+                "--bind",
+                "127.0.0.1",
+                "--path",
+                "/ws/bbs",
+                "--transport",
+                "ssh",
+            ]
+        )
         assert args.port == 9000
         assert args.bind == "127.0.0.1"
         assert args.path == "/ws/bbs"
@@ -149,13 +157,20 @@ class TestListenParser:
         assert args.server_key is None
 
     def test_listen_all_options(self) -> None:
-        args = _build_parser().parse_args([
-            "listen", "wss://example.com/ws",
-            "--port", "2323",
-            "--ssh-port", "2222",
-            "--bind", "127.0.0.1",
-            "--server-key", "/etc/host_key",
-        ])
+        args = _build_parser().parse_args(
+            [
+                "listen",
+                "wss://example.com/ws",
+                "--port",
+                "2323",
+                "--ssh-port",
+                "2222",
+                "--bind",
+                "127.0.0.1",
+                "--server-key",
+                "/etc/host_key",
+            ]
+        )
         assert args.port == 2323
         assert args.ssh_port == 2222
         assert args.bind == "127.0.0.1"
@@ -194,9 +209,7 @@ class TestCmdListen:
             from undef.terminal.cli import _run_listen
             from undef.terminal.gateway import SshWsGateway, TelnetWsGateway
 
-            task = asyncio.create_task(
-                _run_listen(ws_url, "127.0.0.1", 0, 0, None, TelnetWsGateway, SshWsGateway)
-            )
+            task = asyncio.create_task(_run_listen(ws_url, "127.0.0.1", 0, 0, None, TelnetWsGateway, SshWsGateway))
             await asyncio.sleep(0)
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError, SystemExit):

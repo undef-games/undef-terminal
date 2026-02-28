@@ -143,7 +143,7 @@ class TermBridge:
 
     async def _run(self) -> None:
         try:
-            import websockets  # type: ignore[import-untyped]
+            import websockets
         except ImportError:
             logger.warning("term_bridge_no_websockets bot_id=%s", self._bot_id)
             return
