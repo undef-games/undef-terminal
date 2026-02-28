@@ -5,12 +5,13 @@
 """Telnet transport for undef-terminal.
 
 Provides:
-- :func:`start_telnet_server` — asyncio TCP server with basic telnet negotiation.
 - :class:`TelnetClient` — thin client wrapper around ``asyncio.open_connection``
   with IAC constants and negotiation helpers.
 - :class:`TelnetTransport` — full RFC 854 client implementing
   :class:`~undef.terminal.transports.base.ConnectionTransport`.
 - Telnet protocol constants: ``IAC``, ``WILL``, ``WONT``, ``DO``, ``DONT``, ``SB``, ``SE``.
+- :func:`start_telnet_server` re-exported from
+  :mod:`~undef.terminal.transports.telnet_server` for backwards compatibility.
 """
 
 from __future__ import annotations
@@ -18,8 +19,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
+
+from undef.terminal.transports.telnet_server import start_telnet_server as start_telnet_server
 
 if TYPE_CHECKING:
     from asyncio import StreamReader, StreamWriter
@@ -47,93 +49,6 @@ LINEMODE: int = 34  # Linemode
 # Terminal type subnegotiation
 OPT_TTYPE: int = 24
 TTYPE_IS: int = 0
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-ConnectionHandler = Callable[
-    [asyncio.StreamReader, asyncio.StreamWriter],
-    Coroutine[Any, Any, None],
-]
-
-
-def _build_telnet_handshake() -> bytes:
-    """Build the initial telnet negotiation sequence.
-
-    Sends:
-    - IAC WILL ECHO   (server will handle echo)
-    - IAC WILL SGA    (suppress go-ahead for full-duplex)
-    - IAC DO SGA      (request client suppress go-ahead too)
-    - IAC DONT LINEMODE (disable client-side line editing)
-    - IAC DO NAWS     (request client window size)
-    """
-    return bytes(
-        [
-            IAC,
-            WILL,
-            ECHO,
-            IAC,
-            WILL,
-            SGA,
-            IAC,
-            DO,
-            SGA,
-            IAC,
-            DONT,
-            LINEMODE,
-            IAC,
-            DO,
-            NAWS,
-        ]
-    )
-
-
-# ---------------------------------------------------------------------------
-# Server-mode
-# ---------------------------------------------------------------------------
-
-
-async def start_telnet_server(
-    handler: ConnectionHandler,
-    host: str = "0.0.0.0",  # nosec B104
-    port: int = 2102,
-) -> asyncio.Server:
-    """Create and start an asyncio TCP server with basic telnet negotiation.
-
-    Sends the IAC negotiation preamble on each new connection, then delegates
-    to *handler* with the raw ``(reader, writer)`` pair.
-
-    Args:
-        handler: Async callback ``(reader, writer) -> None`` called per connection.
-        host: Network interface to bind to (default ``0.0.0.0``).
-        port: TCP port number (default ``2102``).
-
-    Returns:
-        The running :class:`asyncio.Server` instance.
-    """
-
-    async def _client_cb(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        peername = writer.get_extra_info("peername")
-        addr = f"{peername[0]}:{peername[1]}" if peername else "unknown"
-        logger.info("telnet client connected addr=%s", addr)
-
-        try:
-            writer.write(_build_telnet_handshake())
-            await writer.drain()
-        except (ConnectionResetError, BrokenPipeError, OSError):  # pragma: no cover
-            logger.warning("connection lost during handshake addr=%s", addr)
-            writer.close()
-            return
-
-        # Brief pause for the client to process negotiation
-        await asyncio.sleep(0.1)
-        await handler(reader, writer)
-
-    server = await asyncio.start_server(_client_cb, host, port)
-    logger.info("telnet server started host=%s port=%d", host, port)
-    return server
-
 
 # ---------------------------------------------------------------------------
 # Client-mode
