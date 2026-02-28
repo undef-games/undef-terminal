@@ -1,0 +1,215 @@
+#
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+"""FastAPI integration for undef-terminal.
+
+Provides a generic WebSocket terminal router factory and a bidirectional
+proxy class that wires a browser WebSocket to any :class:`ConnectionTransport`
+(telnet, SSH, chaos, etc.).
+
+Requires the ``[websocket]`` extra (fastapi)::
+
+    pip install 'undef-terminal[websocket]'
+
+Usage — in-process session handler::
+
+    from undef.terminal.fastapi import create_ws_terminal_router
+
+    async def my_handler(reader, writer, ws):
+        await my_game_loop(reader, writer)
+
+    app.include_router(create_ws_terminal_router(my_handler))
+
+Usage — transparent proxy to a remote BBS::
+
+    from undef.terminal.fastapi import WsTerminalProxy
+
+    proxy = WsTerminalProxy("bbs.example.com", 23)
+    app.include_router(proxy.create_router("/ws/terminal"))
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
+
+try:
+    from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+except ImportError as _e:
+    raise ImportError(
+        "fastapi is required for WebSocket support: "
+        "pip install 'undef-terminal[websocket]'"
+    ) from _e
+
+from undef.terminal.transports.base import ConnectionTransport
+from undef.terminal.transports.websocket import WebSocketStreamReader, WebSocketStreamWriter
+
+if TYPE_CHECKING:
+    from undef.terminal.protocols import TerminalReader, TerminalWriter
+
+# ---------------------------------------------------------------------------
+# Type alias
+# ---------------------------------------------------------------------------
+
+#: Async callback signature for :func:`create_ws_terminal_router`.
+#: Receives ``(reader, writer, ws)`` — the stream shims and the raw WebSocket.
+SessionHandler = Callable[
+    ["TerminalReader", "TerminalWriter", WebSocket],
+    Awaitable[None],
+]
+
+
+# ---------------------------------------------------------------------------
+# Router factory
+# ---------------------------------------------------------------------------
+
+
+def create_ws_terminal_router(
+    session_handler: SessionHandler,
+    *,
+    path: str = "/ws/terminal",
+) -> APIRouter:
+    """Create a FastAPI router with a generic WebSocket terminal endpoint.
+
+    For each browser WebSocket connection the router:
+
+    1. Accepts the WS handshake.
+    2. Wraps the socket in :class:`~undef.terminal.transports.websocket.WebSocketStreamReader`
+       and :class:`~undef.terminal.transports.websocket.WebSocketStreamWriter`.
+    3. Calls *session_handler(reader, writer, ws)* and awaits it.
+    4. Closes the writer and WebSocket when the handler returns.
+
+    :class:`fastapi.WebSocketDisconnect` is caught and suppressed so that
+    a normal browser close does not surface as an unhandled exception.
+
+    Args:
+        session_handler: Async callable invoked for each connection.
+        path: WebSocket URL path. Defaults to ``"/ws/terminal"``.
+
+    Returns:
+        A :class:`fastapi.APIRouter` to include in your application.
+    """
+    router = APIRouter()
+
+    @router.websocket(path)
+    async def _ws_endpoint(ws: WebSocket) -> None:
+        await ws.accept()
+        reader = WebSocketStreamReader(ws)
+        writer = WebSocketStreamWriter(ws)
+        try:
+            await session_handler(reader, writer, ws)
+        except WebSocketDisconnect:
+            pass
+        finally:
+            writer.close()
+            with contextlib.suppress(Exception):
+                await ws.close()
+
+    return router
+
+
+# ---------------------------------------------------------------------------
+# Bidirectional proxy
+# ---------------------------------------------------------------------------
+
+
+class WsTerminalProxy:
+    """Bidirectional WebSocket-to-transport proxy.
+
+    Accepts browser WebSocket connections and proxies all I/O to a remote
+    server via any :class:`~undef.terminal.transports.base.ConnectionTransport`
+    (telnet, SSH, chaos, etc.).
+
+    Each WebSocket connection gets its own independent transport instance and
+    connection.  Both directions are pumped concurrently; when either direction
+    closes (browser disconnect or remote hangup) the other is cancelled and the
+    transport is disconnected.
+
+    Args:
+        host: Remote host to connect to.
+        port: Remote port.
+        transport_factory: Zero-argument callable that returns a fresh
+            :class:`~undef.terminal.transports.base.ConnectionTransport`.
+            Defaults to :class:`~undef.terminal.transports.telnet.TelnetTransport`.
+
+    Example::
+
+        from undef.terminal.fastapi import WsTerminalProxy
+
+        proxy = WsTerminalProxy("bbs.example.com", 23)
+        app.include_router(proxy.create_router("/ws/terminal"))
+    """
+
+    #: Milliseconds between remote-receive polls.
+    _POLL_MS: int = 50
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        *,
+        transport_factory: Callable[[], ConnectionTransport] | None = None,
+    ) -> None:
+        self._host = host
+        self._port = port
+        self._transport_factory = transport_factory
+
+    def create_router(self, path: str = "/ws/terminal") -> APIRouter:
+        """Return a :class:`fastapi.APIRouter` that proxies WS connections.
+
+        Args:
+            path: WebSocket URL path. Defaults to ``"/ws/terminal"``.
+        """
+        return create_ws_terminal_router(self._handle, path=path)
+
+    async def _handle(
+        self,
+        reader: TerminalReader,
+        writer: TerminalWriter,
+        _ws: WebSocket,
+    ) -> None:
+        from undef.terminal.transports.telnet import TelnetTransport
+
+        factory = self._transport_factory or TelnetTransport
+        transport = factory()
+        await transport.connect(self._host, self._port)
+        t_b2r = asyncio.create_task(self._browser_to_remote(reader, transport))
+        t_r2b = asyncio.create_task(self._remote_to_browser(transport, writer))
+        try:
+            _done, pending = await asyncio.wait(
+                [t_b2r, t_r2b],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+        finally:
+            await transport.disconnect()
+
+    @staticmethod
+    async def _browser_to_remote(
+        reader: TerminalReader,
+        transport: ConnectionTransport,
+    ) -> None:
+        """Read from browser WebSocket and forward to remote transport."""
+        while transport.is_connected():
+            data = await reader.read(256)
+            if not data:
+                break
+            await transport.send(data)
+
+    @classmethod
+    async def _remote_to_browser(
+        cls,
+        transport: ConnectionTransport,
+        writer: TerminalWriter,
+    ) -> None:
+        """Read from remote transport and forward to browser WebSocket."""
+        while transport.is_connected():
+            data = await transport.receive(4096, cls._POLL_MS)
+            if data:
+                writer.write(data)
+                await writer.drain()

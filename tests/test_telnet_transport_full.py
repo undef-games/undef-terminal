@@ -130,8 +130,10 @@ class TestTelnetTransportNAWS:
         received: list[bytes] = []
         ready = asyncio.Event()
 
+        naws_marker = bytes([IAC, 250, 31])  # IAC SB NAWS
+
         async def _handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-            data = await reader.read(256)
+            data = await _read_until(reader, naws_marker)
             received.append(data)
             writer.close()
             ready.set()
@@ -149,7 +151,7 @@ class TestTelnetTransportNAWS:
 
         # NAWS bytes: IAC SB 31 (cols_hi cols_lo rows_hi rows_lo) IAC SE
         wire = received[0]
-        assert bytes([IAC, 250, 31]) in wire  # IAC SB NAWS
+        assert naws_marker in wire
 
 
 class TestTelnetTransportIACParsing:
