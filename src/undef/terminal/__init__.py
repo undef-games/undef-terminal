@@ -68,9 +68,19 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str) -> object:
-    if name == "mount_terminal_ui":
-        from undef.terminal.fastapi import mount_terminal_ui  # noqa: PLC0415
+_FASTAPI_EXPORTS: frozenset[str] = frozenset(
+    {"mount_terminal_ui", "create_ws_terminal_router", "WsTerminalProxy"}
+)
+_GATEWAY_EXPORTS: frozenset[str] = frozenset({"TelnetWsGateway"})
 
-        return mount_terminal_ui
+
+def __getattr__(name: str) -> object:
+    if name in _FASTAPI_EXPORTS:
+        import undef.terminal.fastapi as _fastapi_mod  # noqa: PLC0415
+
+        return getattr(_fastapi_mod, name)
+    if name in _GATEWAY_EXPORTS:
+        import undef.terminal.gateway as _gateway_mod  # noqa: PLC0415
+
+        return getattr(_gateway_mod, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

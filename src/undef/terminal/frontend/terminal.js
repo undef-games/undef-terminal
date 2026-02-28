@@ -344,6 +344,12 @@ class UndefTerminal {
   }
 
   _createTerminal() {
+    if (typeof Terminal === 'undefined') {
+      throw new Error('xterm.js (Terminal) not loaded — include @xterm/xterm before terminal.js');
+    }
+    if (typeof FitAddon === 'undefined') {
+      throw new Error('xterm addon-fit (FitAddon) not loaded — include @xterm/addon-fit before terminal.js');
+    }
     const frameRoot = this._q('frameRoot');
     const builders = {
       crt:   () => this._buildCRTFrame(),
@@ -424,3 +430,7 @@ class UndefTerminal {
     }
   }
 }
+
+// ── Global exposure for CDN / script-tag use ──────────────────────────────────
+// Exposed here so terminal-panel.js can safely reference UndefTerminal.prototype.
+if (typeof window !== 'undefined') window.UndefTerminal = UndefTerminal;

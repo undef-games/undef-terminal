@@ -109,3 +109,32 @@ class TestStartTelnetServer:
             await server.wait_closed()
 
         assert handler_called.is_set()
+
+    async def test_writer_closed_after_handler_returns(self, free_port: int) -> None:
+        """Regression: writer must be closed by the server after handler returns normally.
+
+        Previously the finally block around the handler was missing, causing the TCP
+        connection to leak if the handler returned without closing the writer itself.
+        """
+        handler_done = asyncio.Event()
+
+        async def handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+            # Return immediately without closing the writer — server must close it.
+            handler_done.set()
+
+        server = await start_telnet_server(handler, host="127.0.0.1", port=free_port)
+        try:
+            reader, writer = await asyncio.open_connection("127.0.0.1", free_port)
+            # Drain the telnet handshake so the buffer is empty before we check EOF.
+            await asyncio.wait_for(reader.read(64), timeout=2.0)
+            # Wait for handler to finish, then yield so the server's finally runs.
+            await asyncio.wait_for(handler_done.wait(), timeout=2.0)
+            await asyncio.sleep(0.05)
+            # The server must have closed its writer — client reader returns b"" (EOF).
+            data = await asyncio.wait_for(reader.read(1), timeout=1.0)
+            writer.close()
+        finally:
+            server.close()
+            await server.wait_closed()
+
+        assert data == b"", "server writer was not closed after handler returned"

@@ -105,10 +105,12 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
     @router.websocket("/ws/bot/{bot_id}/term")
     async def ws_browser_term(websocket: WebSocket, bot_id: str) -> None:
         await websocket.accept()
-        st = await hub._get(bot_id)
+        # Capture hijack state atomically while registering the browser.
         async with hub._lock:
-            st2 = hub._bots.setdefault(bot_id, BotTermState())
-            st2.browsers.add(websocket)
+            st = hub._bots.setdefault(bot_id, BotTermState())
+            st.browsers.add(websocket)
+            is_hijacked = hub._is_hijacked(st)
+            hijacked_by_me = hub._is_dashboard_hijack_active(st) and st.hijack_owner is websocket
 
         await websocket.send_text(
             json.dumps(
@@ -116,8 +118,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     "type": "hello",
                     "bot_id": bot_id,
                     "can_hijack": True,
-                    "hijacked": hub._is_hijacked(st),
-                    "hijacked_by_me": hub._is_dashboard_hijack_active(st) and st.hijack_owner is websocket,
+                    "hijacked": is_hijacked,
+                    "hijacked_by_me": hijacked_by_me,
                 },
                 ensure_ascii=True,
             )

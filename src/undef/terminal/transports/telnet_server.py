@@ -105,7 +105,10 @@ async def start_telnet_server(
 
         # Brief pause for the client to process negotiation
         await asyncio.sleep(0.1)
-        await handler(reader, writer)
+        try:
+            await handler(reader, writer)
+        finally:
+            writer.close()
 
     server = await asyncio.start_server(_client_cb, host, port)
     logger.info("telnet server started host=%s port=%d", host, port)

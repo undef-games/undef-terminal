@@ -594,3 +594,39 @@ def test_browser_input_no_worker() -> None:
         msg = browser.receive_json()
         # Could be error or hijack_state depending on cleanup order
         assert msg["type"] in ("error", "hijack_state", "control")
+
+
+# ---------------------------------------------------------------------------
+# Regression: hello message reflects atomic hijack state (fix 4)
+# ---------------------------------------------------------------------------
+
+
+def test_browser_hello_reflects_hijacked_state_at_connect() -> None:
+    """Regression: hello message must report hijacked=True when a REST session holds
+
+    the hijack at browser connect time.  Previously the hub re-read state after
+    dropping the lock, creating a window where the hello could be stale.
+    """
+    app, hub = make_app()
+
+    # Pre-install an active REST hijack session so the hub considers this bot hijacked.
+    session_id = str(uuid.uuid4())
+    hub._bots["bot42"] = BotTermState(
+        hijack_session=_active_session(session_id, "rest_user"),
+    )
+
+    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot42/term") as browser:
+        hello = browser.receive_json()
+        assert hello["type"] == "hello"
+        # The hello must reflect the hijacked state captured inside the lock.
+        assert hello["hijacked"] is True, "hello.hijacked should be True when REST session is active"
+
+
+def test_browser_hello_reflects_not_hijacked_when_no_session() -> None:
+    """Regression counter-case: hello.hijacked is False when no session exists."""
+    app, hub = make_app()
+
+    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot99/term") as browser:
+        hello = browser.receive_json()
+        assert hello["type"] == "hello"
+        assert hello["hijacked"] is False

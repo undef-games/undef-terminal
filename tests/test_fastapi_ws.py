@@ -310,3 +310,42 @@ class TestWsTerminalProxyConnectionError:
 
         # Should not raise — ConnectionError in _remote_to_browser is suppressed
         await WsTerminalProxy._remote_to_browser(_ErrorTransport(), _MockWriter())  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# Regression: package-level __getattr__ exposes all fastapi/gateway exports (fix 5)
+# ---------------------------------------------------------------------------
+
+
+class TestPackageGetattr:
+    """undef.terminal.__getattr__ must resolve all optional fastapi/gateway exports."""
+
+    def test_mount_terminal_ui_accessible(self) -> None:
+        import undef.terminal as pkg
+
+        fn = pkg.mount_terminal_ui  # type: ignore[attr-defined]
+        assert callable(fn)
+
+    def test_create_ws_terminal_router_accessible(self) -> None:
+        import undef.terminal as pkg
+
+        fn = pkg.create_ws_terminal_router  # type: ignore[attr-defined]
+        assert callable(fn)
+
+    def test_ws_terminal_proxy_accessible(self) -> None:
+        import undef.terminal as pkg
+
+        cls = pkg.WsTerminalProxy  # type: ignore[attr-defined]
+        assert isinstance(cls, type)
+
+    def test_telnet_ws_gateway_accessible(self) -> None:
+        import undef.terminal as pkg
+
+        cls = pkg.TelnetWsGateway  # type: ignore[attr-defined]
+        assert isinstance(cls, type)
+
+    def test_unknown_attribute_raises(self) -> None:
+        import undef.terminal as pkg
+
+        with pytest.raises(AttributeError, match="no attribute"):
+            _ = pkg.nonexistent_symbol  # type: ignore[attr-defined]

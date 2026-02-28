@@ -204,5 +204,3 @@ Object.assign(UndefTerminal.prototype, {
   }
 });
 
-// ── Global exposure for CDN / script-tag use ──────────────────────────────────
-if (typeof window !== 'undefined') window.UndefTerminal = UndefTerminal;
