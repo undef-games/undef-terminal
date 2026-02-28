@@ -35,15 +35,49 @@ class TestTelnetTransportConnect:
             await t.receive(128, 100)
 
 
+async def _read_until(
+    reader: asyncio.StreamReader,
+    needle: bytes,
+    *,
+    max_bytes: int = 512,
+    timeout: float = 2.0,
+) -> bytes:
+    """Accumulate bytes from *reader* until *needle* is found or timeout expires.
+
+    TelnetTransport sends Telnet option negotiation bytes (IAC sequences) as a
+    separate write from the actual payload.  A single ``reader.read(n)`` call can
+    therefore return only the negotiation bytes, causing tests to miss the payload.
+    This helper keeps reading until it either finds the expected content or times out.
+    """
+    data = bytearray()
+    deadline = asyncio.get_event_loop().time() + timeout
+    while asyncio.get_event_loop().time() < deadline and len(data) < max_bytes:
+        remaining = deadline - asyncio.get_event_loop().time()
+        if remaining <= 0:
+            break
+        try:
+            chunk = await asyncio.wait_for(reader.read(max_bytes), timeout=min(remaining, 0.1))
+        except TimeoutError:
+            if needle in data:
+                break
+            continue
+        if not chunk:
+            break
+        data.extend(chunk)
+        if needle in data:
+            break
+    return bytes(data)
+
+
 class TestTelnetTransportSend:
     async def test_iac_escaping(self) -> None:
         """0xFF bytes in data must be escaped to 0xFF 0xFF."""
-        received: list[bytes] = []
+        wire_data: bytes = b""
         ready = asyncio.Event()
 
         async def _handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-            data = await reader.read(64)
-            received.append(data)
+            nonlocal wire_data
+            wire_data = await _read_until(reader, b"\xff\xff")
             writer.close()
             ready.set()
 
@@ -58,17 +92,16 @@ class TestTelnetTransportSend:
             server.close()
             await server.wait_closed()
 
-        wire_data = received[0]
         # Both 0xFF bytes should be doubled on the wire
         assert b"\xff\xff" in wire_data
 
     async def test_send_plain_data(self) -> None:
-        received_bytes: bytearray = bytearray()
+        wire_data: bytes = b""
         ready = asyncio.Event()
 
         async def _handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-            chunk = await reader.read(64)
-            received_bytes.extend(chunk)
+            nonlocal wire_data
+            wire_data = await _read_until(reader, b"ping")
             writer.close()
             ready.set()
 
@@ -83,7 +116,7 @@ class TestTelnetTransportSend:
             server.close()
             await server.wait_closed()
 
-        assert b"ping" in bytes(received_bytes)
+        assert b"ping" in wire_data
 
 
 class TestTelnetTransportNAWS:

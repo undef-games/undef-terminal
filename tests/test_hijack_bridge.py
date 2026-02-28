@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import json
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -114,3 +116,327 @@ class TestTermBridgeHelpers:
         bridge._task = asyncio.create_task(asyncio.sleep(100))
         await bridge.stop()
         assert bridge._task.done()
+
+
+# ---------------------------------------------------------------------------
+# Mock WebSocket for _recv_loop / _send_loop / _send_snapshot tests
+# ---------------------------------------------------------------------------
+
+
+class MockWS:
+    """Minimal async WebSocket mock for TermBridge internal loop tests."""
+
+    def __init__(self, messages: list[str] | None = None) -> None:
+        self.sent: list[str] = []
+        self._messages = list(messages or [])
+        self._idx = 0
+
+    async def recv(self) -> str:
+        if self._idx >= len(self._messages):
+            raise Exception("WebSocket closed")
+        msg = self._messages[self._idx]
+        self._idx += 1
+        return msg
+
+    async def send(self, data: str) -> None:
+        self.sent.append(data)
+
+
+# ---------------------------------------------------------------------------
+# attach_session — _watch callback
+# ---------------------------------------------------------------------------
+
+
+class TestAttachSessionWatch:
+    def test_watch_queues_term_data(self) -> None:
+        session = MockSession()
+        bot = MockBot(session)
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge.attach_session()
+
+        watch_fn = session._watches[0]
+        raw = b"Hello from TW2002"
+        watch_fn({"screen": "test"}, raw)
+
+        assert not bridge._send_q.empty()
+        msg = bridge._send_q.get_nowait()
+        assert msg["type"] == "term"
+        assert "Hello from TW2002" in msg["data"]
+
+    def test_watch_noop_empty_raw(self) -> None:
+        session = MockSession()
+        bot = MockBot(session)
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge.attach_session()
+
+        watch_fn = session._watches[0]
+        watch_fn({"screen": "test"}, b"")  # empty raw → no queue entry
+
+        assert bridge._send_q.empty()
+
+    def test_watch_updates_latest_snapshot(self) -> None:
+        session = MockSession()
+        bot = MockBot(session)
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge.attach_session()
+
+        snapshot = {"screen": "sector 1", "cols": 80, "rows": 25}
+        session._watches[0](snapshot, b"some data")
+
+        assert bridge._latest_snapshot == snapshot
+
+
+# ---------------------------------------------------------------------------
+# start()
+# ---------------------------------------------------------------------------
+
+
+class TestStart:
+    async def test_start_creates_running_task(self) -> None:
+        bot = MockBot()
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        await bridge.start()
+        assert bridge._running is True
+        assert bridge._task is not None
+        # Clean up
+        await bridge.stop()
+
+    async def test_start_idempotent(self) -> None:
+        bot = MockBot()
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        await bridge.start()
+        task1 = bridge._task
+        await bridge.start()  # second call — should not create a new task
+        assert bridge._task is task1
+        await bridge.stop()
+
+
+# ---------------------------------------------------------------------------
+# _send_loop
+# ---------------------------------------------------------------------------
+
+
+class TestSendLoop:
+    async def test_send_loop_sends_queued_message(self) -> None:
+        bot = MockBot()
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge._running = True
+
+        ws = MockWS()
+        # Override send to stop the loop after the first send
+        original_send = ws.send
+
+        async def _send_and_stop(data: str) -> None:
+            await original_send(data)
+            bridge._running = False
+
+        ws.send = _send_and_stop  # type: ignore[method-assign]
+
+        await bridge._send_q.put({"type": "status", "hijacked": False, "ts": 0.0})
+        await bridge._send_loop(ws)
+
+        assert len(ws.sent) == 1
+        payload = json.loads(ws.sent[0])
+        assert payload["type"] == "status"
+
+    async def test_send_loop_exits_when_not_running(self) -> None:
+        bot = MockBot()
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge._running = False  # already stopped
+
+        ws = MockWS()
+        # Loop should exit immediately without blocking
+        task = asyncio.create_task(bridge._send_loop(ws))
+        await asyncio.sleep(0)
+        # Queue is empty; loop condition is False so the task should complete quickly
+        # Cancel it in case it blocked on get()
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        assert len(ws.sent) == 0
+
+
+# ---------------------------------------------------------------------------
+# _recv_loop
+# ---------------------------------------------------------------------------
+
+
+class TestRecvLoop:
+    async def test_recv_loop_snapshot_req_calls_send_snapshot(self) -> None:
+        session = MockSession()
+        bot = MockBot(session)
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge._running = True
+
+        ws = MockWS([json.dumps({"type": "snapshot_req"})])
+        await bridge._recv_loop(ws)
+
+        # _send_snapshot should have sent a snapshot via ws.send
+        assert len(ws.sent) == 1
+        payload = json.loads(ws.sent[0])
+        assert payload["type"] == "snapshot"
+
+    async def test_recv_loop_control_pause(self) -> None:
+        bot = MockBot()
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge._running = True
+
+        ws = MockWS([json.dumps({"type": "control", "action": "pause"})])
+        await bridge._recv_loop(ws)
+
+        assert bot.hijacked_calls == [True]
+
+    async def test_recv_loop_control_resume(self) -> None:
+        bot = MockBot()
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge._running = True
+
+        ws = MockWS([json.dumps({"type": "control", "action": "resume"})])
+        await bridge._recv_loop(ws)
+
+        assert bot.hijacked_calls == [False]
+
+    async def test_recv_loop_control_step(self) -> None:
+        bot = MockBot()
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge._running = True
+
+        ws = MockWS([json.dumps({"type": "control", "action": "step"})])
+        await bridge._recv_loop(ws)
+
+        assert bot.step_calls == 1
+
+    async def test_recv_loop_input(self) -> None:
+        session = MockSession()
+        bot = MockBot(session)
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge._running = True
+
+        ws = MockWS([json.dumps({"type": "input", "data": "hello\\r"})])
+        await bridge._recv_loop(ws)
+
+        assert session.sent == ["hello\r"]
+
+    async def test_recv_loop_resize(self) -> None:
+        session = MockSession()
+        bot = MockBot(session)
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge._running = True
+
+        ws = MockWS([json.dumps({"type": "resize", "cols": 132, "rows": 50})])
+        await bridge._recv_loop(ws)
+
+        assert session.sizes == [(132, 50)]
+
+    async def test_recv_loop_recv_error_exits(self) -> None:
+        bot = MockBot()
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge._running = True
+
+        ws = MockWS()  # no messages → recv raises immediately
+        await bridge._recv_loop(ws)  # should return cleanly
+
+    async def test_recv_loop_invalid_json_continues(self) -> None:
+        bot = MockBot()
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge._running = True
+
+        # First message is invalid JSON; second is valid control/step
+        ws = MockWS(["not json {{", json.dumps({"type": "control", "action": "step"})])
+        await bridge._recv_loop(ws)
+
+        assert bot.step_calls == 1
+
+    async def test_recv_loop_multiple_messages(self) -> None:
+        bot = MockBot()
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge._running = True
+
+        ws = MockWS(
+            [
+                json.dumps({"type": "control", "action": "pause"}),
+                json.dumps({"type": "control", "action": "resume"}),
+                json.dumps({"type": "control", "action": "step"}),
+            ]
+        )
+        await bridge._recv_loop(ws)
+
+        assert bot.hijacked_calls == [True, False]
+        assert bot.step_calls == 1
+
+
+# ---------------------------------------------------------------------------
+# _send_snapshot
+# ---------------------------------------------------------------------------
+
+
+class TestSendSnapshot:
+    async def test_send_snapshot_uses_emulator(self) -> None:
+        session = MockSession()
+        bot = MockBot(session)
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+
+        ws = MockWS()
+        await bridge._send_snapshot(ws)
+
+        assert len(ws.sent) == 1
+        payload = json.loads(ws.sent[0])
+        assert payload["type"] == "snapshot"
+        assert payload["screen"] == "test"
+
+    async def test_send_snapshot_no_session_noop(self) -> None:
+        bot = MockBot(session=None)
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+
+        ws = MockWS()
+        await bridge._send_snapshot(ws)
+
+        assert len(ws.sent) == 0
+
+    async def test_send_snapshot_uses_latest_snapshot(self) -> None:
+        session = MockSession()
+        bot = MockBot(session)
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge._latest_snapshot = {"screen": "cached screen", "cols": 80, "rows": 25}
+
+        ws = MockWS()
+        await bridge._send_snapshot(ws)
+
+        payload = json.loads(ws.sent[0])
+        assert payload["screen"] == "cached screen"
+
+
+# ---------------------------------------------------------------------------
+# _send_keys / _set_size / _set_hijacked — missing early-return branches
+# ---------------------------------------------------------------------------
+
+
+class TestHelperEdgeCases:
+    async def test_send_keys_no_session_noop(self) -> None:
+        bot = MockBot(session=None)
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        # Should not raise
+        await bridge._send_keys("hello")
+
+    async def test_set_size_no_session_noop(self) -> None:
+        bot = MockBot(session=None)
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        await bridge._set_size(80, 25)  # should not raise
+
+    async def test_set_hijacked_queues_status_message(self) -> None:
+        bot = MockBot()
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        await bridge._set_hijacked(True)
+
+        assert not bridge._send_q.empty()
+        msg = bridge._send_q.get_nowait()
+        assert msg["type"] == "status"
+        assert msg["hijacked"] is True
+
+    async def test_set_hijacked_false_queues_status(self) -> None:
+        bot = MockBot()
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        await bridge._set_hijacked(False)
+
+        msg = bridge._send_q.get_nowait()
+        assert msg["hijacked"] is False
