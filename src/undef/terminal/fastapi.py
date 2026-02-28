@@ -22,6 +22,12 @@ Requires ``websockets`` for :class:`TelnetWsGateway` (included in ``[cli]``)::
 
     pip install 'undef-terminal[cli]'
 
+Usage — mount built-in browser UI::
+
+    from undef.terminal.fastapi import mount_terminal_ui
+
+    mount_terminal_ui(app)  # serves terminal.html + terminal.js at /terminal
+
 Usage — in-process session handler (WS server)::
 
     from undef.terminal.fastapi import create_ws_terminal_router
@@ -63,6 +69,8 @@ from undef.terminal.transports.base import ConnectionTransport
 from undef.terminal.transports.websocket import WebSocketStreamReader, WebSocketStreamWriter
 
 if TYPE_CHECKING:
+    from fastapi import FastAPI
+
     from undef.terminal.protocols import TerminalReader, TerminalWriter
 
 # ---------------------------------------------------------------------------
@@ -233,3 +241,30 @@ class WsTerminalProxy:
                     await writer.drain()
         except ConnectionError:
             pass  # remote closed cleanly
+
+
+# ---------------------------------------------------------------------------
+# Built-in browser UI
+# ---------------------------------------------------------------------------
+
+
+def mount_terminal_ui(
+    app: FastAPI,
+    *,
+    path: str = "/terminal",
+) -> None:
+    """Mount the built-in browser terminal UI at *path*.
+
+    Serves ``terminal.html`` and ``terminal.js`` as static files.
+    The page auto-connects to the WebSocket endpoint based on ``location.host``.
+
+    Args:
+        app: The FastAPI application to mount on.
+        path: URL prefix. Defaults to ``"/terminal"``.
+    """
+    import importlib.resources
+
+    from starlette.staticfiles import StaticFiles
+
+    frontend_path = importlib.resources.files("undef.terminal") / "frontend"
+    app.mount(path, StaticFiles(directory=str(frontend_path), html=True), name="terminal-ui")

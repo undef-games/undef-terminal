@@ -28,6 +28,9 @@ undefterm = "undef.terminal.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"undef.terminal" = ["frontend/*"]
+
 [dependency-groups]
 dev = [
     "asyncssh>=2.22.0",

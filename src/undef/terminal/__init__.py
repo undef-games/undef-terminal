@@ -63,4 +63,14 @@ __all__ = [
     "extract_menu_options",
     "extract_numbered_list",
     "extract_key_value_pairs",
+    # fastapi (optional — requires [websocket] extra)
+    "mount_terminal_ui",
 ]
+
+
+def __getattr__(name: str) -> object:
+    if name == "mount_terminal_ui":
+        from undef.terminal.fastapi import mount_terminal_ui  # noqa: PLC0415
+
+        return mount_terminal_ui
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
