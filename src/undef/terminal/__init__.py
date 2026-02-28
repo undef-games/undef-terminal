@@ -63,8 +63,8 @@ __all__ = [
     "extract_menu_options",
     "extract_numbered_list",
     "extract_key_value_pairs",
-    # fastapi (optional — requires [websocket] extra)
-    "mount_terminal_ui",
+    # fastapi (optional — requires [websocket] extra; excluded from import *)
+    # "mount_terminal_ui",  -- intentionally omitted: raises ImportError without fastapi
 ]
 
 

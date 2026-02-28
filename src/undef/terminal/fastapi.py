@@ -262,9 +262,9 @@ def mount_terminal_ui(
         app: The FastAPI application to mount on.
         path: URL prefix. Defaults to ``"/terminal"``.
     """
-    import importlib.resources
+    from pathlib import Path
 
     from starlette.staticfiles import StaticFiles
 
-    frontend_path = importlib.resources.files("undef.terminal") / "frontend"
-    app.mount(path, StaticFiles(directory=str(frontend_path), html=True), name="terminal-ui")
+    frontend_path = Path(__file__).parent / "frontend"
+    app.mount(path, StaticFiles(directory=frontend_path, html=True), name="terminal-ui")

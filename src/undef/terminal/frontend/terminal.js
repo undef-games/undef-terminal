@@ -556,6 +556,7 @@ class UndefTerminal {
 
   /** Close the WebSocket connection. */
   disconnect() {
+    this._waitingForReconnect = false;
     if (this._ws) {
       this._ws.close();
       this._ws = null;
@@ -1008,8 +1009,7 @@ class UndefTerminal {
         try {
           const data = event.data;
           if (data instanceof ArrayBuffer) {
-            const view = new Uint8Array(data);
-            const text = String.fromCharCode.apply(null, view);
+            const text = new TextDecoder('latin-1').decode(data);
             this._term.write(text);
           } else {
             this._term.write(data);

@@ -415,6 +415,7 @@ class UndefHijack {
     };
 
     ws.onclose = () => {
+      if (ws !== this._ws) return; // stale handler from a replaced socket
       this._clearHeartbeat();
       this._hijacked = false;
       this._hijackedByMe = false;
