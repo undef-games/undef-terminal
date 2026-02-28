@@ -19,8 +19,8 @@ dependencies = []
 websocket = ["fastapi>=0.110"]
 ssh       = ["asyncssh>=2.14"]
 emulator  = ["pyte>=0.8"]
-cli       = ["fastapi>=0.110", "uvicorn>=0.24"]
-all       = ["fastapi>=0.110", "asyncssh>=2.14", "pyte>=0.8", "uvicorn>=0.24"]
+cli       = ["fastapi>=0.110", "uvicorn>=0.24", "websockets>=12.0"]
+all       = ["fastapi>=0.110", "asyncssh>=2.14", "pyte>=0.8", "uvicorn>=0.24", "websockets>=12.0"]
 
 [project.scripts]
 undefterm = "undef.terminal.cli:main"

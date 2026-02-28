@@ -2,17 +2,27 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-"""FastAPI integration for undef-terminal.
+"""FastAPI integration and network proxy classes for undef-terminal.
 
-Provides a generic WebSocket terminal router factory and a bidirectional
-proxy class that wires a browser WebSocket to any :class:`ConnectionTransport`
-(telnet, SSH, chaos, etc.).
+Two complementary proxy directions:
 
-Requires the ``[websocket]`` extra (fastapi)::
+* **WS → telnet** (:class:`WsTerminalProxy`) — browser connects via WebSocket,
+  proxy connects outbound to a raw telnet server.  Used to expose a legacy BBS
+  to web browsers without touching the game server.
+
+* **telnet → WS** (:class:`TelnetWsGateway`) — traditional telnet client connects
+  via raw TCP, proxy connects outbound to a WebSocket terminal server.  Used to
+  let classic telnet/SSH clients reach a WS-only game endpoint.
+
+Requires the ``[websocket]`` extra (fastapi) for :class:`WsTerminalProxy`::
 
     pip install 'undef-terminal[websocket]'
 
-Usage — in-process session handler::
+Requires ``websockets`` for :class:`TelnetWsGateway` (included in ``[cli]``)::
+
+    pip install 'undef-terminal[cli]'
+
+Usage — in-process session handler (WS server)::
 
     from undef.terminal.fastapi import create_ws_terminal_router
 
@@ -21,12 +31,20 @@ Usage — in-process session handler::
 
     app.include_router(create_ws_terminal_router(my_handler))
 
-Usage — transparent proxy to a remote BBS::
+Usage — browser WS → remote telnet proxy::
 
     from undef.terminal.fastapi import WsTerminalProxy
 
     proxy = WsTerminalProxy("bbs.example.com", 23)
     app.include_router(proxy.create_router("/ws/terminal"))
+
+Usage — telnet client → remote WS gateway::
+
+    from undef.terminal.fastapi import TelnetWsGateway
+
+    gw = TelnetWsGateway("wss://warp.undef.games/ws/terminal")
+    server = await gw.start(host="0.0.0.0", port=2112)
+    await server.serve_forever()
 """
 
 from __future__ import annotations
