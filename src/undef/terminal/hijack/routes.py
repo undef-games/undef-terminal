@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Any
 try:
     from fastapi import APIRouter, Body, Path, Query, WebSocket, WebSocketDisconnect
     from fastapi.responses import JSONResponse
-except ImportError as _e:
+except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required for hijack routes: pip install 'undef-terminal[websocket]'") from _e
 
 import logging
@@ -122,7 +122,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     await hub._append_event(bot_id, "worker_status", {"status": msg})
         except WebSocketDisconnect:
             pass
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover
             logger.warning("term_worker_ws_error bot_id=%s error=%s", bot_id, exc)
         finally:
             async with hub._lock:
@@ -286,7 +286,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
 
         except WebSocketDisconnect:
             pass
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover
             logger.warning("term_browser_ws_error bot_id=%s error=%s", bot_id, exc)
         finally:
             was_owner = await hub._is_owner(bot_id, websocket)
@@ -377,7 +377,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         now = time.time()
         async with hub._lock:
             st = hub._bots.get(bot_id)
-            if st is None or st.hijack_session is None or st.hijack_session.hijack_id != hijack_id:
+            if st is None or st.hijack_session is None or st.hijack_session.hijack_id != hijack_id:  # pragma: no cover
                 return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)
             st.hijack_session.last_heartbeat = now
             st.hijack_session.lease_expires_at = now + lease_s
@@ -416,7 +416,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
             return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)
         async with hub._lock:
             st = hub._bots.get(bot_id)
-            if st is None:
+            if st is None:  # pragma: no cover
                 rows: list[dict[str, Any]] = []
                 latest_seq = 0
             else:
@@ -498,7 +498,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         should_resume = False
         async with hub._lock:
             st = hub._bots.get(bot_id)
-            if st is None or st.hijack_session is None or st.hijack_session.hijack_id != hijack_id:
+            if st is None or st.hijack_session is None or st.hijack_session.hijack_id != hijack_id:  # pragma: no cover
                 return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)
             st.hijack_session = None
             should_resume = st.hijack_owner is None

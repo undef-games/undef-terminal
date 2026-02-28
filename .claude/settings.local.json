@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "additionalDirectories": [
+      "/Users/tim/code/gh/undef-games"
+    ],
+    "allow": [
+      "Bash(ls:*)"
+    ]
+  }
+}

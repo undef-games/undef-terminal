@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 try:
     from fastapi import WebSocket  # noqa: TC002
     from pydantic import BaseModel
-except ImportError as _e:
+except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required for hijack hub/routes: pip install 'undef-terminal[websocket]'") from _e
 
 if TYPE_CHECKING:

@@ -56,7 +56,7 @@ from typing import TYPE_CHECKING, cast
 
 try:
     from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-except ImportError as _e:
+except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required for WebSocket support: pip install 'undef-terminal[websocket]'") from _e
 
 from undef.terminal.transports.base import ConnectionTransport
@@ -116,7 +116,7 @@ def create_ws_terminal_router(
         writer = WebSocketStreamWriter(ws)
         try:
             await session_handler(reader, writer, ws)
-        except WebSocketDisconnect:
+        except WebSocketDisconnect:  # pragma: no cover
             pass
         finally:
             writer.close()

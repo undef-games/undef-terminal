@@ -99,3 +99,16 @@ class TestWebSocketStreamWriter:
         ws = _make_ws()
         writer = WebSocketStreamWriter(ws)
         await writer.wait_closed()  # should not raise
+
+    async def test_drain_with_disconnect_marks_closed(self) -> None:
+        from fastapi import WebSocketDisconnect
+        from undef.terminal.transports.websocket import WebSocketStreamWriter
+
+        class _DisconnectingWs:
+            async def send_text(self, text: str) -> None:
+                raise WebSocketDisconnect(code=1000)
+
+        writer = WebSocketStreamWriter(_DisconnectingWs())
+        writer.write(b"data")
+        await writer.drain()
+        assert writer._closed

@@ -156,3 +156,104 @@ def test_upgrade_to_truecolor_skips_existing_tc() -> None:
     original = "\x1b[38;2;100;200;50mtext"
     result = upgrade_to_truecolor(original)
     assert result == original
+
+
+# ---------------------------------------------------------------------------
+# _map_index bright-color branches
+# ---------------------------------------------------------------------------
+
+
+def test_upgrade_to_256_bright_fg_90_range() -> None:
+    # bright foreground (90-97) hits _map_index line 162
+    result = upgrade_to_256("\x1b[91mtext")
+    assert "38;5;" in result
+
+
+def test_upgrade_to_256_bright_bg_100_range() -> None:
+    # bright background (100-107) hits _map_index line 166
+    result = upgrade_to_256("\x1b[101mtext")
+    assert "48;5;" in result
+
+
+def test_upgrade_to_256_empty_seq_passthrough() -> None:
+    # empty SGR sequence \x1b[m passes through unchanged
+    text = "\x1b[m"
+    assert upgrade_to_256(text) == text
+
+
+def test_upgrade_to_256_empty_part_in_seq() -> None:
+    # leading semicolon produces an empty part that is skipped
+    result = upgrade_to_256("\x1b[;31m")
+    assert "38;5;" in result
+
+
+def test_upgrade_to_256_all_empty_parts() -> None:
+    # all-semicolon sequence produces no new_parts → passthrough
+    text = "\x1b[;;m"
+    assert upgrade_to_256(text) == text
+
+
+def test_upgrade_to_256_noncolor_code_passthrough() -> None:
+    # code 1 (bold) has _map_index → None → preserved as-is
+    result = upgrade_to_256("\x1b[1m")
+    assert result == "\x1b[1m"
+
+
+def test_upgrade_to_256_background_color() -> None:
+    # code 41 (red bg) hits the "48;5;" branch
+    result = upgrade_to_256("\x1b[41m")
+    assert "48;5;" in result
+
+
+# ---------------------------------------------------------------------------
+# _convert_sgr_tc branches
+# ---------------------------------------------------------------------------
+
+
+def test_upgrade_to_truecolor_empty_seq_passthrough() -> None:
+    text = "\x1b[m"
+    assert upgrade_to_truecolor(text) == text
+
+
+def test_upgrade_to_truecolor_empty_part_in_seq() -> None:
+    result = upgrade_to_truecolor("\x1b[;31m")
+    assert "38;2;" in result
+
+
+def test_upgrade_to_truecolor_all_empty_parts() -> None:
+    text = "\x1b[;;m"
+    assert upgrade_to_truecolor(text) == text
+
+
+def test_upgrade_to_truecolor_noncolor_code_passthrough() -> None:
+    result = upgrade_to_truecolor("\x1b[1m")
+    assert result == "\x1b[1m"
+
+
+def test_upgrade_to_truecolor_T_token() -> None:
+    # {T3} is a background token → "48;2;" truecolor
+    result = upgrade_to_truecolor("{T3}")
+    assert "48;2;" in result
+
+
+def test_upgrade_to_truecolor_P_token() -> None:
+    # {P3} is a foreground token → "38;2;" truecolor
+    result = upgrade_to_truecolor("{P3}")
+    assert "38;2;" in result
+
+
+# ---------------------------------------------------------------------------
+# _emit_color edge cases (via preview_ansi / _handle_twgs_tokens)
+# ---------------------------------------------------------------------------
+
+
+def test_preview_ansi_unknown_twgs_color_char() -> None:
+    # {+z}: unknown color char → _emit_color returns "" → literal fallthrough
+    result = preview_ansi("{+z}")
+    assert "{" in result  # literal brace preserved
+
+
+def test_preview_ansi_dim_known_color() -> None:
+    # {-r}: polarity "-" with known color → \x1b[0;31m  (line 306 in ansi.py)
+    result = preview_ansi("{-r}")
+    assert "\x1b[0;31m" in result

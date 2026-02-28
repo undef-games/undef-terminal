@@ -440,3 +440,60 @@ class TestHelperEdgeCases:
 
         msg = bridge._send_q.get_nowait()
         assert msg["hijacked"] is False
+
+
+class TestRunLoop:
+    async def test_run_connects_to_ws_server(self) -> None:
+        """_run opens a WebSocket to the manager URL and pumps messages."""
+        import websockets.server as _ws_srv
+
+        received_from_bridge: list[dict] = []
+
+        async def _ws_handler(websocket) -> None:
+            try:
+                while True:
+                    msg = await websocket.recv()
+                    received_from_bridge.append(json.loads(msg))
+                    if len(received_from_bridge) >= 1:
+                        break
+            except Exception:
+                pass
+
+        async with _ws_srv.serve(_ws_handler, "127.0.0.1", 0) as server:
+            port = server.sockets[0].getsockname()[1]
+
+            class _FakeBot:
+                session = None
+
+                async def set_hijacked(self, enabled: bool) -> None:
+                    pass
+
+                async def request_step(self) -> None:
+                    pass
+
+            bot = _FakeBot()
+            bridge = TermBridge(bot, "bot1", f"http://127.0.0.1:{port}")
+            bridge._send_q.put_nowait({"type": "term", "data": "hello", "ts": 0.0})
+            await bridge.start()
+            await asyncio.sleep(0.2)
+            await bridge.stop()
+
+        assert len(received_from_bridge) >= 1
+
+    async def test_send_snapshot_exception_suppressed(self) -> None:
+        """_send_snapshot catches exceptions from ws.send() silently."""
+        class _FakeSession:
+            emulator = None
+
+        class _FakeBot:
+            session = _FakeSession()
+
+        bot = _FakeBot()
+        bridge = TermBridge(bot, "bot1", "http://localhost")
+
+        class _BrokenWs:
+            async def send(self, data: object) -> None:
+                raise RuntimeError("broken")
+
+        # Should not raise
+        await bridge._send_snapshot(_BrokenWs())

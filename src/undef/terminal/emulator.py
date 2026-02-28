@@ -18,7 +18,7 @@ from typing import Any
 
 try:
     import pyte
-except ImportError as _e:
+except ImportError as _e:  # pragma: no cover
     raise ImportError("pyte is required for TerminalEmulator: pip install 'undef-terminal[emulator]'") from _e
 
 _CP437 = "cp437"

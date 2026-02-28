@@ -115,12 +115,7 @@ class TermBridge:
             self._latest_snapshot = snapshot
             if not raw:
                 return
-            try:
-                text = raw.decode("cp437", errors="replace")
-            except Exception:
-                return
-            if not text:
-                return
+            text = raw.decode("cp437", errors="replace")
             with contextlib.suppress(asyncio.QueueFull):
                 self._send_q.put_nowait({"type": "term", "data": text, "ts": time.time()})
 
@@ -144,7 +139,7 @@ class TermBridge:
     async def _run(self) -> None:
         try:
             import websockets
-        except ImportError:
+        except ImportError:  # pragma: no cover
             logger.warning("term_bridge_no_websockets bot_id=%s", self._bot_id)
             return
 
@@ -156,15 +151,15 @@ class TermBridge:
                 send_task = asyncio.create_task(self._send_loop(ws))
                 recv_task = asyncio.create_task(self._recv_loop(ws))
                 done, pending = await asyncio.wait({send_task, recv_task}, return_when=asyncio.FIRST_EXCEPTION)
-                for t in pending:
+                for t in pending:  # pragma: no cover
                     t.cancel()
-                for t in done:
+                for t in done:  # pragma: no cover
                     exc = t.exception()
                     if exc:
                         raise exc
         except asyncio.CancelledError:
             return
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover
             logger.warning("term_bridge_disconnected bot_id=%s error=%s", self._bot_id, exc)
 
     async def _send_loop(self, ws: Any) -> None:

@@ -11,6 +11,8 @@ import base64
 import json
 from pathlib import Path
 
+import pytest
+
 from undef.terminal.replay.raw import rebuild_raw_stream
 
 
@@ -51,3 +53,102 @@ class TestRebuildRawStream:
         out_path = tmp_path / "out.bin"
         rebuild_raw_stream(log_path, out_path)
         assert out_path.read_bytes() == b""
+
+
+class TestRebuildRawStreamBlankLines:
+    def test_skips_blank_lines(self, tmp_path: Path) -> None:
+        import base64
+        import json
+
+        log = tmp_path / "session.jsonl"
+        log.write_text(
+            json.dumps({"event": "read", "data": {"raw_bytes_b64": base64.b64encode(b"hi").decode()}})
+            + "\n\n"  # blank line in middle
+            + json.dumps({"event": "read", "data": {"raw_bytes_b64": base64.b64encode(b"!").decode()}})
+            + "\n"
+        )
+        out = tmp_path / "raw.bin"
+        rebuild_raw_stream(log, out)
+        assert out.read_bytes() == b"hi!"
+
+
+class TestReplayLog:
+    def test_replay_log_renders_screens(self, tmp_path: Path, capsys) -> None:
+        import json
+        from undef.terminal.replay.viewer import replay_log
+
+        log = tmp_path / "session.jsonl"
+        log.write_text(
+            json.dumps({"ts": 1.0, "event": "screen", "data": {"screen": "Hello World"}}) + "\n"
+            + json.dumps({"ts": 1.0, "event": "screen", "data": {"screen": "Second Frame"}}) + "\n"
+        )
+        replay_log(log, speed=100.0)
+        captured = capsys.readouterr()
+        assert "Hello World" in captured.out or "Second Frame" in captured.out
+
+    def test_replay_log_skips_non_matching_events(self, tmp_path: Path, capsys) -> None:
+        import json
+        from undef.terminal.replay.viewer import replay_log
+
+        log = tmp_path / "session.jsonl"
+        log.write_text(
+            json.dumps({"ts": 1.0, "event": "send", "data": {"screen": "Should Not Appear"}}) + "\n"
+        )
+        replay_log(log, speed=100.0)
+        captured = capsys.readouterr()
+        assert "Should Not Appear" not in captured.out
+
+    def test_replay_log_step_mode(self, tmp_path: Path, monkeypatch) -> None:
+        import json
+        from undef.terminal.replay.viewer import replay_log
+
+        log = tmp_path / "session.jsonl"
+        log.write_text(
+            json.dumps({"ts": 1.0, "event": "screen", "data": {"screen": "Frame 1"}}) + "\n"
+        )
+        monkeypatch.setattr("builtins.input", lambda _: "")
+        # Should not raise
+        replay_log(log, step=True)
+
+    def test_replay_log_skips_records_without_screen(self, tmp_path: Path, capsys) -> None:
+        import json
+        from undef.terminal.replay.viewer import replay_log
+
+        log = tmp_path / "session.jsonl"
+        log.write_text(
+            json.dumps({"ts": 1.0, "event": "screen", "data": {}}) + "\n"
+        )
+        replay_log(log, speed=100.0)
+        # Should not raise, no screen key → skipped
+
+    def test_replay_log_skips_blank_lines(self, tmp_path: Path, capsys) -> None:
+        """Blank lines in the log file are skipped (covers line 45)."""
+        import json
+        from undef.terminal.replay.viewer import replay_log
+
+        log = tmp_path / "session.jsonl"
+        log.write_text(
+            "\n"  # blank line — triggers line 45
+            + json.dumps({"ts": 1.0, "event": "screen", "data": {"screen": "Frame1"}}) + "\n"
+        )
+        replay_log(log, speed=100.0)
+        captured = capsys.readouterr()
+        assert "Frame1" in captured.out
+
+    def test_replay_log_sleeps_between_frames(self, tmp_path: Path, monkeypatch, capsys) -> None:
+        """time.sleep is called when delta > 0 between frames (covers line 56)."""
+        import json
+        from undef.terminal.replay.viewer import replay_log
+
+        sleep_calls: list[float] = []
+        monkeypatch.setattr("time.sleep", sleep_calls.append)
+
+        log = tmp_path / "session.jsonl"
+        log.write_text(
+            json.dumps({"ts": 1.0, "event": "screen", "data": {"screen": "Frame1"}}) + "\n"
+            + json.dumps({"ts": 3.0, "event": "screen", "data": {"screen": "Frame2"}}) + "\n"
+        )
+        replay_log(log, speed=1.0)
+        # Should have slept once for the 2s gap between frames
+        assert len(sleep_calls) == 1
+        assert sleep_calls[0] == pytest.approx(2.0)

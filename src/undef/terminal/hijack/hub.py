@@ -22,7 +22,7 @@ from typing import Any
 
 try:
     from fastapi import WebSocket
-except ImportError as _e:
+except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required for TermHub: pip install 'undef-terminal[websocket]'") from _e
 
 import logging

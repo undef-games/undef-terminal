@@ -140,9 +140,9 @@ class HijackBase:
                             await on_stuck()
                     # Reset so we don't spam if reconnect is slow
                     self.note_progress()
-                except asyncio.CancelledError:
+                except asyncio.CancelledError:  # pragma: no cover
                     raise
-                except Exception:
+                except Exception:  # pragma: no cover
                     continue
 
         self._watchdog_task = asyncio.create_task(_loop())

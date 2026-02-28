@@ -63,3 +63,14 @@ class TestTerminalEmulator:
         snap = emu.get_snapshot()
         assert "x" in snap["cursor"]
         assert "y" in snap["cursor"]
+
+    def test_cursor_below_last_content_row(self) -> None:
+        # Process content on row 0, then move cursor to row 1 (below content).
+        # _is_cursor_at_end returns True (cursor_y > last content row_idx).
+        import pyte  # noqa: F401
+        emu = TerminalEmulator(cols=80, rows=5)
+        emu.process(b"hello")
+        # Move cursor to next line explicitly via ANSI
+        emu.process(b"\x1b[2;1H")  # move cursor to row 2 (1-indexed)
+        snap = emu.get_snapshot()
+        assert snap["cursor_at_end"] is True

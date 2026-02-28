@@ -13,7 +13,7 @@ from __future__ import annotations
 
 try:
     from fastapi import WebSocket, WebSocketDisconnect
-except ImportError as _e:
+except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required for WebSocket transport: pip install 'undef-terminal[websocket]'") from _e
 
 

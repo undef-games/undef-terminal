@@ -245,3 +245,136 @@ class TestCmdListen:
             ws_srv.close()
 
         assert b"gateway works!" in data
+
+
+class TestCmdProxySshImportError:
+    def test_ssh_import_error_exits(self) -> None:
+        """SSH import failure in _cmd_proxy prints error and exits with code 1."""
+        import importlib
+
+        original = sys.modules.get("undef.terminal.transports.ssh")
+        sys.modules["undef.terminal.transports.ssh"] = None  # type: ignore[assignment]
+        try:
+            with pytest.raises(SystemExit) as exc_info:
+                main(["proxy", "bbs.example.com", "23", "--transport", "ssh"])
+            assert exc_info.value.code == 1
+        finally:
+            if original is None:
+                sys.modules.pop("undef.terminal.transports.ssh", None)
+            else:
+                sys.modules["undef.terminal.transports.ssh"] = original
+
+
+class TestRunListen:
+    async def test_run_listen_telnet_only(self) -> None:
+        """_run_listen with telnet_port > 0 starts a server and stops on cancel."""
+        from undef.terminal.cli import _run_listen
+
+        class _FakeServer:
+            closed = False
+
+            async def serve_forever(self) -> None:
+                await asyncio.sleep(100)
+
+            def close(self) -> None:
+                self.closed = True
+
+        class _FakeGateway:
+            def __init__(self, ws_url: str) -> None:
+                pass
+
+            async def start(self, host: str, port: int) -> _FakeServer:
+                return _FakeServer()
+
+        class _FakeSshGateway:
+            pass
+
+        task = asyncio.create_task(
+            _run_listen("ws://localhost/ws", "127.0.0.1", 2112, 0, None, _FakeGateway, _FakeSshGateway)
+        )
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    async def test_run_listen_no_ports_is_noop(self) -> None:
+        """_run_listen with both ports=0 starts nothing and returns."""
+        from undef.terminal.cli import _run_listen
+
+        class _FakeGateway:
+            async def start(self, host: str, port: int) -> object:
+                raise AssertionError("Should not be called")
+
+        await _run_listen("ws://localhost/ws", "127.0.0.1", 0, 0, None, _FakeGateway, _FakeGateway)
+
+    async def test_run_listen_ssh_port_starts_ssh(self) -> None:
+        """_run_listen with ssh_port > 0 starts an SSH gateway."""
+        from undef.terminal.cli import _run_listen
+
+        class _FakeTelnetGateway:
+            pass
+
+        ssh_started = []
+
+        class _FakeSshServer:
+            async def serve_forever(self) -> None:
+                await asyncio.sleep(100)
+
+            def close(self) -> None:
+                pass
+
+        class _FakeSshGateway:
+            def __init__(self, ws_url: str, server_key: object = None) -> None:
+                pass
+
+            async def start(self, host: str, port: int) -> _FakeSshServer:
+                ssh_started.append(port)
+                return _FakeSshServer()
+
+        task = asyncio.create_task(
+            _run_listen("ws://localhost/ws", "127.0.0.1", 0, 12345, None, _FakeTelnetGateway, _FakeSshGateway)
+        )
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert ssh_started == [12345]
+
+    async def test_run_listen_ssh_import_error_warns(self) -> None:
+        """_run_listen continues when SshWsGateway raises ImportError."""
+        from undef.terminal.cli import _run_listen
+
+        class _BadSshGateway:
+            def __init__(self, ws_url: str, **kw: object) -> None:
+                raise ImportError("asyncssh missing")
+
+        class _FakeTelnetGatewayWithStart:
+            def __init__(self, ws_url: str) -> None:
+                pass
+
+            async def start(self, host: str, port: int) -> object:
+                class S:
+                    async def serve_forever(self) -> None:
+                        await asyncio.sleep(100)
+
+                    def close(self) -> None:
+                        pass
+
+                return S()
+
+        task = asyncio.create_task(
+            _run_listen("ws://localhost/ws", "127.0.0.1", 2112, 2222, None, _FakeTelnetGatewayWithStart, _BadSshGateway)
+        )
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    def test_cmd_listen_both_ports_zero_exits(self) -> None:
+        """_cmd_listen exits with code 1 when both --port and --ssh-port are 0."""
+        from undef.terminal.cli import _build_parser, _cmd_listen
+
+        args = _build_parser().parse_args(["listen", "ws://localhost", "--port", "0", "--ssh-port", "0"])
+        with pytest.raises(SystemExit) as exc_info:
+            _cmd_listen(args)
+        assert exc_info.value.code == 1

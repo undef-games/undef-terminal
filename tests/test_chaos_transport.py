@@ -92,3 +92,19 @@ class TestChaosTransportJitter:
         chaos = ChaosTransport(inner, seed=42, max_jitter_ms=1)
         data = await chaos.receive(128, 100)
         assert data == b"abc"
+
+
+class TestChaosTransportConnectDisconnect:
+    async def test_connect_delegates_to_inner(self) -> None:
+        inner = StubTransport()
+        inner._connected = False
+        chaos = ChaosTransport(inner)
+        await chaos.connect("127.0.0.1", 9999)
+        assert inner._connected is True
+
+    async def test_disconnect_delegates_to_inner(self) -> None:
+        inner = StubTransport()
+        chaos = ChaosTransport(inner)
+        assert inner._connected is True
+        await chaos.disconnect()
+        assert inner._connected is False

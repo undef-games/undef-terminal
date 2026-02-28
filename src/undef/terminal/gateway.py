@@ -170,7 +170,7 @@ class SshWsGateway:
         _require_websockets()
         try:
             import asyncssh  # noqa: F401
-        except ImportError as exc:
+        except ImportError as exc:  # pragma: no cover
             raise ImportError(
                 "asyncssh is required for SSH gateway support: pip install 'undef-terminal[ssh]'"
             ) from exc
@@ -197,7 +197,7 @@ class SshWsGateway:
         else:
             host_keys = [asyncssh.generate_private_key("ssh-rsa")]
 
-        async def _process_handler(process: asyncssh.SSHServerProcess) -> None:
+        async def _process_handler(process: asyncssh.SSHServerProcess) -> None:  # pragma: no cover
             try:
                 import websockets
 

@@ -282,3 +282,31 @@ class TestWsTerminalProxyIntegration:
 
         router = proxy.create_router()
         assert isinstance(router, APIRouter)
+
+
+class TestWsTerminalProxyConnectionError:
+    async def test_remote_to_browser_connection_error(self) -> None:
+        """ConnectionError from transport.receive() is caught and ignored."""
+
+        class _ErrorTransport:
+            def is_connected(self) -> bool:
+                return True
+
+            async def connect(self, *a: object, **kw: object) -> None:
+                pass
+
+            async def receive(self, max_bytes: int, timeout_ms: int) -> bytes:
+                raise ConnectionError("remote closed")
+
+            async def disconnect(self) -> None:
+                pass
+
+        class _MockWriter:
+            def write(self, data: bytes) -> None:
+                pass
+
+            async def drain(self) -> None:
+                pass
+
+        # Should not raise — ConnectionError in _remote_to_browser is suppressed
+        await WsTerminalProxy._remote_to_browser(_ErrorTransport(), _MockWriter())  # type: ignore[arg-type]

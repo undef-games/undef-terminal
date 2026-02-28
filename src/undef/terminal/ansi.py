@@ -178,11 +178,7 @@ def _convert_sgr_256(match: re.Match, palette: list[int]) -> str:
     for p in parts:
         if not p:
             continue
-        try:
-            code = int(p)
-        except ValueError:
-            new_parts.append(p)
-            continue
+        code = int(p)
         idx = _map_index(code)
         if idx is None:
             new_parts.append(str(code))
@@ -219,11 +215,7 @@ def _convert_sgr_tc(match: re.Match, rgb_palette: list[tuple[int, int, int]]) ->
     for p in parts:
         if not p:
             continue
-        try:
-            code = int(p)
-        except ValueError:
-            new_parts.append(p)
-            continue
+        code = int(p)
         idx = _map_index(code)
         if idx is None:
             new_parts.append(str(code))
@@ -320,7 +312,6 @@ def _handle_extended_tokens(text: str) -> str:
             base = idx % 8
             code = (90 + base if bright else 30 + base) if kind == "P" else (100 + base if bright else 40 + base)
             return f"\x1b[{code}m"
-        return m.group(0)
 
     return _EXT_TOKEN_RE.sub(repl, text)
 

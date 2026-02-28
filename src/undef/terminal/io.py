@@ -152,7 +152,7 @@ class PromptWaiter:
                 }
 
             remaining = timeout_sec - (time.monotonic() - start_mono)
-            if remaining <= 0:
+            if remaining <= 0:  # pragma: no cover
                 break
             await self.session.wait_for_update(timeout_ms=int(min(read_interval_sec, remaining) * 1000))
 

@@ -219,3 +219,175 @@ class TestPipeWs:
             )
         finally:
             ws_srv.close()
+
+
+class TestSshWsGatewayInit:
+    def test_init_requires_asyncssh(self) -> None:
+        """SshWsGateway can be created when asyncssh is available."""
+        import asyncssh  # noqa: F401
+
+        from undef.terminal.gateway import SshWsGateway
+
+        gw = SshWsGateway("wss://example.com/ws")
+        assert gw._ws_url == "wss://example.com/ws"
+        assert gw._server_key is None
+
+    def test_init_with_server_key(self, tmp_path) -> None:
+        from undef.terminal.gateway import SshWsGateway
+
+        key_path = tmp_path / "key.pem"
+        key_path.write_text("dummy")
+        gw = SshWsGateway("wss://example.com/ws", server_key=str(key_path))
+        assert gw._server_key == str(key_path)
+
+
+class TestSshWsGatewayStart:
+    async def test_start_ephemeral_key(self) -> None:
+        """SshWsGateway.start() creates an asyncssh server with ephemeral key."""
+        import asyncssh  # noqa: F401
+
+        from undef.terminal.gateway import SshWsGateway
+
+        gw = SshWsGateway("wss://example.com/ws")
+        srv = await gw.start("127.0.0.1", 0)
+        try:
+            assert srv is not None
+        finally:
+            srv.close()
+            await srv.wait_closed()
+
+    async def test_start_with_file_key(self, tmp_path) -> None:
+        """SshWsGateway.start() loads a host key from file when provided."""
+        import asyncssh
+
+        from undef.terminal.gateway import SshWsGateway
+
+        key = asyncssh.generate_private_key("ssh-ed25519")
+        key_path = tmp_path / "host_key"
+        key_path.write_bytes(key.export_private_key())
+
+        gw = SshWsGateway("wss://example.com/ws", server_key=str(key_path))
+        srv = await gw.start("127.0.0.1", 0)
+        try:
+            assert srv is not None
+        finally:
+            srv.close()
+            await srv.wait_closed()
+
+
+class TestSshToWs:
+    async def test_ssh_to_ws_str_data(self) -> None:
+        from undef.terminal.gateway import _ssh_to_ws
+
+        sent = []
+
+        class _MockWs:
+            async def send(self, data: object) -> None:
+                sent.append(data)
+
+        class _MockStdin:
+            def __init__(self) -> None:
+                self._data = ["hello", ""]
+
+            async def read(self, n: int) -> str:
+                return self._data.pop(0)
+
+        class _MockProcess:
+            stdin = _MockStdin()
+
+        await _ssh_to_ws(_MockProcess(), _MockWs())
+        assert sent == ["hello"]
+
+    async def test_ssh_to_ws_bytes_data(self) -> None:
+        from undef.terminal.gateway import _ssh_to_ws
+
+        sent = []
+
+        class _MockWs:
+            async def send(self, data: object) -> None:
+                sent.append(data)
+
+        class _MockStdin:
+            def __init__(self) -> None:
+                self._data = [b"hello", b""]
+
+            async def read(self, n: int) -> bytes:
+                return self._data.pop(0)
+
+        class _MockProcess:
+            stdin = _MockStdin()
+
+        await _ssh_to_ws(_MockProcess(), _MockWs())
+        assert "hello" in sent[0]
+
+    async def test_ssh_to_ws_exception_exits(self) -> None:
+        from undef.terminal.gateway import _ssh_to_ws
+
+        class _MockWs:
+            async def send(self, data: object) -> None:
+                pass
+
+        class _MockStdin:
+            async def read(self, n: int) -> bytes:
+                raise RuntimeError("broken")
+
+        class _MockProcess:
+            stdin = _MockStdin()
+
+        # Should exit cleanly without raising
+        await _ssh_to_ws(_MockProcess(), _MockWs())
+
+
+class TestWsToSsh:
+    async def test_ws_to_ssh_str_message(self) -> None:
+        from undef.terminal.gateway import _ws_to_ssh
+
+        written = []
+
+        class _MockStdout:
+            def write(self, data: object) -> None:
+                written.append(data)
+
+        class _MockProcess:
+            stdout = _MockStdout()
+
+        async def _gen():
+            yield "hello"
+
+        await _ws_to_ssh(_gen(), _MockProcess())
+        assert "hello" in written
+
+    async def test_ws_to_ssh_bytes_message(self) -> None:
+        from undef.terminal.gateway import _ws_to_ssh
+
+        written = []
+
+        class _MockStdout:
+            def write(self, data: object) -> None:
+                written.append(data)
+
+        class _MockProcess:
+            stdout = _MockStdout()
+
+        async def _gen():
+            yield b"world"
+
+        await _ws_to_ssh(_gen(), _MockProcess())
+        assert "world" in written[0]
+
+
+class TestTelnetWsGatewayHandleException:
+    async def test_handle_exception_closes_writer(self) -> None:
+        """_handle closes writer even when _pipe_ws raises."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        gw = TelnetWsGateway("ws://localhost")
+        reader = MagicMock()
+        writer = MagicMock()
+        writer.close = MagicMock()
+        writer.wait_closed = AsyncMock()
+
+        with patch("undef.terminal.gateway._pipe_ws", side_effect=RuntimeError("boom")):
+            await gw._handle(reader, writer)
+
+        writer.close.assert_called()

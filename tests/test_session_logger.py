@@ -86,3 +86,21 @@ class TestSessionLogger:
         nav = [rec for rec in lines if rec["event"] == "nav"][0]
         assert nav["menu"] == "main"
         assert nav["action"] == "move"
+
+
+class TestSessionLoggerExtra:
+    async def test_clear_context(self, tmp_path) -> None:
+        from undef.terminal.session_logger import SessionLogger
+
+        logger = SessionLogger(tmp_path / "test.jsonl")
+        logger.set_context({"key": "val"})
+        logger.clear_context()
+        assert logger._context == {}
+
+    async def test_write_event_unlocked_no_file(self, tmp_path) -> None:
+        """_write_event_unlocked is a no-op when _file is None."""
+        from undef.terminal.session_logger import SessionLogger
+
+        logger = SessionLogger(tmp_path / "test.jsonl")
+        # Should not raise even with no file open
+        await logger._write_event("test_event", {"data": "value"})

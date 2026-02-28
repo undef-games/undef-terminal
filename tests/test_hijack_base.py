@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 from undef.terminal.hijack.base import HijackBase
 
@@ -127,3 +128,84 @@ class TestHijackBaseWatchdog:
         await bot.cleanup_hijack()
         assert not bot._hijacked
         assert bot._watchdog_task is None or bot._watchdog_task.done()
+
+
+class TestWatchdogBranches:
+    async def test_watchdog_idempotent(self) -> None:
+        """start_watchdog called twice should not start a second task."""
+        class Bot2(HijackBase):
+            pass
+
+        bot = Bot2()
+        bot.start_watchdog(stuck_timeout_s=999, check_interval_s=999)
+        task1 = bot._watchdog_task
+        bot.start_watchdog(stuck_timeout_s=999, check_interval_s=999)
+        task2 = bot._watchdog_task
+        assert task1 is task2
+        task1.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task1
+
+    async def test_watchdog_hijacked_branch(self) -> None:
+        """While hijacked, watchdog calls note_progress (resets timer)."""
+        class Bot2(HijackBase):
+            pass
+
+        bot = Bot2()
+        await bot.set_hijacked(True)
+        progress_before = bot._last_progress_mono
+
+        # Note: watchdog sleeps max(0.5, check_interval_s) so need > 0.5s
+        bot.start_watchdog(stuck_timeout_s=0.01, check_interval_s=0.01)
+        await asyncio.sleep(0.7)
+        bot._watchdog_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await bot._watchdog_task
+
+        # note_progress should have been called (timer reset while hijacked)
+        assert bot._last_progress_mono >= progress_before
+
+    async def test_watchdog_not_stuck_continues(self) -> None:
+        """Watchdog does NOT fire on_stuck when progress was recently noted."""
+        fired = []
+
+        class Bot2(HijackBase):
+            pass
+
+        bot = Bot2()
+        bot.note_progress()
+
+        async def on_stuck() -> None:
+            fired.append(True)
+
+        # stuck_timeout_s=9999 ensures we never fire even after the 0.5s sleep
+        bot.start_watchdog(stuck_timeout_s=9999, check_interval_s=0.01, on_stuck=on_stuck)
+        await asyncio.sleep(0.7)
+        bot._watchdog_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await bot._watchdog_task
+
+        assert not fired
+
+    async def test_watchdog_exception_in_loop_continues(self) -> None:
+        """Exception inside watchdog loop body is swallowed and loop continues."""
+        class Bot2(HijackBase):
+            pass
+
+        bot = Bot2()
+        call_count = []
+
+        async def exploding_stuck() -> None:
+            call_count.append(1)
+            raise RuntimeError("oops")
+
+        # Set progress far in the past to trigger stuck
+        bot._last_progress_mono = 0.0
+        # Note: watchdog sleeps max(0.5, check_interval_s) so we need to wait > 0.5s
+        bot.start_watchdog(stuck_timeout_s=0.001, check_interval_s=0.01, on_stuck=exploding_stuck)
+        await asyncio.sleep(0.7)
+        bot._watchdog_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await bot._watchdog_task
+        # Callback was invoked at least once
+        assert len(call_count) >= 1

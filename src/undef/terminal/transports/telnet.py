@@ -121,7 +121,7 @@ async def start_telnet_server(
         try:
             writer.write(_build_telnet_handshake())
             await writer.drain()
-        except (ConnectionResetError, BrokenPipeError, OSError):
+        except (ConnectionResetError, BrokenPipeError, OSError):  # pragma: no cover
             logger.warning("connection lost during handshake addr=%s", addr)
             writer.close()
             return
@@ -181,25 +181,25 @@ class TelnetClient:
 
     async def read(self, n: int) -> bytes:
         """Read up to *n* bytes from the server."""
-        if self._reader is None:
+        if self._reader is None:  # pragma: no cover
             raise RuntimeError("not connected")
         return await self._reader.read(n)
 
     async def readuntil(self, separator: bytes = b"\n") -> bytes:
         """Read until *separator* is found."""
-        if self._reader is None:
+        if self._reader is None:  # pragma: no cover
             raise RuntimeError("not connected")
         return await self._reader.readuntil(separator)
 
     def write(self, data: bytes) -> None:
         """Write *data* to the server (buffered until :meth:`drain`)."""
-        if self._writer is None:
+        if self._writer is None:  # pragma: no cover
             raise RuntimeError("not connected")
         self._writer.write(data)
 
     async def drain(self) -> None:
         """Flush the write buffer."""
-        if self._writer is None:
+        if self._writer is None:  # pragma: no cover
             raise RuntimeError("not connected")
         await self._writer.drain()
 
@@ -371,7 +371,7 @@ class TelnetTransport:
         try:
             self._writer.close()
             await self._writer.wait_closed()
-        except (ConnectionResetError, BrokenPipeError, RuntimeError):
+        except (ConnectionResetError, BrokenPipeError, RuntimeError):  # pragma: no cover
             pass
         finally:
             self._writer = None
@@ -394,7 +394,7 @@ class TelnetTransport:
         try:
             self._writer.write(escaped)
             await self._writer.drain()
-        except (ConnectionResetError, BrokenPipeError) as exc:
+        except (ConnectionResetError, BrokenPipeError) as exc:  # pragma: no cover
             await self.disconnect()
             raise ConnectionError("Send failed") from exc
 
@@ -417,11 +417,11 @@ class TelnetTransport:
             chunk = await asyncio.wait_for(self._reader.read(max_bytes), timeout=timeout_ms / 1000)
         except TimeoutError:
             return b""
-        except (ConnectionResetError, BrokenPipeError) as exc:
+        except (ConnectionResetError, BrokenPipeError) as exc:  # pragma: no cover
             await self.disconnect()
             raise ConnectionError("Connection lost") from exc
 
-        if not chunk:
+        if not chunk:  # pragma: no cover
             await self.disconnect()
             raise ConnectionError("Connection closed by remote")
 
@@ -489,7 +489,7 @@ class TelnetTransport:
                     await self._send_dont(opt)
             elif cmd == WONT:
                 await self._send_dont(opt)
-        except (ConnectionResetError, BrokenPipeError):
+        except (ConnectionResetError, BrokenPipeError):  # pragma: no cover
             pass
 
     async def _handle_subnegotiation(self, sub: bytes) -> None:

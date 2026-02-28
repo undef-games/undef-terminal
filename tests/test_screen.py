@@ -83,3 +83,17 @@ class TestEncodeCp437:
         encoded = encode_cp437(original)
         decoded = decode_cp437(encoded)
         assert decoded == original
+
+
+class TestExtractActionTagsEmptyTag:
+    def test_empty_raw_tag_skipped(self) -> None:
+        from unittest.mock import patch
+        from undef.terminal.screen import extract_action_tags
+
+        # The findall returns empty string which should be skipped
+        with patch("undef.terminal.screen._ACTION_TAG_RE") as mock_re:
+            mock_re.findall.return_value = ["", "valid_tag", "VALID_TAG"]
+            result = extract_action_tags("anything")
+        # Empty tag should be skipped; "valid_tag" and "VALID_TAG" deduplicated
+        assert "valid_tag" in result
+        assert "" not in result

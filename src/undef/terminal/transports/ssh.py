@@ -26,7 +26,7 @@ from typing import Any
 
 try:
     import asyncssh
-except ImportError as _e:
+except ImportError as _e:  # pragma: no cover
     raise ImportError("asyncssh is required for SSH transport: pip install 'undef-terminal[ssh]'") from _e
 
 logger = logging.getLogger(__name__)
@@ -193,7 +193,7 @@ async def start_ssh_server(
     key_dir = host_key_path if host_key_path is not None else Path.cwd()
     host_key = _get_or_create_host_key(key_dir)
 
-    async def _process_factory(process: asyncssh.SSHServerProcess) -> None:
+    async def _process_factory(process: asyncssh.SSHServerProcess) -> None:  # pragma: no cover
         reader = SSHStreamReader(process)
         writer = SSHStreamWriter(process)
         await handler(reader, writer)

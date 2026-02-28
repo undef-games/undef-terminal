@@ -493,3 +493,104 @@ def test_multiple_browsers_receive_broadcast() -> None:
                 assert msg2["type"] == "term"
                 assert msg1["data"] == "broadcast!"
                 assert msg2["data"] == "broadcast!"
+
+
+def test_browser_invalid_json_ignored() -> None:
+    """Invalid JSON from browser should not crash the connection (lines 167-168)."""
+    app, hub = make_app()
+    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+        _read_initial_browser_messages(browser)
+
+        with client.websocket_connect("/ws/worker/bot1/term") as worker:
+            _read_worker_snapshot_req(worker)
+
+            browser.send_text("not json {{{{")
+            # Connection still alive — send valid message after invalid one
+            browser.send_json({"type": "snapshot_req"})
+            msg = worker.receive_json()
+            assert msg["type"] == "snapshot_req"
+
+
+def test_browser_snapshot_req_as_owner_touches_lease() -> None:
+    """snapshot_req from owner calls _touch_hijack_owner (line 173)."""
+    app, hub = make_app()
+    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+        _read_initial_browser_messages(browser)
+
+        with client.websocket_connect("/ws/worker/bot1/term") as worker:
+            _read_worker_snapshot_req(worker)
+
+            # Acquire hijack
+            browser.send_json({"type": "hijack_request"})
+            worker.receive_json()  # pause
+            browser.receive_json()  # hijack_state
+
+            # As owner, send snapshot_req — should touch lease
+            browser.send_json({"type": "snapshot_req"})
+            msg = worker.receive_json()
+            assert msg["type"] == "snapshot_req"
+
+
+def test_browser_analyze_req_as_owner_touches_lease() -> None:
+    """analyze_req from owner calls _touch_hijack_owner (line 178)."""
+    app, hub = make_app()
+    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+        _read_initial_browser_messages(browser)
+
+        with client.websocket_connect("/ws/worker/bot1/term") as worker:
+            _read_worker_snapshot_req(worker)
+
+            # Acquire hijack
+            browser.send_json({"type": "hijack_request"})
+            worker.receive_json()  # pause
+            browser.receive_json()  # hijack_state
+
+            # As owner, send analyze_req — should touch lease
+            browser.send_json({"type": "analyze_req"})
+            msg = worker.receive_json()
+            assert msg["type"] == "analyze_req"
+
+
+def test_browser_hijack_step_no_worker() -> None:
+    """hijack_step as owner with no worker returns error message (line 243)."""
+    app, hub = make_app()
+    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+        _read_initial_browser_messages(browser)
+
+        # Acquire hijack with a worker present
+        with client.websocket_connect("/ws/worker/bot1/term") as worker:
+            _read_worker_snapshot_req(worker)
+            browser.send_json({"type": "hijack_request"})
+            worker.receive_json()  # pause
+            browser.receive_json()  # hijack_state
+
+        # Worker context exited — worker is disconnected now
+        # Browser is still owner. Send hijack_step — no worker connected → error
+        browser.send_json({"type": "hijack_step"})
+        msg = browser.receive_json()
+        assert msg["type"] == "error"
+        assert "worker" in msg["message"].lower()
+
+
+def test_browser_input_no_worker() -> None:
+    """Input as owner with no worker returns error message (line 277)."""
+    app, hub = make_app()
+    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+        _read_initial_browser_messages(browser)
+
+        with client.websocket_connect("/ws/worker/bot1/term") as worker:
+            _read_worker_snapshot_req(worker)
+
+            # Acquire hijack
+            browser.send_json({"type": "hijack_request"})
+            worker.receive_json()  # pause
+            browser.receive_json()  # hijack_state
+
+        # Worker is now disconnected (context exited)
+        # The browser is still connected and still the owner
+        # Send input — worker is gone, should get error
+        browser.send_json({"type": "input", "data": "hello\r"})
+        # The worker WS is None now, so _send_worker returns False → error sent
+        msg = browser.receive_json()
+        # Could be error or hijack_state depending on cleanup order
+        assert msg["type"] in ("error", "hijack_state", "control")

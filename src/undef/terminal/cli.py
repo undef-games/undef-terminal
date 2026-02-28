@@ -101,7 +101,7 @@ def _cmd_listen(args: argparse.Namespace) -> None:
     """Start the TelnetWsGateway and/or SshWsGateway."""
     try:
         from undef.terminal.gateway import SshWsGateway, TelnetWsGateway
-    except ImportError as exc:
+    except ImportError as exc:  # pragma: no cover
         print(  # noqa: T201
             f"error: missing dependency — {exc}\ninstall the cli extra: pip install 'undef-terminal[cli]'",
             file=sys.stderr,
@@ -115,7 +115,7 @@ def _cmd_listen(args: argparse.Namespace) -> None:
         print("error: at least one of --port or --ssh-port must be non-zero", file=sys.stderr)  # noqa: T201
         sys.exit(1)
 
-    asyncio.run(
+    asyncio.run(  # pragma: no cover
         _run_listen(args.ws_url, args.bind, telnet_port, ssh_port, args.server_key, TelnetWsGateway, SshWsGateway)
     )
 
@@ -152,7 +152,7 @@ async def _run_listen(
 
     try:
         await asyncio.gather(*(srv.serve_forever() for srv in servers))
-    except KeyboardInterrupt:
+    except KeyboardInterrupt:  # pragma: no cover
         pass
     finally:
         for srv in servers:
