@@ -2,16 +2,16 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-"""uterm — command-line WebSocket terminal proxy.
+"""undefterm — command-line WebSocket terminal proxy.
 
 Starts a standalone FastAPI/uvicorn server that accepts browser WebSocket
 connections and proxies them to a remote telnet (or other) host.
 
 Usage::
 
-    uterm proxy bbs.example.com 23
-    uterm proxy bbs.example.com 23 --port 9000 --bind 127.0.0.1 --path /ws/term
-    uterm proxy bbs.example.com 22 --transport ssh
+    undefterm proxy bbs.example.com 23
+    undefterm proxy bbs.example.com 23 --port 9000 --bind 127.0.0.1 --path /ws/term
+    undefterm proxy bbs.example.com 22 --transport ssh
 
 Requires the ``[cli]`` extra::
 
@@ -85,7 +85,7 @@ def _cmd_proxy(args: argparse.Namespace) -> None:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="uterm",
+        prog="undefterm",
         description="WebSocket terminal proxy for BBS/telnet servers.",
     )
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")

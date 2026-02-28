@@ -208,8 +208,11 @@ class WsTerminalProxy:
         writer: TerminalWriter,
     ) -> None:
         """Read from remote transport and forward to browser WebSocket."""
-        while transport.is_connected():
-            data = await transport.receive(4096, cls._POLL_MS)
-            if data:
-                writer.write(data)
-                await writer.drain()
+        try:
+            while transport.is_connected():
+                data = await transport.receive(4096, cls._POLL_MS)
+                if data:
+                    writer.write(data)
+                    await writer.drain()
+        except ConnectionError:
+            pass  # remote closed cleanly

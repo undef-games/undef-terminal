@@ -23,7 +23,7 @@ cli       = ["fastapi>=0.110", "uvicorn>=0.24"]
 all       = ["fastapi>=0.110", "asyncssh>=2.14", "pyte>=0.8", "uvicorn>=0.24"]
 
 [project.scripts]
-uterm = "undef.terminal.cli:main"
+undefterm = "undef.terminal.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -40,6 +40,7 @@ dev = [
     "pytest-xdist>=3.8",
     "ruff>=0.15",
     "ty>=0.0.17",
+    "websockets>=16.0",
 ]
 
 [tool.pytest.ini_options]
