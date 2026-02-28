@@ -11,7 +11,10 @@ session handlers to run unmodified over a WebSocket connection.
 
 from __future__ import annotations
 
-from fastapi import WebSocket, WebSocketDisconnect
+try:
+    from fastapi import WebSocket, WebSocketDisconnect
+except ImportError as _e:
+    raise ImportError("fastapi is required for WebSocket transport: pip install 'undef-terminal[websocket]'") from _e
 
 
 class WebSocketStreamReader:

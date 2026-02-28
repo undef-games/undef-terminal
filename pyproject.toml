@@ -13,12 +13,13 @@ version = "0.1.0"
 description = "Shared terminal I/O primitives for the undef ecosystem"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["fastapi>=0.110"]
+dependencies = []
 
 [project.optional-dependencies]
-ssh = ["asyncssh>=2.14"]
-emulator = ["pyte>=0.8"]
-all = ["asyncssh>=2.14", "pyte>=0.8"]
+websocket = ["fastapi>=0.110"]
+ssh       = ["asyncssh>=2.14"]
+emulator  = ["pyte>=0.8"]
+all       = ["fastapi>=0.110", "asyncssh>=2.14", "pyte>=0.8"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -1014,13 +1014,11 @@ wheels = [
 name = "undef-terminal"
 version = "0.1.0"
 source = { editable = "." }
-dependencies = [
-    { name = "fastapi" },
-]
 
 [package.optional-dependencies]
 all = [
     { name = "asyncssh" },
+    { name = "fastapi" },
     { name = "pyte" },
 ]
 emulator = [
@@ -1028,6 +1026,9 @@ emulator = [
 ]
 ssh = [
     { name = "asyncssh" },
+]
+websocket = [
+    { name = "fastapi" },
 ]
 
 [package.dev-dependencies]
@@ -1047,11 +1048,12 @@ dev = [
 requires-dist = [
     { name = "asyncssh", marker = "extra == 'all'", specifier = ">=2.14" },
     { name = "asyncssh", marker = "extra == 'ssh'", specifier = ">=2.14" },
-    { name = "fastapi", specifier = ">=0.110" },
+    { name = "fastapi", marker = "extra == 'all'", specifier = ">=0.110" },
+    { name = "fastapi", marker = "extra == 'websocket'", specifier = ">=0.110" },
     { name = "pyte", marker = "extra == 'all'", specifier = ">=0.8" },
     { name = "pyte", marker = "extra == 'emulator'", specifier = ">=0.8" },
 ]
-provides-extras = ["ssh", "emulator", "all"]
+provides-extras = ["websocket", "ssh", "emulator", "all"]
 
 [package.metadata.requires-dev]
 dev = [
