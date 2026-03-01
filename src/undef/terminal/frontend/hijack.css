@@ -160,3 +160,32 @@
 .undef-hijack .hijack-analysis::-webkit-scrollbar { width: 5px; }
 .undef-hijack .hijack-analysis::-webkit-scrollbar-track { background: transparent; }
 .undef-hijack .hijack-analysis::-webkit-scrollbar-thumb { background: #2a3040; border-radius: 3px; }
+
+/* ── Mobile key toolbar ── */
+.undef-hijack .mobile-keys {
+  display: none;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 5px 8px;
+  background: #141920;
+  border-top: 1px solid #1e2530;
+  flex-shrink: 0;
+}
+.undef-hijack .mobile-keys.visible { display: flex; }
+.undef-hijack .mkey {
+  padding: 4px 9px;
+  border-radius: 4px;
+  border: 1px solid #2a3040;
+  background: #1e2530;
+  color: #ccd6e8;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.4;
+  transition: background 0.1s, border-color 0.1s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.undef-hijack .mkey:hover { background: #253040; border-color: #3a4555; color: #fff; }
+.undef-hijack .mkey:active { background: #22c55e22; border-color: #22c55e66; }

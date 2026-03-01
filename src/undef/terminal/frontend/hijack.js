@@ -53,6 +53,7 @@ class UndefHijack {
       showInput: true,
       showAnalysis: true,
       heartbeatInterval: 5000,
+      mobileKeys: true,
       ...config,
     };
     this._uid = ++_hijackInstanceCount;
@@ -63,8 +64,11 @@ class UndefHijack {
     this._fitAddon = null;
     this._ro = null;
     this._heartbeatTimer = null;
+    this._reconnectTimer = null;
+    this._reconnectAttempt = 0;
     this._hijacked = false;
     this._hijackedByMe = false;
+    this._mobileKeysVisible = false;
     this._root = null;
 
     _injectHijackCSS();
@@ -82,6 +86,10 @@ class UndefHijack {
   /** Close the WebSocket connection. */
   disconnect() {
     this._clearHeartbeat();
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
     if (this._ws) {
       try { this._ws.close(); } catch (_) {}
       this._ws = null;
@@ -149,6 +157,7 @@ class UndefHijack {
           <button class="hbtn danger" id="${p('release')}" disabled>Release</button>
           <button class="hbtn" id="${p('resync')}" disabled title="Request snapshot">⟳ Resync</button>
           <button class="hbtn" id="${p('analyze')}" disabled>Analyze</button>
+          <button class="hbtn" id="${p('kbdtoggle')}" title="Mobile key toolbar">⌨</button>
         </div>
         <span class="hijack-prompt" id="${p('prompt')}" title="Current prompt ID"></span>
       </div>
@@ -159,6 +168,7 @@ class UndefHijack {
           autocomplete="off" spellcheck="false">
         <button class="hijack-input-send" id="${p('inputsend')}">Send</button>
       </div>
+      <div class="mobile-keys" id="${p('mobilekeys')}"></div>
       ${showAnalysis ? `
       <details class="hijack-analysis" id="${p('analysis')}">
         <summary>Analysis</summary>
@@ -253,6 +263,7 @@ class UndefHijack {
 
     ws.onopen = () => {
       if (ws !== this._ws) return; // stale handler: a newer socket already replaced this one
+      this._reconnectAttempt = 0;
       this._setStatus('live', 'Connected (watching)');
       this._updateButtons();
       this._wsSend({ type: 'snapshot_req' });
@@ -271,14 +282,53 @@ class UndefHijack {
       this._clearHeartbeat();
       this._hijacked = false;
       this._hijackedByMe = false;
-      this._setStatus('bad', 'Disconnected');
       this._updateButtons();
       this._ws = null;
+      this._scheduleReconnect();
     };
 
     ws.onerror = () => {
       try { ws.close(); } catch (_) {}
     };
+  }
+
+  _scheduleReconnect() {
+    if (this._reconnectTimer) return; // already scheduled
+    const delays = [1, 2, 5, 10, 30];
+    const attempt = this._reconnectAttempt;
+    const delaySec = delays[Math.min(attempt, delays.length - 1)];
+    this._reconnectAttempt = attempt + 1;
+    this._setStatus('bad', `Reconnecting in ${delaySec}s…`);
+    this._reconnectTimer = setTimeout(() => {
+      this._reconnectTimer = null;
+      this._connectWs();
+    }, delaySec * 1000);
+  }
+
+  _buildMobileKeys() {
+    const container = this._q('mobilekeys');
+    if (!container) return;
+    const keys = [
+      { label: 'ESC', data: '\x1b' },
+      { label: '↑',   data: '\x1b[A' },
+      { label: '↓',   data: '\x1b[B' },
+      { label: '→',   data: '\x1b[C' },
+      { label: '←',   data: '\x1b[D' },
+      { label: 'Tab', data: '\t' },
+      { label: '^C',  data: '\x03' },
+      { label: '^D',  data: '\x04' },
+      { label: '^Z',  data: '\x1a' },
+    ];
+    for (const { label, data } of keys) {
+      const btn = document.createElement('button');
+      btn.className = 'mkey';
+      btn.textContent = label;
+      btn.addEventListener('click', () => {
+        if (!this._hijackedByMe) return;
+        this._wsSend({ type: 'input', data });
+      });
+      container.appendChild(btn);
+    }
   }
 
   // ── Message dispatch ──────────────────────────────────────────────────────
@@ -373,6 +423,12 @@ class UndefHijack {
       const row = this._q('inputrow');
       if (row) row.classList.toggle('visible', connected && this._hijackedByMe);
     }
+
+    // Show/hide mobile-keys row
+    if (this._config.mobileKeys !== false) {
+      const mkRow = this._q('mobilekeys');
+      if (mkRow) mkRow.classList.toggle('visible', connected && this._hijackedByMe && this._mobileKeysVisible);
+    }
   }
 
   _updateButtons() {
@@ -441,6 +497,18 @@ class UndefHijack {
       if (!this._ws || this._ws.readyState !== WebSocket.OPEN) return;
       this._wsSend({ type: 'analyze_req' });
     });
+
+    // Mobile key toolbar toggle
+    if (this._config.mobileKeys !== false) {
+      this._buildMobileKeys();
+      const kbdToggle = this._q('kbdtoggle');
+      if (kbdToggle) {
+        kbdToggle.addEventListener('click', () => {
+          this._mobileKeysVisible = !this._mobileKeysVisible;
+          this._updateStatus();
+        });
+      }
+    }
 
     // Text input send — for pasting strings or escape sequences when hijacked
     const inputField = this._q('inputfield');

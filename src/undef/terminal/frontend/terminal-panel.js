@@ -126,60 +126,115 @@ Object.assign(UndefTerminal.prototype, {
     return url; // already absolute ws:// or wss://
   },
 
+  _clearHeartbeatPing() {
+    if (this._heartbeatPingTimer) {
+      clearInterval(this._heartbeatPingTimer);
+      this._heartbeatPingTimer = null;
+    }
+  },
+
+  _startHeartbeatPing() {
+    this._clearHeartbeatPing();
+    const ms = (this._config.heartbeatMs != null) ? this._config.heartbeatMs : 25000;
+    if (!ms) return;
+    this._heartbeatPingTimer = setInterval(() => {
+      if (!this._ws || this._ws.readyState !== WebSocket.OPEN) return;
+      try { this._ws.send(JSON.stringify({ type: 'ping' })); } catch (_) {}
+    }, ms);
+  },
+
+  _scheduleReconnect() {
+    const delays = [1, 2, 5, 10, 30];
+    const attempt = this._reconnectAttempt || 0;
+    const delaySec = delays[Math.min(attempt, delays.length - 1)];
+    this._reconnectAttempt = attempt + 1;
+    if (this._term) {
+      this._term.write(`\r\n\x1b[31m✗ Connection closed\x1b[0m\r\n`);
+      this._term.write(`\x1b[33m⟳ Reconnecting in ${delaySec}s…\x1b[0m`);
+    }
+    this._reconnectTimer = setTimeout(() => {
+      this._reconnectTimer = null;
+      if (this._term) this._term.write('\r\n\x1b[33m⟳ Reconnecting…\x1b[0m\r\n');
+      this._connectWebSocket();
+    }, delaySec * 1000);
+  },
+
   _connectWebSocket() {
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
+    this._clearHeartbeatPing();
+
+    let ws;
     try {
       const wsUrl = this._resolveWsUrl();
-      this._ws = new WebSocket(wsUrl);
-      this._ws.binaryType = 'arraybuffer';
-
-      this._ws.onopen = () => {
-        this._connected = true;
-        this._updateStatus(true);
-      };
-
-      this._ws.onmessage = (event) => {
-        try {
-          const data = event.data;
-          if (data instanceof ArrayBuffer) {
-            const text = new TextDecoder('latin-1').decode(data);
-            this._term.write(text);
-          } else {
-            this._term.write(data);
-          }
-        } catch (e) {
-          console.error('Error handling message:', e);
-        }
-      };
-
-      this._ws.onerror = (event) => {
-        console.error('WebSocket error:', event);
-        if (this._term) this._term.write('\x1b[31m✗ WebSocket error\x1b[0m\r\n');
-      };
-
-      this._ws.onclose = () => {
-        this._connected = false;
-        this._updateStatus(false);
-        if (this._term) {
-          this._term.write('\r\n\x1b[31m✗ Connection closed\x1b[0m\r\n');
-          this._term.write('\x1b[33mPress any key to reconnect...\x1b[0m');
-          this._waitingForReconnect = true;
-        }
-      };
+      ws = new WebSocket(wsUrl);
+      ws.binaryType = 'arraybuffer';
     } catch (e) {
       console.error('Failed to create WebSocket:', e);
       if (this._term) this._term.write(`\x1b[31m✗ Failed to connect: ${e.message}\x1b[0m\r\n`);
+      this._scheduleReconnect();
+      return;
+    }
+    this._ws = ws;
+
+    ws.onopen = () => {
+      if (ws !== this._ws) return;
+      this._connected = true;
+      this._reconnectAttempt = 0;
+      this._updateStatus(true);
+      this._startHeartbeatPing();
+    };
+
+    ws.onmessage = (event) => {
+      if (ws !== this._ws) return;
+      try {
+        const data = event.data;
+        if (data instanceof ArrayBuffer) {
+          const text = new TextDecoder('latin-1').decode(data);
+          this._term.write(text);
+        } else {
+          this._term.write(data);
+        }
+      } catch (e) {
+        console.error('Error handling message:', e);
+      }
+    };
+
+    ws.onerror = (event) => {
+      if (ws !== this._ws) return;
+      console.error('WebSocket error:', event);
+      if (this._term) this._term.write('\x1b[31m✗ WebSocket error\x1b[0m\r\n');
+      this._clearHeartbeatPing();
+    };
+
+    ws.onclose = () => {
+      if (ws !== this._ws) return;
+      this._clearHeartbeatPing();
+      this._connected = false;
+      this._updateStatus(false);
+      this._scheduleReconnect();
+    };
+  },
+
+  // Override disconnect() to cancel pending reconnect and heartbeat timers
+  disconnect() {
+    this._clearHeartbeatPing();
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
+    this._waitingForReconnect = false;
+    if (this._ws) {
+      this._ws.close();
+      this._ws = null;
     }
   },
 
   // ── Terminal Input Handler ────────────────────────────────────────────────
 
   _handleTerminalInput(data) {
-    if (this._waitingForReconnect) {
-      this._waitingForReconnect = false;
-      if (this._term) this._term.write('\r\n\x1b[33m⟳ Reconnecting...\x1b[0m\r\n');
-      this._connectWebSocket();
-      return;
-    }
     if (!this._connected || !this._ws) return;
     try {
       this._ws.send(data);

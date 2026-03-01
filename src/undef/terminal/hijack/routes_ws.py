@@ -250,6 +250,9 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                             hub._notify_hijack_changed(bot_id, enabled=False, owner=None)
                         await hub._append_event(bot_id, "hijack_released", {"owner": "dashboard_ws"})
 
+                elif mtype == "ping":
+                    pass  # keepalive — TCP ACK is sufficient, no response needed
+
                 elif mtype == "input":
                     if await hub._touch_if_owner(bot_id, websocket) is not None:
                         data = msg_b.get("data", "")
