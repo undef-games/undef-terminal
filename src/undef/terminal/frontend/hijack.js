@@ -252,6 +252,7 @@ class UndefHijack {
     this._ws = ws;
 
     ws.onopen = () => {
+      if (ws !== this._ws) return; // stale handler: a newer socket already replaced this one
       this._setStatus('live', 'Connected (watching)');
       this._updateButtons();
       this._wsSend({ type: 'snapshot_req' });

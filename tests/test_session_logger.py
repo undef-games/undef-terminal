@@ -265,3 +265,51 @@ class TestSessionLoggerRunningLoopRegression:
             f"Unexpected DeprecationWarning for get_event_loop: {event_loop_warnings}"
         )
         await log.stop()
+
+
+class TestSessionLoggerCloseViaExecutor:
+    """Regression fix (round-8): file.close() must be dispatched via run_in_executor,
+    not called inline on the event loop thread."""
+
+    async def test_close_runs_in_executor_not_inline(self, tmp_path: Path) -> None:
+        """Round-8 fix 4: file.close() must be dispatched via run_in_executor so that
+        a blocking kernel write-back flush inside close() does not stall the event loop.
+        """
+        import asyncio
+        from unittest.mock import MagicMock, patch
+
+        log = SessionLogger(tmp_path / "close_exec.jsonl")
+        await log.start(session_id=200)
+
+        mock_file = MagicMock()
+        log._file = mock_file
+
+        executor_callables: list[object] = []
+        loop = asyncio.get_running_loop()
+        original_run = loop.run_in_executor
+
+        async def _spy(executor: object, fn: object, *args: object) -> object:
+            executor_callables.append(fn)
+            return await original_run(executor, fn, *args)
+
+        with patch.object(loop, "run_in_executor", side_effect=_spy):
+            await log.stop()
+
+        assert mock_file.close in executor_callables, (
+            "file.close() was not dispatched via run_in_executor — it would block the event loop"
+        )
+
+    async def test_close_oserror_suppressed_via_executor(self, tmp_path: Path) -> None:
+        """Round-8 fix 4: OSError from file.close() in executor must be suppressed."""
+        from unittest.mock import MagicMock
+
+        log = SessionLogger(tmp_path / "close_err2.jsonl")
+        await log.start(session_id=201)
+
+        mock_file = MagicMock()
+        mock_file.close = MagicMock(side_effect=OSError("disk full"))
+        log._file = mock_file
+
+        # Must not raise despite OSError from close()
+        await log.stop()
+        assert log._file is None

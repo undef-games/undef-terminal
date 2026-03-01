@@ -60,12 +60,14 @@ class SessionLogger:
                 self._file = None
         if file_to_close is not None:
             # Flush and close outside the lock so concurrent writers are not
-            # blocked during the I/O syscall.
+            # blocked during the I/O syscalls.  Both operations are offloaded to
+            # a thread-pool executor so the event loop is not stalled by kernel
+            # write-back flushing (which can block close() on some filesystems).
             loop = asyncio.get_running_loop()
             with contextlib.suppress(OSError):
                 await loop.run_in_executor(None, file_to_close.flush)
             with contextlib.suppress(OSError):
-                file_to_close.close()
+                await loop.run_in_executor(None, file_to_close.close)
 
     async def log_send(self, keys: str) -> None:
         """Log sent keystrokes."""

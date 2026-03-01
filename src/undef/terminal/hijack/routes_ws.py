@@ -176,8 +176,15 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                             },
                         )
                         if not ok:
-                            await hub._set_hijack_owner(bot_id, None)
-                            hub._notify_hijack_changed(bot_id, enabled=False, owner=None)
+                            # Atomically verify we still own the hijack and clear
+                            # it. If a concurrent request stole ownership between
+                            # _try_acquire_ws_hijack and here, _try_release_ws_hijack
+                            # returns (False, ...) and we skip the notify — preventing
+                            # a spurious on_hijack_changed(enabled=False) while another
+                            # client legitimately holds the lease.
+                            released, rest_active = await hub._try_release_ws_hijack(bot_id, websocket)
+                            if released and not rest_active:
+                                hub._notify_hijack_changed(bot_id, enabled=False, owner=None)
                             await websocket.send_text(
                                 json.dumps(
                                     {"type": "error", "message": "No worker connected for this bot."}, ensure_ascii=True
@@ -269,6 +276,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
             # _is_owner() returns True but another coroutine steals hijack_owner
             # (or vice-versa), and to avoid a second lock round-trip for
             # _is_rest_session_active after the owner has already been cleared.
+            was_owner = False
             rest_still_active = False
             async with hub._lock:
                 st3 = hub._bots.get(bot_id)
