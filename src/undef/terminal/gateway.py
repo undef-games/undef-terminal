@@ -40,7 +40,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def _require_websockets():
@@ -130,8 +133,8 @@ class TelnetWsGateway:
     async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
             await _pipe_ws(reader, writer, self._ws_url)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("telnet_ws_session_ended: %s", exc)
         finally:
             with contextlib.suppress(Exception):
                 writer.close()
@@ -208,8 +211,8 @@ class SshWsGateway:
                     for task in pending:
                         task.cancel()
                     await asyncio.gather(*pending, return_exceptions=True)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("ssh_ws_session_ended: %s", exc)
             finally:
                 with contextlib.suppress(Exception):
                     process.exit(0)

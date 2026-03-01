@@ -10,7 +10,7 @@ directly, step through individual loop iterations, and then resume automation.
 
 Three layers:
 
-- :class:`~undef.terminal.hijack.base.HijackBase` — mixin for the worker/bot side.
+- :class:`~undef.terminal.hijack.base.HijackableMixin` — mixin for the worker/bot side.
   Drop into any async class; call :meth:`await_if_hijacked` at checkpoints.
 
 - :class:`~undef.terminal.hijack.hub.TermHub` — server-side registry.
@@ -31,6 +31,6 @@ Requires the ``websocket`` extra for ``hub``, ``bridge``, and ``routes``::
 
 from __future__ import annotations
 
-from undef.terminal.hijack.base import HijackBase
+from undef.terminal.hijack.base import HijackableMixin
 
-__all__ = ["HijackBase"]
+__all__ = ["HijackableMixin"]

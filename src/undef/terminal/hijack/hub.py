@@ -238,7 +238,8 @@ class TermHub:
         for ws in browsers:
             try:
                 await ws.send_text(payload)
-            except Exception:
+            except Exception as exc:
+                logger.debug("broadcast_send_failed bot_id=%s: %s", bot_id, exc)
                 dead.add(ws)
         if dead:
             async with self._lock:
@@ -286,7 +287,8 @@ class TermHub:
                         ensure_ascii=True,
                     )
                 )
-            except Exception:
+            except Exception as exc:
+                logger.debug("broadcast_hijack_state_send_failed bot_id=%s: %s", bot_id, exc)
                 dead.add(ws)
         if dead:
             async with self._lock:
@@ -302,7 +304,8 @@ class TermHub:
         try:
             await st.worker_ws.send_text(json.dumps(msg, ensure_ascii=True))
             return True
-        except Exception:
+        except Exception as exc:
+            logger.debug("send_worker_failed bot_id=%s: %s", bot_id, exc)
             async with self._lock:
                 st2 = self._bots.get(bot_id)
                 if st2 is not None and st2.worker_ws is st.worker_ws:

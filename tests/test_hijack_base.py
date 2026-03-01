@@ -3,17 +3,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 
-"""Tests for HijackBase mixin."""
+"""Tests for HijackableMixin."""
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
 
-from undef.terminal.hijack.base import HijackBase
+from undef.terminal.hijack.base import HijackableMixin
 
 
-class Bot(HijackBase):
+class Bot(HijackableMixin):
     def __init__(self) -> None:
         super().__init__()
         self.steps_taken: int = 0
@@ -23,7 +23,7 @@ class Bot(HijackBase):
         self.steps_taken += 1
 
 
-class TestHijackBaseCheckpoint:
+class TestHijackableMixinCheckpoint:
     async def test_not_hijacked_passes_immediately(self) -> None:
         bot = Bot()
         await bot.loop_once()
@@ -82,7 +82,7 @@ class TestHijackBaseCheckpoint:
         assert bot._hijack_step_tokens == 0
 
 
-class TestHijackBaseProgress:
+class TestHijackableMixinProgress:
     def test_note_progress_updates_timestamp(self) -> None:
         import time
 
@@ -93,7 +93,7 @@ class TestHijackBaseProgress:
         assert bot._last_progress_mono > before
 
 
-class TestHijackBaseWatchdog:
+class TestHijackableMixinWatchdog:
     async def test_watchdog_calls_on_stuck(self) -> None:
         bot = Bot()
         stuck_called = asyncio.Event()
@@ -133,7 +133,7 @@ class TestHijackBaseWatchdog:
 class TestWatchdogBranches:
     async def test_watchdog_idempotent(self) -> None:
         """start_watchdog called twice should not start a second task."""
-        class Bot2(HijackBase):
+        class Bot2(HijackableMixin):
             pass
 
         bot = Bot2()
@@ -148,7 +148,7 @@ class TestWatchdogBranches:
 
     async def test_watchdog_hijacked_branch(self) -> None:
         """While hijacked, watchdog calls note_progress (resets timer)."""
-        class Bot2(HijackBase):
+        class Bot2(HijackableMixin):
             pass
 
         bot = Bot2()
@@ -169,7 +169,7 @@ class TestWatchdogBranches:
         """Watchdog does NOT fire on_stuck when progress was recently noted."""
         fired = []
 
-        class Bot2(HijackBase):
+        class Bot2(HijackableMixin):
             pass
 
         bot = Bot2()
@@ -189,7 +189,7 @@ class TestWatchdogBranches:
 
     async def test_watchdog_exception_in_loop_continues(self) -> None:
         """Exception inside watchdog loop body is swallowed and loop continues."""
-        class Bot2(HijackBase):
+        class Bot2(HijackableMixin):
             pass
 
         bot = Bot2()

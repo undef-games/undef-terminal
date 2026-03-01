@@ -12,17 +12,21 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import time
 from collections.abc import Awaitable, Callable
 
+logger = logging.getLogger(__name__)
 
-class HijackBase:
-    """Mixin that adds pause/resume/step/watchdog primitives to any async class.
 
-    Intended usage — add as a base class to your worker/bot class, then call
-    :meth:`await_if_hijacked` at checkpoints in your automation loop::
+class HijackableMixin:
+    """Mixin that makes an async worker class hijackable by a human operator.
 
-        class MyBot(HijackBase):
+    Adds pause/resume/step/watchdog primitives. Intended usage — add as a base
+    class to your worker/bot class, then call :meth:`await_if_hijacked` at
+    checkpoints in your automation loop::
+
+        class MyBot(HijackableMixin):
             async def run_loop(self) -> None:
                 while True:
                     await self.await_if_hijacked()  # pauses here when hijacked
@@ -136,13 +140,16 @@ class HijackBase:
                     if idle_for < float(stuck_timeout_s):
                         continue
                     if on_stuck is not None:
-                        with contextlib.suppress(Exception):
+                        try:
                             await on_stuck()
+                        except Exception as exc:  # pragma: no cover
+                            logger.warning("watchdog on_stuck callback raised: %s", exc, exc_info=True)
                     # Reset so we don't spam if reconnect is slow
                     self.note_progress()
                 except asyncio.CancelledError:  # pragma: no cover
                     raise
                 except Exception:  # pragma: no cover
+                    logger.warning("watchdog loop error", exc_info=True)
                     continue
 
         self._watchdog_task = asyncio.create_task(_loop())

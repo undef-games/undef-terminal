@@ -48,7 +48,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                 raw = await websocket.receive_text()
                 try:
                     msg = json.loads(raw)
-                except Exception:  # noqa: S112
+                except Exception as exc:  # noqa: S112
+                    logger.debug("ws_worker_bad_json bot_id=%s: %s", bot_id, exc)
                     continue
                 mtype = msg.get("type")
                 if mtype == "term":
@@ -138,7 +139,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                 raw = await websocket.receive_text()
                 try:
                     msg_b: dict[str, Any] = json.loads(raw)
-                except Exception:  # noqa: S112
+                except Exception as exc:  # noqa: S112
+                    logger.debug("ws_browser_bad_json bot_id=%s: %s", bot_id, exc)
                     continue
                 mtype = msg_b.get("type")
 
