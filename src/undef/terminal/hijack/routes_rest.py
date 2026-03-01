@@ -129,8 +129,12 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
                 now=now,
             )
             if not acquired:
-                # Another request raced in; send resume to undo our pause.
-                # Set session_committed so the finally block skips a second send.
+                # session_committed=True prevents the finally block from
+                # sending a second resume.  If err=="no_worker" (worker
+                # disconnected between _send_worker and the lock), _send_worker
+                # below is a silent no-op — there is nobody to resume, which is
+                # correct.  For err=="already_hijacked" the resume undoes the
+                # pause we sent to the correct (still-connected) worker.
                 session_committed = True
                 await hub._send_worker(
                     worker_id,

@@ -239,8 +239,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
 
                 elif mtype == "hijack_release":
                     # Atomically check ownership and clear in one lock block to
-                    # prevent a concurrent hijack_request stealing ownership
-                    # between _is_owner() and _set_hijack_owner(None).
+                    # prevent a concurrent hijack_request stealing ownership.
                     # rest_active is captured inside the same lock block to
                     # avoid a post-release TOCTOU on _is_rest_session_active.
                     released, rest_active = await hub._try_release_ws_hijack(worker_id, websocket)

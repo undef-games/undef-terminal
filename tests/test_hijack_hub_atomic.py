@@ -397,3 +397,31 @@ async def test_prune_if_idle_noop_for_unknown_bot() -> None:
     """Calling _prune_if_idle for a bot that doesn't exist is a no-op."""
     hub = TermHub()
     await hub._prune_if_idle("no-such-bot")  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# _append_event: pruned-worker guard
+# ---------------------------------------------------------------------------
+
+
+async def test_append_event_after_prune_does_not_resurrect_worker() -> None:
+    """_append_event must drop the event rather than re-creating a ghost
+    WorkerTermState when the worker has already been pruned.
+
+    Regression guard: if the .get() is ever changed back to setdefault, a
+    pruned worker would be resurrected with an active events deque but no
+    connections or leases — an entry _prune_if_idle cannot later clean up
+    until the next explicit prune call.
+    """
+    hub = TermHub()
+    st = await hub._get("bot1")
+    assert "bot1" in hub._workers
+
+    # Prune immediately (no connections, no leases)
+    await hub._prune_if_idle("bot1")
+    assert "bot1" not in hub._workers, "worker should have been pruned"
+
+    # Appending an event must not resurrect the entry
+    evt = await hub._append_event("bot1", "test_event", {"x": 1})
+    assert "bot1" not in hub._workers, "worker must not be resurrected by _append_event"
+    assert evt["seq"] == 0, "dropped event must return seq=0 sentinel"

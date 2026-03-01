@@ -334,3 +334,42 @@ async def test_acquire_succeeds_when_worker_connects_after_cleanup() -> None:
 
     assert r.status_code == 200
     assert r.json()["ok"] is True
+
+
+# ---------------------------------------------------------------------------
+# no_worker race: _try_acquire_rest_hijack returns "no_worker"
+# ---------------------------------------------------------------------------
+
+
+def test_acquire_no_worker_race_sends_exactly_one_resume() -> None:
+    """Worker disconnects between _send_worker succeeding and _try_acquire_rest_hijack
+    acquiring the lock.  The route must:
+    - return 409
+    - send exactly one resume (from the not-acquired branch), not two
+      (the finally block must be suppressed via session_committed=True).
+
+    When _try_acquire_rest_hijack returns (False, "no_worker") the _send_worker
+    call in the not-acquired branch is a no-op (worker_ws is None), which is
+    correct — there is nobody to resume.
+    """
+    import json as _json
+    from unittest.mock import patch
+
+    app, hub = make_app()
+    mock_ws = AsyncMock()
+    hub._workers["bot1"] = WorkerTermState(worker_ws=mock_ws)
+
+    async def _no_worker(worker_id: str, **kw: object) -> tuple[bool, str | None]:
+        return False, "no_worker"
+
+    with patch.object(hub, "_try_acquire_rest_hijack", side_effect=_no_worker):
+        with TestClient(app) as client:
+            r = client.post("/worker/bot1/hijack/acquire", json={"owner": "test"})
+
+    assert r.status_code == 409
+
+    sent = [_json.loads(c.args[0]) for c in mock_ws.send_text.await_args_list]
+    resumes = [m for m in sent if m.get("type") == "control" and m.get("action") == "resume"]
+    assert len(resumes) == 1, (
+        f"exactly one resume expected when no_worker returned, got {len(resumes)}"
+    )

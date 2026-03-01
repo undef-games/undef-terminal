@@ -405,16 +405,6 @@ class TermHub:
             st.hijack_owner_expires_at = time.time() + ttl
         return True, None
 
-    async def _set_hijack_owner(self, worker_id: str, owner: WebSocket | None, lease_s: int | None = None) -> None:
-        async with self._lock:
-            st = self._workers.setdefault(worker_id, WorkerTermState())
-            st.hijack_owner = owner
-            if owner is None:
-                st.hijack_owner_expires_at = None
-            else:
-                ttl = self._dashboard_hijack_lease_s if lease_s is None else max(1, min(int(lease_s), 600))
-                st.hijack_owner_expires_at = time.time() + ttl
-
     async def _touch_hijack_owner(self, worker_id: str, lease_s: int | None = None) -> float | None:
         async with self._lock:
             st = self._workers.get(worker_id)

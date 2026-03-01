@@ -87,6 +87,7 @@ class UndefHijack {
   /** Close the WebSocket connection. */
   disconnect() {
     this._clearHeartbeat();
+    if (this._ro) { this._ro.disconnect(); this._ro = null; }
     if (this._reconnectTimer) {
       clearTimeout(this._reconnectTimer);
       this._reconnectTimer = null;
