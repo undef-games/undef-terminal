@@ -102,6 +102,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                 if st3 is not None and st3.worker_ws is websocket:
                     st3.worker_ws = None
             logger.info("term_worker_disconnected bot_id=%s", bot_id)
+            await hub._prune_if_idle(bot_id)
 
     @router.websocket("/ws/bot/{bot_id}/term")
     async def ws_browser_term(websocket: WebSocket, bot_id: str) -> None:
@@ -301,3 +302,4 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                 if not rest_still_active:
                     hub._notify_hijack_changed(bot_id, enabled=False, owner=None)
                 await hub._append_event(bot_id, "hijack_released", {"owner": "dashboard_ws_disconnect"})
+            await hub._prune_if_idle(bot_id)

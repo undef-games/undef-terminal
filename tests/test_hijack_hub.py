@@ -58,7 +58,8 @@ async def test_cleanup_expired_rest_session() -> None:
     )
     expired = await hub._cleanup_expired_hijack("bot1")
     assert expired
-    assert hub._bots["bot1"].hijack_session is None
+    # Bot is fully idle after session expiry → pruned from _bots.
+    assert "bot1" not in hub._bots
 
 
 async def test_cleanup_not_expired_rest_session() -> None:
@@ -89,8 +90,8 @@ async def test_cleanup_expired_dashboard_owner() -> None:
     hub._bots["bot1"].hijack_owner_expires_at = time.time() - 1
     expired = await hub._cleanup_expired_hijack("bot1")
     assert expired
-    assert hub._bots["bot1"].hijack_owner is None
-    assert hub._bots["bot1"].hijack_owner_expires_at is None
+    # Bot is fully idle after owner expiry → pruned from _bots.
+    assert "bot1" not in hub._bots
 
 
 async def test_cleanup_missing_bot_returns_false() -> None:
@@ -785,3 +786,77 @@ async def test_broadcast_does_not_iterate_live_set() -> None:
 
     # Must not raise RuntimeError about set-changed-size during iteration.
     await hub._broadcast("bot1", {"type": "ping"})
+
+
+# ---------------------------------------------------------------------------
+# _prune_if_idle
+# ---------------------------------------------------------------------------
+
+
+async def test_prune_if_idle_removes_fully_disconnected_bot() -> None:
+    """A bot with no worker, no browsers, and no hijack is removed from _bots."""
+    hub = TermHub()
+    await hub._get("bot1")
+    assert "bot1" in hub._bots
+
+    await hub._prune_if_idle("bot1")
+
+    assert "bot1" not in hub._bots
+
+
+async def test_prune_if_idle_keeps_bot_with_active_worker() -> None:
+    hub = TermHub()
+    async with hub._lock:
+        st = hub._bots.setdefault("bot1", BotTermState())
+        st.worker_ws = AsyncMock()
+
+    await hub._prune_if_idle("bot1")
+
+    assert "bot1" in hub._bots
+
+
+async def test_prune_if_idle_keeps_bot_with_browser() -> None:
+    hub = TermHub()
+    async with hub._lock:
+        st = hub._bots.setdefault("bot1", BotTermState())
+        st.browsers.add(AsyncMock())
+
+    await hub._prune_if_idle("bot1")
+
+    assert "bot1" in hub._bots
+
+
+async def test_prune_if_idle_keeps_bot_with_active_rest_session() -> None:
+    import time
+
+    hub = TermHub()
+    async with hub._lock:
+        st = hub._bots.setdefault("bot1", BotTermState())
+        st.hijack_session = HijackSession(
+            hijack_id="x",
+            owner="test",
+            acquired_at=time.time(),
+            lease_expires_at=time.time() + 90,
+            last_heartbeat=time.time(),
+        )
+
+    await hub._prune_if_idle("bot1")
+
+    assert "bot1" in hub._bots
+
+
+async def test_prune_if_idle_keeps_bot_with_dashboard_owner() -> None:
+    hub = TermHub()
+    async with hub._lock:
+        st = hub._bots.setdefault("bot1", BotTermState())
+        st.hijack_owner = AsyncMock()
+
+    await hub._prune_if_idle("bot1")
+
+    assert "bot1" in hub._bots
+
+
+async def test_prune_if_idle_noop_for_unknown_bot() -> None:
+    """Calling _prune_if_idle for a bot that doesn't exist is a no-op."""
+    hub = TermHub()
+    await hub._prune_if_idle("no-such-bot")  # must not raise

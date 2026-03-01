@@ -152,6 +152,7 @@ class TermHub:
         if dashboard_expired:
             await self._append_event(bot_id, "hijack_owner_expired")
         await self._broadcast_hijack_state(bot_id)
+        await self._prune_if_idle(bot_id)
         return True
 
     async def _get_rest_session(self, bot_id: str, hijack_id: str) -> HijackSession | None:
@@ -311,6 +312,27 @@ class TermHub:
                 if st2 is not None and st2.worker_ws is st.worker_ws:
                     st2.worker_ws = None
             return False
+
+    async def _prune_if_idle(self, bot_id: str) -> None:
+        """Remove a bot's state if it has no active connections or hijack leases.
+
+        Called at lifecycle exits (worker disconnect, browser disconnect, REST
+        release, lease expiry) so that bots that go fully idle don't accumulate
+        in memory indefinitely.  Safe to call speculatively — a no-op when any
+        connection or lease is still active.
+        """
+        async with self._lock:
+            st = self._bots.get(bot_id)
+            if st is None:
+                return
+            if (
+                st.worker_ws is None
+                and not st.browsers
+                and st.hijack_owner is None
+                and st.hijack_session is None
+            ):
+                del self._bots[bot_id]
+                logger.debug("pruned idle bot_id=%s", bot_id)
 
     async def _try_acquire_rest_hijack(
         self,

@@ -331,4 +331,5 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
             hub._notify_hijack_changed(bot_id, enabled=False, owner=None)
         await hub._append_event(bot_id, "hijack_released", {"hijack_id": hijack_id, "owner": hs.owner})
         await hub._broadcast_hijack_state(bot_id)
+        await hub._prune_if_idle(bot_id)
         return {"ok": True, "bot_id": bot_id, "hijack_id": hijack_id}

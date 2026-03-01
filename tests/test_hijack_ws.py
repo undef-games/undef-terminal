@@ -144,35 +144,40 @@ def test_worker_snapshot_updates_hub_state() -> None:
             assert msg["type"] == "snapshot"
             assert msg["screen"] == "Welcome to TW2002"
 
-    # Hub state updated
-    assert hub._bots["bot1"].last_snapshot is not None
-    assert hub._bots["bot1"].last_snapshot["screen"] == "Welcome to TW2002"
+            # Hub state updated while connections are still live.
+            assert hub._bots["bot1"].last_snapshot is not None
+            assert hub._bots["bot1"].last_snapshot["screen"] == "Welcome to TW2002"
 
 
 def test_worker_snapshot_appends_event() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/worker/bot1/term") as worker:
-        _read_worker_snapshot_req(worker)
-        worker.send_json(
-            {
-                "type": "snapshot",
-                "screen": "test",
-                "cursor": {"x": 0, "y": 0},
-                "cols": 80,
-                "rows": 25,
-                "screen_hash": "h1",
-                "cursor_at_end": True,
-                "has_trailing_space": False,
-                "prompt_detected": None,
-                "ts": time.time(),
-            }
-        )
+    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+        _read_initial_browser_messages(browser)
+        with client.websocket_connect("/ws/worker/bot1/term") as worker:
+            _read_worker_snapshot_req(worker)
+            worker.send_json(
+                {
+                    "type": "snapshot",
+                    "screen": "test",
+                    "cursor": {"x": 0, "y": 0},
+                    "cols": 80,
+                    "rows": 25,
+                    "screen_hash": "h1",
+                    "cursor_at_end": True,
+                    "has_trailing_space": False,
+                    "prompt_detected": None,
+                    "ts": time.time(),
+                }
+            )
+            # Browser receiving the broadcast is the sync point that confirms
+            # the server has finished processing the snapshot message.
+            msg = browser.receive_json()
+            assert msg["type"] == "snapshot"
 
-    st = hub._bots.get("bot1")
-    assert st is not None
-    events = list(st.events)
-    types = [e["type"] for e in events]
-    assert "snapshot" in types
+            st = hub._bots.get("bot1")
+            assert st is not None
+            types = [e["type"] for e in st.events]
+            assert "snapshot" in types
 
 
 def test_worker_status_broadcast() -> None:
@@ -753,14 +758,15 @@ def test_hijack_request_send_fail_fires_notify_disabled() -> None:
                 browser.send_json({"type": "hijack_request"})
                 err = browser.receive_json()
 
-    assert err["type"] == "error"
-    disabled_calls = [(b, e, o) for b, e, o in callbacks if not e]
-    assert disabled_calls, "on_hijack_changed(enabled=False) must be called after send failure"
-    assert disabled_calls[-1][0] == "bot1"
-    # Hub must not consider bot1 hijacked after the rollback
-    st = hub._bots.get("bot1")
-    assert st is not None
-    assert st.hijack_owner is None
+            assert err["type"] == "error"
+            disabled_calls = [(b, e, o) for b, e, o in callbacks if not e]
+            assert disabled_calls, "on_hijack_changed(enabled=False) must be called after send failure"
+            assert disabled_calls[-1][0] == "bot1"
+            # Hub must not consider bot1 hijacked after the rollback.
+            # Check while connections are live — bot is pruned once all disconnect.
+            st = hub._bots.get("bot1")
+            assert st is not None
+            assert st.hijack_owner is None
 
 
 def test_ping_is_silently_ignored() -> None:
