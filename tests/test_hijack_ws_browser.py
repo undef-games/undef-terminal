@@ -104,8 +104,13 @@ def test_browser_analyze_req_as_owner_touches_lease() -> None:
             assert msg["type"] == "analyze_req"
 
 
-def test_browser_hijack_step_no_worker() -> None:
-    """hijack_step as owner with no worker returns error message."""
+def test_browser_loses_ownership_on_worker_disconnect() -> None:
+    """Worker disconnect clears hijack ownership so browser can no longer step/input.
+
+    Previously the browser kept ownership across worker disconnect and received
+    an error response.  Now the finally block revokes ownership atomically so
+    hijack_step from a non-owner is silently ignored.
+    """
     app, hub = make_app()
     with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
@@ -116,17 +121,19 @@ def test_browser_hijack_step_no_worker() -> None:
             browser.send_json({"type": "hijack_request"})
             worker.receive_json()  # pause
             browser.receive_json()  # hijack_state
+            assert hub._workers["bot1"].hijack_owner is not None
 
-        # Worker context exited — worker is disconnected now
-        # Browser is still owner. Send hijack_step — no worker connected → error
-        browser.send_json({"type": "hijack_step"})
+        # Worker disconnected: browser must receive worker_disconnected and
+        # lose ownership — hijack_owner is cleared in the finally block.
         msg = browser.receive_json()
-        assert msg["type"] == "error"
-        assert "worker" in msg["message"].lower()
+        assert msg["type"] == "worker_disconnected"
+        st = hub._workers.get("bot1")
+        assert st is not None, "state must exist while browser is still connected"
+        assert st.hijack_owner is None, "hijack_owner must be cleared on worker disconnect"
 
 
 def test_browser_input_no_worker() -> None:
-    """Input as owner with no worker returns error message."""
+    """Input as owner with no worker: ownership is revoked at disconnect, input is ignored."""
     app, hub = make_app()
     with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
@@ -139,11 +146,14 @@ def test_browser_input_no_worker() -> None:
             worker.receive_json()  # pause
             browser.receive_json()  # hijack_state
 
-        # Worker is now disconnected (context exited)
-        # The browser is still connected and still the owner
-        # Send input — worker is gone, should get error
-        browser.send_json({"type": "input", "data": "hello\r"})
-        # The worker WS is None now, so _send_worker returns False → error sent
+        # Worker disconnected — browser receives worker_disconnected and is no longer owner.
         msg = browser.receive_json()
-        assert msg["type"] == "error", f"expected error message when worker disconnected, got: {msg}"
-        assert "worker" in msg["message"].lower()
+        assert msg["type"] == "worker_disconnected"
+
+        # Send input as (former) owner: ownership was cleared at worker disconnect,
+        # so _touch_if_owner returns None and input is silently ignored.
+        # Verify hub state reflects cleared ownership rather than waiting for a
+        # message that will never arrive.
+        st = hub._workers.get("bot1")
+        assert st is not None
+        assert st.hijack_owner is None

@@ -69,6 +69,7 @@ class UndefHijack {
     this._reconnectAttempt = 0;
     this._hijacked = false;
     this._hijackedByMe = false;
+    this._workerOnline = false;
     this._mobileKeysVisible = false;
     this._root = null;
 
@@ -284,6 +285,8 @@ class UndefHijack {
       this._clearHeartbeat();
       this._hijacked = false;
       this._hijackedByMe = false;
+      this._workerOnline = false;
+      this._updateStatus();
       this._updateButtons();
       this._ws = null;
       this._scheduleReconnect();
@@ -339,12 +342,14 @@ class UndefHijack {
     switch (msg.type) {
 
       case 'term':
+        this._workerOnline = true;
         if (msg.data) {
           try { this._ensureTerm().write(msg.data); } catch (_) {}
         }
         break;
 
       case 'snapshot': {
+        this._workerOnline = true;
         const promptId = msg.prompt_detected && msg.prompt_detected.prompt_id;
         this._setPromptId(promptId || '');
         try {
@@ -370,6 +375,7 @@ class UndefHijack {
         // {type, worker_id, can_hijack, hijacked, hijacked_by_me}
         this._hijacked = !!msg.hijacked;
         this._hijackedByMe = !!msg.hijacked_by_me;
+        this._workerOnline = !!msg.worker_online;
         this._updateStatus();
         this._updateButtons();
         break;
@@ -384,6 +390,14 @@ class UndefHijack {
         } else {
           this._clearHeartbeat();
         }
+        this._updateStatus();
+        this._updateButtons();
+        break;
+
+      case 'worker_disconnected':
+        this._hijacked = false;
+        this._hijackedByMe = false;
+        this._clearHeartbeat();
         this._updateStatus();
         this._updateButtons();
         break;
@@ -416,6 +430,8 @@ class UndefHijack {
       this._setStatus('warn', 'Hijacked (you)');
     } else if (this._hijacked) {
       this._setStatus('bad', 'Hijacked (other)');
+    } else if (!this._workerOnline) {
+      this._setStatus('bad', 'Worker offline');
     } else {
       this._setStatus('live', 'Connected (watching)');
     }
@@ -446,11 +462,11 @@ class UndefHijack {
         .forEach(b => { if (b) b.disabled = true; });
       return;
     }
-    if (hijackBtn)  hijackBtn.disabled  = this._hijacked;
+    if (hijackBtn)  hijackBtn.disabled  = this._hijacked || !this._workerOnline;
     if (stepBtn)    stepBtn.disabled    = !this._hijackedByMe;
     if (releaseBtn) releaseBtn.disabled = !this._hijackedByMe;
-    if (resyncBtn)  resyncBtn.disabled  = false;
-    if (analyzeBtn) analyzeBtn.disabled = false;
+    if (resyncBtn)  resyncBtn.disabled  = !this._workerOnline;
+    if (analyzeBtn) analyzeBtn.disabled = !this._workerOnline;
   }
 
   _setPromptId(id) {

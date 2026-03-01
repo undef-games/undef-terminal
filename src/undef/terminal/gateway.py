@@ -87,7 +87,7 @@ async def _pipe_ws(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, w
         _done, pending = await asyncio.wait([t1, t2], return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
-        await asyncio.gather(*pending, return_exceptions=True)
+        await asyncio.gather(*[*_done, *pending], return_exceptions=True)
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +215,7 @@ class SshWsGateway:
                     _done, pending = await asyncio.wait([t1, t2], return_when=asyncio.FIRST_COMPLETED)
                     for task in pending:
                         task.cancel()
-                    await asyncio.gather(*pending, return_exceptions=True)
+                    await asyncio.gather(*[*_done, *pending], return_exceptions=True)
             except Exception as exc:
                 logger.debug("ssh_ws_session_ended: %s", exc)
             finally:

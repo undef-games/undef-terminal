@@ -11,6 +11,7 @@ Registers:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from typing import TYPE_CHECKING, Any
@@ -28,6 +29,9 @@ if TYPE_CHECKING:
     from undef.terminal.hijack.hub import TermHub
 
 logger = logging.getLogger(__name__)
+
+_WORKER_IDLE_TIMEOUT_S = 120.0  # workers produce regular term/snapshot output
+_BROWSER_IDLE_TIMEOUT_S = 180.0  # browsers may be silent while watching
 
 
 def _safe_int(val: Any, default: int) -> int:
@@ -104,11 +108,22 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         except Exception as exc:  # pragma: no cover
             logger.warning("term_worker_ws_error worker_id=%s error=%s", worker_id, exc)
         finally:
+            was_hijacked = False
             async with hub._lock:
                 st3 = hub._workers.get(worker_id)
                 if st3 is not None and st3.worker_ws is websocket:
                     st3.worker_ws = None
+                    was_hijacked = st3.hijack_session is not None or st3.hijack_owner is not None
+                    st3.hijack_session = None
+                    st3.hijack_owner = None
+                    st3.hijack_owner_expires_at = None
             logger.info("term_worker_disconnected worker_id=%s", worker_id)
+            await hub._broadcast(
+                worker_id,
+                {"type": "worker_disconnected", "worker_id": worker_id, "ts": time.time()},
+            )
+            if was_hijacked:
+                hub._notify_hijack_changed(worker_id, enabled=False, owner=None)
             await hub._prune_if_idle(worker_id)
 
     @router.websocket("/ws/browser/{worker_id}/term")
@@ -120,6 +135,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
             st.browsers.add(websocket)
             is_hijacked = hub._is_hijacked(st)
             hijacked_by_me = hub._is_dashboard_hijack_active(st) and st.hijack_owner is websocket
+            worker_online = st.worker_ws is not None
             initial_snapshot = st.last_snapshot  # captured under lock to avoid stale read
 
         await websocket.send_text(
@@ -130,6 +146,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     "can_hijack": True,
                     "hijacked": is_hijacked,
                     "hijacked_by_me": hijacked_by_me,
+                    "worker_online": worker_online,
                 },
                 ensure_ascii=True,
             )
