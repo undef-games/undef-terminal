@@ -588,3 +588,79 @@ class TestTermBridgeDroppedFrameLogging:
             watch_fn({"screen": "test"}, b"normal data")
 
         assert not any("term_bridge_drop" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Round-9 regression: _send_loop calls queue.task_done() after each message
+# ---------------------------------------------------------------------------
+
+
+class TestSendLoopTaskDone:
+    """Round-9 fix: _send_loop must call queue.task_done() after each message
+    so that queue.join() can be used as a clean-shutdown fence in the future.
+    Without task_done(), join() would block forever.
+    """
+
+    async def test_task_done_called_after_successful_send(self) -> None:
+        bot = MockBot()
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge._running = True
+
+        ws = MockWS()
+        original_send = ws.send
+
+        async def _send_and_stop(data: str) -> None:
+            await original_send(data)
+            bridge._running = False
+
+        ws.send = _send_and_stop  # type: ignore[method-assign]
+
+        bridge._send_q.put_nowait({"type": "status", "hijacked": False, "ts": 0.0})
+        await bridge._send_loop(ws)
+
+        # queue.join() must complete immediately — task_done() was called.
+        try:
+            await asyncio.wait_for(bridge._send_q.join(), timeout=0.5)
+        except asyncio.TimeoutError:
+            raise AssertionError("task_done() was not called — queue.join() timed out")
+
+    async def test_task_done_called_even_on_send_exception(self) -> None:
+        """task_done() must be called even when ws.send() raises, so
+        the queue does not accumulate unfinished_tasks.
+        """
+        bot = MockBot()
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge._running = True
+
+        class _BrokenWS:
+            sent: list = []
+
+            async def send(self, data: str) -> None:
+                raise OSError("network error")
+
+        broken_ws = _BrokenWS()
+        bridge._send_q.put_nowait({"type": "term", "data": "x"})
+
+        # _send_loop will raise on the send, but should still call task_done.
+        # Stop after one iteration by flagging _running = False in the exception path.
+        original_send = broken_ws.send
+        call_count = 0
+
+        async def _raise_and_stop(data: str) -> None:
+            nonlocal call_count
+            call_count += 1
+            bridge._running = False
+            await original_send(data)
+
+        broken_ws.send = _raise_and_stop  # type: ignore[method-assign]
+
+        # The loop will raise internally; the task itself propagates the OSError.
+        import contextlib as _contextlib
+        with _contextlib.suppress(OSError):
+            await bridge._send_loop(broken_ws)
+
+        # queue.join() must complete immediately — task_done() was called despite the exception.
+        try:
+            await asyncio.wait_for(bridge._send_q.join(), timeout=0.5)
+        except asyncio.TimeoutError:
+            raise AssertionError("task_done() not called after send exception — queue.join() timed out")

@@ -54,11 +54,11 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
             request = HijackAcquireRequest()
         await hub._cleanup_expired_hijack(bot_id)
 
-        # Quick worker check before acquiring the lock (avoids waiting on I/O).
-        st_pre = await hub._get(bot_id)
-        if st_pre.worker_ws is None:
-            return JSONResponse({"error": "No worker connected for this bot."}, status_code=409)
-
+        # No pre-flight worker check here — _send_worker is the authoritative
+        # liveness gate. A pre-check via _get() releases the lock immediately,
+        # so a worker connecting between the check and _send_worker would be
+        # incorrectly rejected with 409. _send_worker handles the None case and
+        # returns False, which is caught at the ok check below.
         lease_s = hub._clamp_lease(request.lease_s)
         hijack_id = str(uuid.uuid4())
         now = time.time()

@@ -224,10 +224,18 @@ class TermHub:
         return False, last_snapshot, "prompt_guard_not_satisfied"
 
     async def _broadcast(self, bot_id: str, msg: dict[str, Any]) -> None:
-        st = await self._get(bot_id)
+        # Snapshot browsers under the lock — mirrors _broadcast_hijack_state.
+        # A concurrent disconnect finally block can mutate st.browsers between
+        # the _get() lock release and iteration, so we must hold the lock while
+        # taking the snapshot.
+        async with self._lock:
+            st = self._bots.get(bot_id)
+            if st is None:
+                return
+            browsers = list(st.browsers)
         dead: set[WebSocket] = set()
         payload = json.dumps(msg, ensure_ascii=True)
-        for ws in list(st.browsers):
+        for ws in browsers:
             try:
                 await ws.send_text(payload)
             except Exception:

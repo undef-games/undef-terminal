@@ -799,3 +799,41 @@ def test_snapshot_falls_back_to_original_lease_if_session_gone() -> None:
     data = r.json()
     # Falls back to the originally-captured expiry
     assert data["lease_expires_at"] == original_expires
+
+
+# ---------------------------------------------------------------------------
+# Round-9 regression: hijack_acquire — removed pre-flight worker check
+# ---------------------------------------------------------------------------
+
+
+async def test_acquire_succeeds_when_worker_connects_after_cleanup() -> None:
+    """Round-9 fix: hijack_acquire must not reject with 409 just because no
+    worker was connected at the start of the request.  The pre-flight check
+    (`_get()` outside the lock) was a false-negative race: a worker could
+    connect between the check and _send_worker and would be incorrectly
+    rejected.  After removing the pre-check, _send_worker is the sole
+    authoritative liveness gate.
+
+    We verify by having _send_worker succeed (returns True) even though no
+    worker WS is pre-registered in hub._bots.
+    """
+    from unittest.mock import patch
+
+    app, hub = make_app()
+    hijack_id = str(uuid.uuid4())
+
+    # Patch _send_worker to always succeed (simulates worker present at send time)
+    # and _try_acquire_rest_hijack to grant the lock.
+    async def _fake_send(bot_id: str, msg: dict) -> bool:
+        return True
+
+    async def _fake_acquire(bot_id: str, **kw):  # type: ignore[override]
+        return True, None
+
+    with patch.object(hub, "_send_worker", side_effect=_fake_send):
+        with patch.object(hub, "_try_acquire_rest_hijack", side_effect=_fake_acquire):
+            with TestClient(app) as client:
+                r = client.post("/bot/bot1/hijack/acquire", json={"owner": "tester"})
+
+    assert r.status_code == 200
+    assert r.json()["ok"] is True

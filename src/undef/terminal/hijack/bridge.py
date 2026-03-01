@@ -194,7 +194,12 @@ class TermBridge:
     async def _send_loop(self, ws: Any) -> None:
         while self._running:
             msg = await self._send_q.get()
-            await ws.send(json.dumps(msg, ensure_ascii=True))
+            try:
+                await ws.send(json.dumps(msg, ensure_ascii=True))
+            finally:
+                # Always mark the item done so queue.join() never deadlocks if
+                # it is added as a shutdown fence in the future.
+                self._send_q.task_done()
 
     async def _recv_loop(self, ws: Any) -> None:
         while self._running:

@@ -752,3 +752,36 @@ async def test_try_release_ws_hijack_returns_rest_active_when_rest_session_prese
     released, rest_active = await hub._try_release_ws_hijack("bot1", ws)
     assert released is True
     assert rest_active is True  # REST session still active after dashboard WS released
+
+
+# ---------------------------------------------------------------------------
+# Round-9 regression: _broadcast snapshots browsers under lock
+# ---------------------------------------------------------------------------
+
+
+async def test_broadcast_does_not_iterate_live_set() -> None:
+    """Round-9 fix: _broadcast must snapshot st.browsers under the lock before
+    iterating, so a concurrent disconnect that removes a WebSocket while we are
+    sending does not raise RuntimeError('Set changed size during iteration').
+    """
+    hub = TermHub()
+    ws1 = AsyncMock()
+    ws2 = AsyncMock()
+
+    async with hub._lock:
+        st = hub._bots.setdefault("bot1", BotTermState())
+        st.browsers.add(ws1)
+        st.browsers.add(ws2)
+
+    # Make ws1.send_text remove ws2 from the live set mid-iteration to simulate
+    # a concurrent disconnect happening between sends.
+    async def _send_and_remove(payload: str) -> None:
+        async with hub._lock:
+            st2 = hub._bots.get("bot1")
+            if st2 is not None:
+                st2.browsers.discard(ws2)
+
+    ws1.send_text = AsyncMock(side_effect=_send_and_remove)
+
+    # Must not raise RuntimeError about set-changed-size during iteration.
+    await hub._broadcast("bot1", {"type": "ping"})
