@@ -69,8 +69,8 @@ class HijackSendRequest(BaseModel):
     keys: str = Field(..., max_length=10_000)
     expect_prompt_id: str | None = Field(None, max_length=200)
     expect_regex: str | None = Field(None, max_length=1_000)
-    timeout_ms: int = 2000
-    poll_interval_ms: int = 120
+    timeout_ms: int = Field(2000, ge=100, le=30_000)
+    poll_interval_ms: int = Field(120, ge=50, le=5_000)
 
 
 # ---------------------------------------------------------------------------

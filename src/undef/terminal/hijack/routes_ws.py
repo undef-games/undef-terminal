@@ -14,10 +14,10 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 try:
-    from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+    from fastapi import APIRouter, Path, WebSocket, WebSocketDisconnect
 except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required for hijack routes: pip install 'undef-terminal[websocket]'") from _e
 
@@ -45,7 +45,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
     """Attach WebSocket terminal routes to *router*."""
 
     @router.websocket("/ws/worker/{worker_id}/term")
-    async def ws_worker_term(websocket: WebSocket, worker_id: str) -> None:
+    async def ws_worker_term(websocket: WebSocket, worker_id: Annotated[str, Path(pattern=r"^[\w\-]+$")]) -> None:
         await websocket.accept()
         async with hub._lock:
             st = hub._workers.setdefault(worker_id, WorkerTermState())
@@ -127,7 +127,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
             await hub._prune_if_idle(worker_id)
 
     @router.websocket("/ws/browser/{worker_id}/term")
-    async def ws_browser_term(websocket: WebSocket, worker_id: str) -> None:
+    async def ws_browser_term(websocket: WebSocket, worker_id: Annotated[str, Path(pattern=r"^[\w\-]+$")]) -> None:
         await websocket.accept()
         # Capture all startup state atomically while registering the browser.
         async with hub._lock:
@@ -175,8 +175,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     await hub._request_snapshot(worker_id)
 
                 elif mtype == "analyze_req":
-                    await hub._touch_if_owner(worker_id, websocket)
-                    await hub._request_analysis(worker_id)
+                    if await hub._touch_if_owner(worker_id, websocket) is not None:
+                        await hub._request_analysis(worker_id)
 
                 elif mtype == "heartbeat":
                     lease_expires_at = await hub._touch_if_owner(worker_id, websocket)

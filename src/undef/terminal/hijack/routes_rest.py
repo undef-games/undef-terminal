@@ -147,7 +147,10 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
                         "ts": now,
                     },
                 )
-                return JSONResponse({"error": "Worker is already hijacked."}, status_code=409)
+                error_msg = (
+                    "No worker connected." if err == "no_worker" else "Worker is already hijacked."
+                )
+                return JSONResponse({"error": error_msg}, status_code=409)
             session_committed = True
             hub._notify_hijack_changed(worker_id, enabled=True, owner=request.owner)
             await hub._append_event(

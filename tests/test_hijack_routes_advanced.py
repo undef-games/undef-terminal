@@ -245,7 +245,7 @@ def test_send_guard_not_satisfied() -> None:
     with TestClient(app) as client:
         r = client.post(
             f"/worker/bot1/hijack/{hijack_id}/send",
-            json={"keys": "hello\r", "expect_prompt_id": "never_matches", "timeout_ms": 50},
+            json={"keys": "hello\r", "expect_prompt_id": "never_matches", "timeout_ms": 100},
         )
 
     assert r.status_code == 409

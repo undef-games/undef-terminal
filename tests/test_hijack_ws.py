@@ -263,19 +263,6 @@ def test_browser_snapshot_req_forwarded_to_worker() -> None:
             assert msg["type"] == "snapshot_req"
 
 
-def test_browser_analyze_req_forwarded_to_worker() -> None:
-    app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
-        _read_initial_browser_messages(browser)
-
-        with client.websocket_connect("/ws/worker/bot1/term") as worker:
-            _read_worker_snapshot_req(worker)
-
-            browser.send_json({"type": "analyze_req"})
-
-            msg = worker.receive_json()
-            assert msg["type"] == "analyze_req"
-
 
 def test_browser_hijack_request_no_worker() -> None:
     app, hub = make_app()

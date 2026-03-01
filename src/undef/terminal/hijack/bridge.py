@@ -202,27 +202,27 @@ class TermBridge:
         while self._running:
             msg = await self._send_q.get()
             try:
-                payload = json.dumps(msg, ensure_ascii=True)
-            except Exception as exc:
-                # Serialization failure: skip the bad message rather than
-                # tearing down the connection and triggering reconnect churn.
-                logger.warning("_send_loop serialization_error worker_id=%s: %s", self._worker_id, exc)
+                try:
+                    payload = json.dumps(msg, ensure_ascii=True)
+                except Exception as exc:
+                    # Serialization failure: skip the bad message rather than
+                    # tearing down the connection and triggering reconnect churn.
+                    logger.warning("_send_loop serialization_error worker_id=%s: %s", self._worker_id, exc)
+                    continue
+                try:
+                    await ws.send(payload)
+                except Exception as exc:
+                    logger.warning(
+                        "_send_loop network_error worker_id=%s msg_type=%s: %s",
+                        self._worker_id,
+                        msg.get("type"),
+                        exc,
+                    )
+                    raise  # propagate to _run to trigger reconnect
+            finally:
+                # Always mark the item done — including on CancelledError — so
+                # queue.join() never deadlocks if used as a shutdown fence.
                 self._send_q.task_done()
-                continue
-            try:
-                await ws.send(payload)
-            except Exception as exc:
-                logger.warning(
-                    "_send_loop network_error worker_id=%s msg_type=%s: %s",
-                    self._worker_id,
-                    msg.get("type"),
-                    exc,
-                )
-                self._send_q.task_done()
-                raise  # propagate to _run to trigger reconnect
-            # Always mark the item done so queue.join() never deadlocks if
-            # it is added as a shutdown fence in the future.
-            self._send_q.task_done()
 
     async def _recv_loop(self, ws: Any) -> None:
         while self._running:
