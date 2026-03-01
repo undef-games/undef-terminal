@@ -3,26 +3,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 
-"""Playwright smoke tests for the UndefHijack widget.
-
-Requires playwright + a browser install:
-    uv add --dev pytest-playwright
-    uv run playwright install chromium
-
-Skipped automatically when playwright is not installed.
-"""
+"""Playwright smoke tests for the UndefHijack widget."""
 
 from __future__ import annotations
 
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import pytest
-
-playwright = pytest.importorskip("playwright", reason="playwright not installed")
-
-from playwright.sync_api import Page, sync_playwright  # noqa: E402
+from playwright.sync_api import Page, sync_playwright
 
 
 # ---------------------------------------------------------------------------
@@ -31,6 +22,7 @@ from playwright.sync_api import Page, sync_playwright  # noqa: E402
 
 DEMO_PORT = 18765
 DEMO_URL = f"http://127.0.0.1:{DEMO_PORT}"
+_PROJECT_ROOT = Path(__file__).parent.parent
 
 
 @pytest.fixture(scope="module")
@@ -47,11 +39,10 @@ def demo_server():
             "--port",
             str(DEMO_PORT),
         ],
-        cwd=str(pytest.importorskip("pathlib").Path(__file__).parent.parent),
+        cwd=str(_PROJECT_ROOT),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    # Give the server a moment to start
     time.sleep(1.5)
     yield proc
     proc.terminate()
@@ -69,9 +60,7 @@ def test_mobile_keys_toolbar_button_present(demo_server) -> None:  # noqa: ANN00
         browser = pw.chromium.launch()
         page: Page = browser.new_page()
         page.goto(f"{DEMO_URL}/hijack/hijack.html?bot=testbot")
-        # Wait for the widget DOM to be built
         page.wait_for_selector("#app", timeout=5000)
-        # The keyboard toggle button carries title="Mobile key toolbar"
         btn = page.locator('button[title="Mobile key toolbar"]')
         assert btn.count() == 1, "⌨ mobile-keys toggle button not found in toolbar"
         browser.close()
@@ -85,11 +74,9 @@ def test_mobile_keys_row_hidden_before_hijack(demo_server) -> None:  # noqa: ANN
         page.goto(f"{DEMO_URL}/hijack/hijack.html?bot=testbot")
         page.wait_for_selector("#app", timeout=5000)
 
-        # Click the ⌨ toggle
-        btn = page.locator('button[title="Mobile key toolbar"]')
-        btn.click()
+        # Click the ⌨ toggle — row stays hidden until hijack is acquired
+        page.locator('button[title="Mobile key toolbar"]').click()
 
-        # The row should NOT be visible yet (hijack not acquired)
         row = page.locator(".mobile-keys")
         assert not row.is_visible(), ".mobile-keys row must not be visible before hijack is acquired"
         browser.close()
