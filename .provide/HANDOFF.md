@@ -1,61 +1,60 @@
-# undef-terminal: Hijack Infrastructure Handoff
+# undef-terminal: Handoff
 
-## Request
-Implement the complete `undef-terminal` package plan, including hijack infrastructure (HijackBase mixin, TermHub, TermBridge, REST+WS routes).
+## Current State
+536 tests passing. Package fully implemented and documented.
 
-## Completed
+---
+
+## Completed This Session — Post-sshwifty Cleanup (07ccc97, 6656310)
+
+### JSDoc additions
+- `frontend/terminal.js`: added `@param {number} [config.heartbeatMs=25000]` to constructor docs
+- `frontend/hijack.js`: added `@param {boolean} [config.mobileKeys=true]` to constructor docs
+
+### New test: ping guard (`tests/test_hijack_ws.py`)
+- `test_ping_is_silently_ignored`: sends `{"type": "ping"}` then `snapshot_req`, asserts only the `snapshot_req` response arrives — proves the ping produces no reply
+
+### Playwright smoke tests (`tests/test_playwright_hijack.py`)
+- `test_mobile_keys_toolbar_button_present`: asserts `⌨` button is in the hijack toolbar
+- `test_mobile_keys_row_hidden_before_hijack`: clicks `⌨`, asserts `.mobile-keys` row stays hidden until hijack acquired
+- `pytest-playwright` added to dev dependencies; chromium installed
+
+### README.md
+- Written from scratch: install + extras table, quick-start (proxy/in-process/mount), hijack widget (backend TermHub + frontend UndefHijack/UndefTerminal), CLI (`proxy`/`listen`)
+
+---
+
+## Previously Completed
 
 ### Package restructure
-- `pyproject.toml`: `fastapi` moved to optional `websocket` extra; added `ssh`, `emulator`, `all` extras
-- `transports/websocket.py`: guarded import with clear `ImportError` message
-- `uwarp-server/pyproject.toml`: dep updated to `undef-terminal[websocket]>=0.1.0`
-- `bbsbot/pyproject.toml`: dep updated to `undef-terminal[emulator]>=0.1.0`
+- `pyproject.toml`: `fastapi` moved to optional `websocket` extra; added `ssh`, `emulator`, `cli`, `all` extras
 
-### New modules
-- `screen.py` — added `extract_action_tags`, `clean_screen_for_display`, `extract_menu_options`, `extract_numbered_list`, `extract_key_value_pairs`
-- `emulator.py` — `TerminalEmulator` (pyte wrapper, guarded import)
-- `io.py` — `Session` Protocol, `PromptWaiter`, `InputSender`
-- `session_logger.py` — async JSONL `SessionLogger`
-- `replay/raw.py`, `replay/viewer.py` — session replay utilities
-- `transports/base.py` — `ConnectionTransport` ABC
-- `transports/telnet.py` — extended with `TelnetTransport` (full RFC 854 client, IAC escaping, NAWS)
-- `transports/ssh.py` — `SSHStreamReader/Writer`, `TerminalSSHServer`, `start_ssh_server()`
-- `transports/chaos.py` — `ChaosTransport` fault-injection wrapper
-- `frontend/terminal.html`, `frontend/terminal.js` — copied from uwarp-space
+### Core modules
+- `screen.py`, `emulator.py`, `io.py`, `session_logger.py`
+- `replay/raw.py`, `replay/viewer.py`
+- `transports/base.py`, `telnet.py`, `ssh.py`, `chaos.py`
+- `fastapi.py` — `mount_terminal_ui`, `WsTerminalProxy`, `TelnetWsGateway`, `create_ws_terminal_router`
+- `cli.py` — `undefterm proxy` and `undefterm listen`
 
 ### Hijack infrastructure
-- `hijack/base.py` — `HijackBase` mixin: `await_if_hijacked`, `set_hijacked`, `request_step` (step tokens, capped at 100), `note_progress`, `start_watchdog`/`stop_watchdog`, `cleanup_hijack`
-- `hijack/models.py` — `HijackSession` (dataclass), `BotTermState` (dataclass), pydantic request models
-- `hijack/hub.py` — `TermHub` with optional `on_hijack_changed` callback (replaces bbsbot `_manager` coupling)
-- `hijack/routes.py` — `register_ws_routes` + `register_rest_routes` (7 REST endpoints + 2 WS endpoints)
-- `hijack/bridge.py` — `TermBridge` with `WorkerBot`/`WorkerSession` Protocol (duck-typed, decoupled from `TradingBot`)
+- `hijack/base.py` — `HijackBase` mixin
+- `hijack/models.py` — `HijackSession`, `BotTermState`, pydantic request models
+- `hijack/hub.py` — `TermHub` with `on_hijack_changed` callback
+- `hijack/routes_ws.py`, `hijack/routes_rest.py`
+- `hijack/bridge.py` — `TermBridge` with duck-typed `WorkerBot`/`WorkerSession` Protocol
 
-### Tests
-128 passing, 2 skipped (pyte/asyncssh not in dev env). All test files in `tests/`.
+### Frontend
+- `frontend/terminal.html`, `terminal.js`, `terminal.css`
+- `frontend/hijack.html`, `hijack.js`, `hijack.css`
+- Heartbeat (`heartbeatMs`), backoff reconnect, mobile key toolbar (`mobileKeys`), stale guards (db6a89e)
+
+---
 
 ## Remaining Work
-
-### `fastapi.py` integration module
-Convenience functions for mounting terminal UI into a FastAPI app:
-```python
-from undef.terminal.fastapi import mount_terminal_ui, create_ws_terminal_router
-```
-Source: adapt from `uwarp-server/src/uwarp/frontend/web/routes.py` and bbsbot dashboard registration.
-
-### `frontend/hijack.js`
-Embeddable hijack controls widget (pause/resume/step/input form).
-Source: extract hijack sections from `bbsbot/src/bbsbot/dashboard/static/dashboard.js`.
-
-### Import migration
-Once downstream consumers are ready:
-- `uwarp-server`: replace `uwarp.swarm.term_bridge.TermBridge` with `undef.terminal.hijack.bridge.TermBridge`
-- `bbsbot`: replace `bbsbot.api.term.*` with `undef.terminal.hijack.*`
-- `bbsbot`: replace `bbsbot.bots.base.HijackBase` with `undef.terminal.hijack.base.HijackBase`
+- Import migration in downstream consumers (explicitly deferred by user — do not suggest)
 
 ## Key Architecture Decisions
-- `HijackBase` has zero optional deps — works in any context (not just websocket extra)
-- `HijackBase` watchdog uses `on_stuck` callback instead of calling game-specific `report_error`/`disconnect`
-- `TermHub` uses `on_hijack_changed: Callable[[str, bool, str|None], Awaitable|None]` callback — async or sync both work
-- `BotTermState` and `HijackSession` are Python dataclasses (not pydantic) — no serialization overhead
-- Pydantic kept only for FastAPI request-body models
-- `TermBridge` uses duck-typed `WorkerBot`/`WorkerSession` Protocol — no import of game classes
+- `HijackBase` has zero optional deps
+- `TermHub` `on_hijack_changed` callback accepts sync or async
+- `BotTermState`/`HijackSession` are dataclasses; only FastAPI request bodies use pydantic
+- `TermBridge` duck-typed — no import of game classes
