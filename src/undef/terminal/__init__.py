@@ -68,9 +68,7 @@ __all__ = [
 ]
 
 
-_FASTAPI_EXPORTS: frozenset[str] = frozenset(
-    {"mount_terminal_ui", "create_ws_terminal_router", "WsTerminalProxy"}
-)
+_FASTAPI_EXPORTS: frozenset[str] = frozenset({"mount_terminal_ui", "create_ws_terminal_router", "WsTerminalProxy"})
 _GATEWAY_EXPORTS: frozenset[str] = frozenset({"TelnetWsGateway"})
 
 

@@ -163,9 +163,7 @@ class TermBridge:
                     # Use FIRST_COMPLETED so a normal recv-loop return (connection
                     # closed cleanly) cancels the send-loop rather than leaving it
                     # blocked forever on queue.get().
-                    done, pending = await asyncio.wait(
-                        {send_task, recv_task}, return_when=asyncio.FIRST_COMPLETED
-                    )
+                    done, pending = await asyncio.wait({send_task, recv_task}, return_when=asyncio.FIRST_COMPLETED)
                     for t in pending:
                         t.cancel()
                     await asyncio.gather(*pending, return_exceptions=True)
@@ -179,7 +177,9 @@ class TermBridge:
             except Exception as exc:
                 logger.warning(
                     "term_bridge_disconnected bot_id=%s error=%s attempt=%d",
-                    self._bot_id, exc, attempt,
+                    self._bot_id,
+                    exc,
+                    attempt,
                 )
 
             if not self._running:

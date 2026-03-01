@@ -93,11 +93,11 @@ class TermHub:
         if inspect.isawaitable(result):
             task = asyncio.create_task(result)  # type: ignore[arg-type]
             task.add_done_callback(
-                lambda t: logger.warning(
-                    "on_hijack_changed callback raised bot_id=%s error=%s", bot_id, t.exception()
+                lambda t: (
+                    logger.warning("on_hijack_changed callback raised bot_id=%s error=%s", bot_id, t.exception())
+                    if not t.cancelled() and t.exception() is not None
+                    else None
                 )
-                if not t.cancelled() and t.exception() is not None
-                else None
             )
 
     async def _append_event(self, bot_id: str, event_type: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -156,11 +156,17 @@ class TermHub:
 
     async def _get_rest_session(self, bot_id: str, hijack_id: str) -> HijackSession | None:
         await self._cleanup_expired_hijack(bot_id)
-        st = await self._get(bot_id)
-        hs = st.hijack_session
-        if hs is None or hs.lease_expires_at <= time.time() or hs.hijack_id != hijack_id:
-            return None
-        return hs
+        # Re-read hijack_session under the lock to avoid a TOCTOU window where
+        # _cleanup_expired_hijack drops the lock and a concurrent request clears
+        # or replaces the session before we inspect it.
+        async with self._lock:
+            st = self._bots.get(bot_id)
+            if st is None:
+                return None
+            hs = st.hijack_session
+            if hs is None or hs.lease_expires_at <= time.time() or hs.hijack_id != hijack_id:
+                return None
+            return hs
 
     @staticmethod
     def _snapshot_matches(
@@ -365,6 +371,26 @@ class TermHub:
             st.hijack_owner_expires_at = time.time() + ttl
             return st.hijack_owner_expires_at
 
+    async def _touch_if_owner(self, bot_id: str, ws: WebSocket) -> float | None:
+        """Atomically verify WS ownership and extend the lease in one lock block.
+
+        Prevents the TOCTOU window between a separate :meth:`_is_owner` check
+        and a subsequent :meth:`_touch_hijack_owner` call, where a concurrent
+        ``hijack_release`` or disconnect handler could clear ownership between
+        the two operations.
+
+        Returns:
+            The new ``lease_expires_at`` timestamp if *ws* is the active
+            dashboard hijack owner.  ``None`` if *ws* is not (or is no longer)
+            the owner.
+        """
+        async with self._lock:
+            st = self._bots.get(bot_id)
+            if st is None or not self._is_dashboard_hijack_active(st) or st.hijack_owner is not ws:
+                return None
+            st.hijack_owner_expires_at = time.time() + self._dashboard_hijack_lease_s
+            return st.hijack_owner_expires_at
+
     async def _is_owner(self, bot_id: str, ws: WebSocket) -> bool:
         # Read under the lock so the owner identity check is not a TOCTOU with
         # concurrent hijack_request / hijack_release / disconnect handlers.
@@ -374,7 +400,7 @@ class TermHub:
                 return False
             return self._is_dashboard_hijack_active(st) and st.hijack_owner is ws
 
-    async def _try_release_ws_hijack(self, bot_id: str, ws: WebSocket) -> bool:
+    async def _try_release_ws_hijack(self, bot_id: str, ws: WebSocket) -> tuple[bool, bool]:
         """Atomically verify ownership and clear it in a single lock block.
 
         Prevents the TOCTOU window in voluntary ``hijack_release`` where
@@ -382,34 +408,50 @@ class TermHub:
         :meth:`_is_owner` returning ``True`` and :meth:`_set_hijack_owner`
         clearing the owner field.
 
+        Also captures REST-session liveness inside the same lock block so that
+        callers can decide whether to fire ``on_hijack_changed`` without a
+        separate :meth:`_get` call outside the lock.
+
         Returns:
-            ``True`` if *ws* was the active dashboard hijack owner and was
-            cleared.  ``False`` if *ws* is not (or is no longer) the owner.
+            ``(released, rest_active)`` where *released* is ``True`` if *ws*
+            was the active dashboard hijack owner and was cleared, and
+            *rest_active* is ``True`` if a REST hijack session is still active
+            after the release.
         """
         async with self._lock:
             st = self._bots.get(bot_id)
             if st is None or not self._is_dashboard_hijack_active(st) or st.hijack_owner is not ws:
-                return False
+                rest_active = st is not None and self._is_rest_session_active(st)
+                return False, rest_active
             st.hijack_owner = None
             st.hijack_owner_expires_at = None
-        return True
+            rest_active = self._is_rest_session_active(st)
+        return True, rest_active
 
     async def _hijack_state_msg_for(self, bot_id: str, ws: WebSocket) -> dict[str, Any]:
-        st = await self._get(bot_id)
-        lease_expires_at = (
-            st.hijack_session.lease_expires_at
-            if self._is_rest_session_active(st) and st.hijack_session is not None
-            else st.hijack_owner_expires_at
-        )
-        if self._is_dashboard_hijack_active(st) and st.hijack_owner is ws:
-            owner: str | None = "me"
-        elif self._is_dashboard_hijack_active(st) or self._is_rest_session_active(st):
-            owner = "other"
-        else:
-            owner = None
+        # Snapshot all mutable fields under the lock — mirrors _broadcast_hijack_state
+        # to prevent stale reads when concurrent hijack changes race against this call.
+        async with self._lock:
+            st = self._bots.get(bot_id)
+            if st is None:
+                return {"type": "hijack_state", "hijacked": False, "owner": None, "lease_expires_at": None}
+            is_dashboard = self._is_dashboard_hijack_active(st)
+            is_rest = self._is_rest_session_active(st)
+            is_h = is_dashboard or is_rest
+            lease_expires_at = (
+                st.hijack_session.lease_expires_at
+                if is_rest and st.hijack_session is not None
+                else st.hijack_owner_expires_at
+            )
+            if is_dashboard and st.hijack_owner is ws:
+                owner: str | None = "me"
+            elif is_dashboard or is_rest:
+                owner = "other"
+            else:
+                owner = None
         return {
             "type": "hijack_state",
-            "hijacked": self._is_hijacked(st),
+            "hijacked": is_h,
             "owner": owner,
             "lease_expires_at": lease_expires_at,
         }

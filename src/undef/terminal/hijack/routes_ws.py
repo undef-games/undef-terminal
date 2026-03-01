@@ -143,18 +143,17 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                 mtype = msg_b.get("type")
 
                 if mtype == "snapshot_req":
-                    if await hub._is_owner(bot_id, websocket):
-                        await hub._touch_hijack_owner(bot_id)
+                    # Atomically verify ownership and extend lease in one lock block.
+                    await hub._touch_if_owner(bot_id, websocket)
                     await hub._request_snapshot(bot_id)
 
                 elif mtype == "analyze_req":
-                    if await hub._is_owner(bot_id, websocket):
-                        await hub._touch_hijack_owner(bot_id)
+                    await hub._touch_if_owner(bot_id, websocket)
                     await hub._request_analysis(bot_id)
 
                 elif mtype == "heartbeat":
-                    if await hub._is_owner(bot_id, websocket):
-                        lease_expires_at = await hub._touch_hijack_owner(bot_id)
+                    lease_expires_at = await hub._touch_if_owner(bot_id, websocket)
+                    if lease_expires_at is not None:
                         await websocket.send_text(
                             json.dumps(
                                 {"type": "heartbeat_ack", "lease_expires_at": lease_expires_at, "ts": time.time()},
@@ -195,16 +194,13 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                             if err == "no_worker"
                             else "Already hijacked by another client."
                         )
-                        await websocket.send_text(
-                            json.dumps({"type": "error", "message": msg_text}, ensure_ascii=True)
-                        )
+                        await websocket.send_text(json.dumps({"type": "error", "message": msg_text}, ensure_ascii=True))
                         await websocket.send_text(
                             json.dumps(await hub._hijack_state_msg_for(bot_id, websocket), ensure_ascii=True)
                         )
 
                 elif mtype == "hijack_step":
-                    if await hub._is_owner(bot_id, websocket):
-                        await hub._touch_hijack_owner(bot_id)
+                    if await hub._touch_if_owner(bot_id, websocket) is not None:
                         ok = await hub._send_worker(
                             bot_id,
                             {
@@ -228,7 +224,9 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     # Atomically check ownership and clear in one lock block to
                     # prevent a concurrent hijack_request stealing ownership
                     # between _is_owner() and _set_hijack_owner(None).
-                    released = await hub._try_release_ws_hijack(bot_id, websocket)
+                    # rest_active is captured inside the same lock block to
+                    # avoid a post-release TOCTOU on _is_rest_session_active.
+                    released, rest_active = await hub._try_release_ws_hijack(bot_id, websocket)
                     if released:
                         await hub._send_worker(
                             bot_id,
@@ -241,14 +239,12 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                             },
                         )
                         await hub._broadcast_hijack_state(bot_id)
-                        st_after = await hub._get(bot_id)
-                        if not hub._is_rest_session_active(st_after):
+                        if not rest_active:
                             hub._notify_hijack_changed(bot_id, enabled=False, owner=None)
                         await hub._append_event(bot_id, "hijack_released", {"owner": "dashboard_ws"})
 
                 elif mtype == "input":
-                    if await hub._is_owner(bot_id, websocket):
-                        await hub._touch_hijack_owner(bot_id)
+                    if await hub._touch_if_owner(bot_id, websocket) is not None:
                         data = msg_b.get("data", "")
                         if data:
                             ok = await hub._send_worker(bot_id, {"type": "input", "data": data, "ts": time.time()})
@@ -268,28 +264,27 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         except Exception as exc:  # pragma: no cover
             logger.warning("term_browser_ws_error bot_id=%s error=%s", bot_id, exc)
         finally:
-            # Atomically detect ownership and clear it in one lock block to avoid
-            # a race where _is_owner() returns True but another coroutine steals
-            # hijack_owner before we get to clear it (or vice-versa).
+            # Atomically detect ownership, capture REST-session liveness, and clear
+            # the owner — all in one lock block to avoid the TOCTOU window where
+            # _is_owner() returns True but another coroutine steals hijack_owner
+            # (or vice-versa), and to avoid a second lock round-trip for
+            # _is_rest_session_active after the owner has already been cleared.
+            rest_still_active = False
             async with hub._lock:
                 st3 = hub._bots.get(bot_id)
-                was_owner = (
-                    st3 is not None
-                    and hub._is_dashboard_hijack_active(st3)
-                    and st3.hijack_owner is websocket
-                )
+                was_owner = st3 is not None and hub._is_dashboard_hijack_active(st3) and st3.hijack_owner is websocket
                 if st3 is not None:
                     st3.browsers.discard(websocket)
                     if was_owner:
                         st3.hijack_owner = None
                         st3.hijack_owner_expires_at = None
+                        rest_still_active = hub._is_rest_session_active(st3)
             if was_owner:
                 await hub._send_worker(
                     bot_id,
                     {"type": "control", "action": "resume", "owner": "dashboard", "lease_s": 0, "ts": time.time()},
                 )
                 await hub._broadcast_hijack_state(bot_id)
-                st_after2 = await hub._get(bot_id)
-                if not hub._is_rest_session_active(st_after2):
+                if not rest_still_active:
                     hub._notify_hijack_changed(bot_id, enabled=False, owner=None)
                 await hub._append_event(bot_id, "hijack_released", {"owner": "dashboard_ws_disconnect"})

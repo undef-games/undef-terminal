@@ -107,6 +107,13 @@ class UndefHijack {
     return this._root.querySelector('#h-' + this._uid + '-' + id);
   }
 
+  /** Escape HTML special characters to prevent XSS when interpolating into innerHTML. */
+  _escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
+  }
+
   _resolveWsUrl() {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const url = this._config.wsUrl;
@@ -131,6 +138,7 @@ class UndefHijack {
     root.className = 'undef-hijack';
     root.innerHTML = `
       <div class="hijack-toolbar">
+        <span class="hijack-title">${this._escHtml(title)}</span>
         <span class="hijack-status">
           <span class="hijack-status-dot" id="${p('dot')}"></span>
           <span id="${p('statustext')}">Connecting…</span>

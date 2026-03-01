@@ -46,16 +46,26 @@ class SessionLogger:
             self._log_path.parent.mkdir(parents=True, exist_ok=True)
             self._file = self._log_path.open("a", encoding="utf-8")
             self._session_id = session_id
-            await self._write_event_unlocked("log_start", {"path": str(self._log_path), "started_at": time.time()})
+            self._write_event_unlocked("log_start", {"path": str(self._log_path), "started_at": time.time()})
+            file_to_flush = self._file
+        await self._flush(file_to_flush)
 
     async def stop(self) -> None:
         """Write a ``log_stop`` entry and close the file."""
+        file_to_close: TextIOWrapper | None = None
         async with self._lock:
             if self._file:
-                await self._write_event_unlocked("log_stop", {})
-                with contextlib.suppress(OSError):
-                    self._file.close()
+                self._write_event_unlocked("log_stop", {})
+                file_to_close = self._file
                 self._file = None
+        if file_to_close is not None:
+            # Flush and close outside the lock so concurrent writers are not
+            # blocked during the I/O syscall.
+            loop = asyncio.get_running_loop()
+            with contextlib.suppress(OSError):
+                await loop.run_in_executor(None, file_to_close.flush)
+            with contextlib.suppress(OSError):
+                file_to_close.close()
 
     async def log_send(self, keys: str) -> None:
         """Log sent keystrokes."""
@@ -96,10 +106,16 @@ class SessionLogger:
         self._context = {}
 
     async def _write_event(self, event: str, data: dict[str, Any]) -> None:
+        # Write synchronously under the lock, then flush outside to avoid
+        # holding the lock across a thread-pool await.
+        file_to_flush: TextIOWrapper | None = None
         async with self._lock:
-            await self._write_event_unlocked(event, data)
+            self._write_event_unlocked(event, data)
+            file_to_flush = self._file
+        await self._flush(file_to_flush)
 
-    async def _write_event_unlocked(self, event: str, data: dict[str, Any]) -> None:
+    def _write_event_unlocked(self, event: str, data: dict[str, Any]) -> None:
+        """Synchronously write one record.  Caller **must** hold ``self._lock``."""
         if not self._file:
             return
         record: dict[str, Any] = {"ts": time.time(), "event": event, "data": data}
@@ -113,5 +129,12 @@ class SessionLogger:
             if "action" in ctx:
                 record["action"] = ctx["action"]
         self._file.write(json.dumps(record, ensure_ascii=True) + "\n")
+
+    @staticmethod
+    async def _flush(file: TextIOWrapper | None) -> None:
+        """Flush *file* in a thread-pool executor (no-op if *file* is None)."""
+        if file is None:
+            return
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, self._file.flush)
+        with contextlib.suppress(OSError):
+            await loop.run_in_executor(None, file.flush)

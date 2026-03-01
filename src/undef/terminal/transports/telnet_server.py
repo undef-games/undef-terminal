@@ -58,11 +58,21 @@ def _build_telnet_handshake() -> bytes:
     """
     return bytes(
         [
-            IAC, WILL, ECHO,
-            IAC, WILL, SGA,
-            IAC, DO, SGA,
-            IAC, DONT, LINEMODE,
-            IAC, DO, NAWS,
+            IAC,
+            WILL,
+            ECHO,
+            IAC,
+            WILL,
+            SGA,
+            IAC,
+            DO,
+            SGA,
+            IAC,
+            DONT,
+            LINEMODE,
+            IAC,
+            DO,
+            NAWS,
         ]
     )
 
