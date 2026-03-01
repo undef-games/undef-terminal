@@ -1,10 +1,11 @@
 {
   "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(wc:*)"
+    ],
     "additionalDirectories": [
       "/Users/tim/code/gh/undef-games"
-    ],
-    "allow": [
-      "Bash(ls:*)"
     ]
   }
 }

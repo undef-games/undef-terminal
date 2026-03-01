@@ -30,6 +30,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _safe_int(val: Any, default: int) -> int:
+    try:
+        return int(val or default)
+    except (ValueError, TypeError):
+        return default
+
+
 def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
     """Attach WebSocket terminal routes to *router*."""
 
@@ -61,8 +68,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         "type": "snapshot",
                         "screen": msg.get("screen", ""),
                         "cursor": msg.get("cursor", {"x": 0, "y": 0}),
-                        "cols": int(msg.get("cols", 80) or 80),
-                        "rows": int(msg.get("rows", 25) or 25),
+                        "cols": _safe_int(msg.get("cols"), 80),
+                        "rows": _safe_int(msg.get("rows"), 25),
                         "screen_hash": msg.get("screen_hash", ""),
                         "cursor_at_end": bool(msg.get("cursor_at_end", True)),
                         "has_trailing_space": bool(msg.get("has_trailing_space", False)),

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 try:
     from fastapi import WebSocket  # noqa: TC002
-    from pydantic import BaseModel
+    from pydantic import BaseModel, Field
 except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required for hijack hub/routes: pip install 'undef-terminal[websocket]'") from _e
 
@@ -66,9 +66,9 @@ class HijackHeartbeatRequest(BaseModel):
 
 
 class HijackSendRequest(BaseModel):
-    keys: str
-    expect_prompt_id: str | None = None
-    expect_regex: str | None = None
+    keys: str = Field(..., max_length=10_000)
+    expect_prompt_id: str | None = Field(None, max_length=200)
+    expect_regex: str | None = Field(None, max_length=1_000)
     timeout_ms: int = 2000
     poll_interval_ms: int = 120
 

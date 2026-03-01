@@ -262,26 +262,34 @@ class TermBridge:
         session = getattr(self._bot, "session", None)
         if session is None:
             return
-        with contextlib.suppress(Exception):
+        try:
             await session.send(data)
+        except Exception as exc:
+            logger.debug("_send_keys failed: %s", exc)
 
     async def _request_step(self) -> None:
         fn = getattr(self._bot, "request_step", None)
         if callable(fn):
-            with contextlib.suppress(Exception):
+            try:
                 await fn()
+            except Exception as exc:
+                logger.debug("_request_step failed: %s", exc)
 
     async def _set_size(self, cols: int, rows: int) -> None:
         session = getattr(self._bot, "session", None)
         if session is None:
             return
-        with contextlib.suppress(Exception):
+        try:
             await session.set_size(cols, rows)
+        except Exception as exc:
+            logger.debug("_set_size failed: %s", exc)
 
     async def _set_hijacked(self, enabled: bool) -> None:
         fn = getattr(self._bot, "set_hijacked", None)
         if callable(fn):
-            with contextlib.suppress(Exception):
+            try:
                 await fn(enabled)
+            except Exception as exc:
+                logger.debug("_set_hijacked failed: %s", exc)
         with contextlib.suppress(asyncio.QueueFull):
             self._send_q.put_nowait({"type": "status", "hijacked": enabled, "ts": time.time()})
