@@ -196,7 +196,12 @@ class SshWsGateway:
         ws_url = self._ws_url
 
         if self._server_key:
-            host_keys = [asyncssh.read_private_key(str(self._server_key))]
+            key_path = Path(self._server_key)
+            if not key_path.exists():
+                raise FileNotFoundError(f"SSH host key not found: {key_path}")
+            if not key_path.is_file():
+                raise ValueError(f"SSH host key path is not a file: {key_path}")
+            host_keys = [asyncssh.read_private_key(str(key_path))]
         else:
             host_keys = [asyncssh.generate_private_key("ssh-ed25519")]
 

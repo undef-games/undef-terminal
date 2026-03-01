@@ -274,6 +274,22 @@ class TestSshWsGatewayStart:
             srv.close()
             await srv.wait_closed()
 
+    async def test_start_missing_key_file_raises(self, tmp_path) -> None:
+        """SshWsGateway.start() raises FileNotFoundError for a missing key path."""
+        from undef.terminal.gateway import SshWsGateway
+
+        gw = SshWsGateway("wss://example.com/ws", server_key=str(tmp_path / "no_such_key"))
+        with pytest.raises(FileNotFoundError, match="SSH host key not found"):
+            await gw.start("127.0.0.1", 0)
+
+    async def test_start_key_path_is_directory_raises(self, tmp_path) -> None:
+        """SshWsGateway.start() raises ValueError when key path is a directory."""
+        from undef.terminal.gateway import SshWsGateway
+
+        gw = SshWsGateway("wss://example.com/ws", server_key=str(tmp_path))
+        with pytest.raises(ValueError, match="not a file"):
+            await gw.start("127.0.0.1", 0)
+
 
 class TestSshToWs:
     async def test_ssh_to_ws_str_data(self) -> None:
