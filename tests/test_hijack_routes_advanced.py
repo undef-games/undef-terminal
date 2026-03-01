@@ -21,7 +21,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from undef.terminal.hijack.hub import TermHub
-from undef.terminal.hijack.models import BotTermState, HijackSession
+from undef.terminal.hijack.models import WorkerTermState, HijackSession
 
 
 def make_app() -> tuple[FastAPI, TermHub]:
@@ -49,24 +49,24 @@ def _active_session(hijack_id: str, owner: str = "test") -> HijackSession:
 def test_snapshot_no_worker() -> None:
     app, hub = make_app()
     hijack_id = str(uuid.uuid4())
-    hub._bots["bot1"] = BotTermState(
+    hub._workers["bot1"] = WorkerTermState(
         hijack_session=_active_session(hijack_id),
     )
 
     with TestClient(app) as client:
-        r = client.get(f"/bot/bot1/hijack/{hijack_id}/snapshot?wait_ms=0")
+        r = client.get(f"/worker/bot1/hijack/{hijack_id}/snapshot?wait_ms=0")
 
     assert r.status_code == 200
     data = r.json()
     assert data["snapshot"] is None
-    assert data["bot_id"] == "bot1"
+    assert data["worker_id"] == "bot1"
 
 
 def test_snapshot_invalid_session() -> None:
     app, hub = make_app()
 
     with TestClient(app) as client:
-        r = client.get("/bot/bot1/hijack/no-such-id/snapshot")
+        r = client.get("/worker/bot1/hijack/no-such-id/snapshot")
 
     # "no-such-id" fails the UUID path pattern → 422 before route logic runs
     assert r.status_code == 422
@@ -81,13 +81,13 @@ def test_events() -> None:
     app, hub = make_app()
     mock_ws = AsyncMock()
     hijack_id = str(uuid.uuid4())
-    hub._bots["bot1"] = BotTermState(
+    hub._workers["bot1"] = WorkerTermState(
         worker_ws=mock_ws,
         hijack_session=_active_session(hijack_id),
     )
 
     with TestClient(app) as client:
-        r = client.get(f"/bot/bot1/hijack/{hijack_id}/events")
+        r = client.get(f"/worker/bot1/hijack/{hijack_id}/events")
 
     assert r.status_code == 200
     data = r.json()
@@ -99,7 +99,7 @@ def test_events_invalid_session() -> None:
     app, hub = make_app()
 
     with TestClient(app) as client:
-        r = client.get("/bot/bot1/hijack/no-such-id/events")
+        r = client.get("/worker/bot1/hijack/no-such-id/events")
 
     # "no-such-id" fails the UUID path pattern → 422 before route logic runs
     assert r.status_code == 422
@@ -110,13 +110,13 @@ def test_events_empty_bot_state() -> None:
     app, hub = make_app()
     mock_ws = AsyncMock()
     hijack_id = str(uuid.uuid4())
-    hub._bots["bot1"] = BotTermState(
+    hub._workers["bot1"] = WorkerTermState(
         worker_ws=mock_ws,
         hijack_session=_active_session(hijack_id),
     )
 
     with TestClient(app) as client:
-        r = client.get(f"/bot/bot1/hijack/{hijack_id}/events")
+        r = client.get(f"/worker/bot1/hijack/{hijack_id}/events")
 
     assert r.status_code == 200
     assert r.json()["events"] == []
@@ -127,8 +127,8 @@ def test_events_no_bot_state() -> None:
     app, hub = make_app()
     mock_ws = AsyncMock()
     hijack_id = str(uuid.uuid4())
-    # Register valid session but with no bot state in hub._bots
-    hub._bots["bot1"] = BotTermState(
+    # Register valid session but with no bot state in hub._workers
+    hub._workers["bot1"] = WorkerTermState(
         worker_ws=mock_ws,
         hijack_session=_active_session(hijack_id),
     )
@@ -136,19 +136,19 @@ def test_events_no_bot_state() -> None:
     # Use a different bot_id that has no state
     # But we need a valid session... let's use a workaround:
     # Get the session via bot1, then remove the bot state
-    hub._bots["bot2"] = BotTermState(
+    hub._workers["bot2"] = WorkerTermState(
         worker_ws=mock_ws,
         hijack_session=_active_session(hijack_id),
     )
     # Remove bot2's state to trigger the None branch
-    del hub._bots["bot2"]
+    del hub._workers["bot2"]
     # Re-add an empty state without using a separate event loop (asyncio.Lock is
     # loop-bound; running hub coroutines on a different loop is incorrect).
-    hub._bots["bot2"] = BotTermState()
-    hub._bots["bot2"].hijack_session = _active_session(hijack_id)
+    hub._workers["bot2"] = WorkerTermState()
+    hub._workers["bot2"].hijack_session = _active_session(hijack_id)
 
     with TestClient(app) as client:
-        r = client.get(f"/bot/bot2/hijack/{hijack_id}/events")
+        r = client.get(f"/worker/bot2/hijack/{hijack_id}/events")
 
     assert r.status_code == 200
     assert r.json()["events"] == []
@@ -163,13 +163,13 @@ def test_step() -> None:
     app, hub = make_app()
     mock_ws = AsyncMock()
     hijack_id = str(uuid.uuid4())
-    hub._bots["bot1"] = BotTermState(
+    hub._workers["bot1"] = WorkerTermState(
         worker_ws=mock_ws,
         hijack_session=_active_session(hijack_id),
     )
 
     with TestClient(app) as client:
-        r = client.post(f"/bot/bot1/hijack/{hijack_id}/step")
+        r = client.post(f"/worker/bot1/hijack/{hijack_id}/step")
 
     assert r.status_code == 200
     assert r.json()["ok"] is True
@@ -178,12 +178,12 @@ def test_step() -> None:
 def test_step_no_worker() -> None:
     app, hub = make_app()
     hijack_id = str(uuid.uuid4())
-    hub._bots["bot1"] = BotTermState(
+    hub._workers["bot1"] = WorkerTermState(
         hijack_session=_active_session(hijack_id),
     )
 
     with TestClient(app) as client:
-        r = client.post(f"/bot/bot1/hijack/{hijack_id}/step")
+        r = client.post(f"/worker/bot1/hijack/{hijack_id}/step")
 
     assert r.status_code == 409
 
@@ -193,13 +193,13 @@ def test_step_invalid_hijack_session() -> None:
     app, hub = make_app()
     mock_ws = AsyncMock()
     hijack_id = str(uuid.uuid4())
-    hub._bots["bot1"] = BotTermState(
+    hub._workers["bot1"] = WorkerTermState(
         worker_ws=mock_ws,
         hijack_session=_active_session(hijack_id),
     )
 
     with TestClient(app) as client:
-        r = client.post("/bot/bot1/hijack/no-such-id/step")
+        r = client.post("/worker/bot1/hijack/no-such-id/step")
 
     # "no-such-id" fails the UUID path pattern → 422 before route logic runs
     assert r.status_code == 422
@@ -215,14 +215,14 @@ def test_send_with_worker_and_no_guard() -> None:
     app, hub = make_app()
     mock_ws = AsyncMock()
     hijack_id = str(uuid.uuid4())
-    hub._bots["bot1"] = BotTermState(
+    hub._workers["bot1"] = WorkerTermState(
         worker_ws=mock_ws,
         hijack_session=_active_session(hijack_id),
     )
 
     with TestClient(app) as client:
         r = client.post(
-            f"/bot/bot1/hijack/{hijack_id}/send",
+            f"/worker/bot1/hijack/{hijack_id}/send",
             json={"keys": "hello\r", "timeout_ms": 100},
         )
 
@@ -237,14 +237,14 @@ def test_send_guard_not_satisfied() -> None:
     app, hub = make_app()
     mock_ws = AsyncMock()
     hijack_id = str(uuid.uuid4())
-    hub._bots["bot1"] = BotTermState(
+    hub._workers["bot1"] = WorkerTermState(
         worker_ws=mock_ws,
         hijack_session=_active_session(hijack_id),
     )
 
     with TestClient(app) as client:
         r = client.post(
-            f"/bot/bot1/hijack/{hijack_id}/send",
+            f"/worker/bot1/hijack/{hijack_id}/send",
             json={"keys": "hello\r", "expect_prompt_id": "never_matches", "timeout_ms": 50},
         )
 
@@ -256,14 +256,14 @@ def test_send_guard_invalid_regex() -> None:
     app, hub = make_app()
     mock_ws = AsyncMock()
     hijack_id = str(uuid.uuid4())
-    hub._bots["bot1"] = BotTermState(
+    hub._workers["bot1"] = WorkerTermState(
         worker_ws=mock_ws,
         hijack_session=_active_session(hijack_id),
     )
 
     with TestClient(app) as client:
         r = client.post(
-            f"/bot/bot1/hijack/{hijack_id}/send",
+            f"/worker/bot1/hijack/{hijack_id}/send",
             json={"keys": "hello\r", "expect_regex": "[invalid"},
         )
 

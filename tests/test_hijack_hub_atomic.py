@@ -17,7 +17,7 @@ import time
 from unittest.mock import AsyncMock
 
 from undef.terminal.hijack.hub import TermHub
-from undef.terminal.hijack.models import BotTermState, HijackSession
+from undef.terminal.hijack.models import WorkerTermState, HijackSession
 
 # ---------------------------------------------------------------------------
 # Fix 3 regression — _try_release_ws_hijack atomic check-and-clear
@@ -29,15 +29,15 @@ async def test_try_release_ws_hijack_clears_owner() -> None:
     hub = TermHub()
     ws = AsyncMock()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.hijack_owner = ws
         st.hijack_owner_expires_at = time.time() + 60
 
     released, rest_active = await hub._try_release_ws_hijack("bot1", ws)
     assert released is True
     assert rest_active is False
-    assert hub._bots["bot1"].hijack_owner is None
-    assert hub._bots["bot1"].hijack_owner_expires_at is None
+    assert hub._workers["bot1"].hijack_owner is None
+    assert hub._workers["bot1"].hijack_owner_expires_at is None
 
 
 async def test_try_release_ws_hijack_rejects_non_owner() -> None:
@@ -46,14 +46,14 @@ async def test_try_release_ws_hijack_rejects_non_owner() -> None:
     ws_owner = AsyncMock()
     ws_other = AsyncMock()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.hijack_owner = ws_owner
         st.hijack_owner_expires_at = time.time() + 60
 
     released, rest_active = await hub._try_release_ws_hijack("bot1", ws_other)
     assert released is False
     # Owner must be untouched
-    assert hub._bots["bot1"].hijack_owner is ws_owner
+    assert hub._workers["bot1"].hijack_owner is ws_owner
 
 
 async def test_try_release_ws_hijack_noop_when_no_bot() -> None:
@@ -70,7 +70,7 @@ async def test_try_release_ws_hijack_noop_when_expired() -> None:
     hub = TermHub()
     ws = AsyncMock()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.hijack_owner = ws
         st.hijack_owner_expires_at = time.time() - 1  # already expired
 
@@ -96,7 +96,7 @@ async def test_is_owner_returns_true_for_active_owner() -> None:
     hub = TermHub()
     ws = AsyncMock()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.hijack_owner = ws
         st.hijack_owner_expires_at = time.time() + 60
 
@@ -109,7 +109,7 @@ async def test_is_owner_returns_false_for_different_ws() -> None:
     ws_owner = AsyncMock()
     ws_other = AsyncMock()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.hijack_owner = ws_owner
         st.hijack_owner_expires_at = time.time() + 60
 
@@ -121,7 +121,7 @@ async def test_is_owner_returns_false_after_owner_cleared() -> None:
     hub = TermHub()
     ws = AsyncMock()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.hijack_owner = ws
         st.hijack_owner_expires_at = time.time() + 60
 
@@ -129,8 +129,8 @@ async def test_is_owner_returns_false_after_owner_cleared() -> None:
 
     # Clear owner atomically (simulate another coroutine releasing)
     async with hub._lock:
-        hub._bots["bot1"].hijack_owner = None
-        hub._bots["bot1"].hijack_owner_expires_at = None
+        hub._workers["bot1"].hijack_owner = None
+        hub._workers["bot1"].hijack_owner_expires_at = None
 
     assert await hub._is_owner("bot1", ws) is False
 
@@ -145,7 +145,7 @@ async def test_touch_if_owner_returns_expiry_for_active_owner() -> None:
     hub = TermHub()
     ws = AsyncMock()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.hijack_owner = ws
         st.hijack_owner_expires_at = time.time() + 60
 
@@ -160,7 +160,7 @@ async def test_touch_if_owner_returns_none_for_non_owner() -> None:
     ws_owner = AsyncMock()
     ws_other = AsyncMock()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.hijack_owner = ws_owner
         st.hijack_owner_expires_at = time.time() + 60
 
@@ -181,14 +181,14 @@ async def test_touch_if_owner_returns_none_after_owner_cleared() -> None:
     hub = TermHub()
     ws = AsyncMock()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.hijack_owner = ws
         st.hijack_owner_expires_at = time.time() + 60
 
     assert await hub._touch_if_owner("bot1", ws) is not None
 
     async with hub._lock:
-        hub._bots["bot1"].hijack_owner = None
+        hub._workers["bot1"].hijack_owner = None
 
     assert await hub._touch_if_owner("bot1", ws) is None
 
@@ -202,7 +202,7 @@ async def test_get_rest_session_returns_session_when_valid() -> None:
     """Round-6 fix: _get_rest_session returns the session for a valid hijack_id."""
     hub = TermHub()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.hijack_session = HijackSession(
             hijack_id="abc123",
             owner="test",
@@ -220,7 +220,7 @@ async def test_get_rest_session_returns_none_for_wrong_hijack_id() -> None:
     """Round-6 fix: _get_rest_session returns None when hijack_id doesn't match (checked under lock)."""
     hub = TermHub()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.hijack_session = HijackSession(
             hijack_id="abc123",
             owner="test",
@@ -259,7 +259,7 @@ async def test_hijack_state_msg_for_rest_session_returns_other() -> None:
     hub = TermHub()
     ws = AsyncMock()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.hijack_session = HijackSession(
             hijack_id="s1",
             owner="tester",
@@ -278,7 +278,7 @@ async def test_try_release_ws_hijack_returns_rest_active_when_rest_session_prese
     hub = TermHub()
     ws = AsyncMock()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.hijack_owner = ws
         st.hijack_owner_expires_at = time.time() + 60
         st.hijack_session = HijackSession(
@@ -309,7 +309,7 @@ async def test_broadcast_does_not_iterate_live_set() -> None:
     ws2 = AsyncMock()
 
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.browsers.add(ws1)
         st.browsers.add(ws2)
 
@@ -317,7 +317,7 @@ async def test_broadcast_does_not_iterate_live_set() -> None:
     # a concurrent disconnect happening between sends.
     async def _send_and_remove(payload: str) -> None:
         async with hub._lock:
-            st2 = hub._bots.get("bot1")
+            st2 = hub._workers.get("bot1")
             if st2 is not None:
                 st2.browsers.discard(ws2)
 
@@ -336,39 +336,39 @@ async def test_prune_if_idle_removes_fully_disconnected_bot() -> None:
     """A bot with no worker, no browsers, and no hijack is removed from _bots."""
     hub = TermHub()
     await hub._get("bot1")
-    assert "bot1" in hub._bots
+    assert "bot1" in hub._workers
 
     await hub._prune_if_idle("bot1")
 
-    assert "bot1" not in hub._bots
+    assert "bot1" not in hub._workers
 
 
 async def test_prune_if_idle_keeps_bot_with_active_worker() -> None:
     hub = TermHub()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.worker_ws = AsyncMock()
 
     await hub._prune_if_idle("bot1")
 
-    assert "bot1" in hub._bots
+    assert "bot1" in hub._workers
 
 
 async def test_prune_if_idle_keeps_bot_with_browser() -> None:
     hub = TermHub()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.browsers.add(AsyncMock())
 
     await hub._prune_if_idle("bot1")
 
-    assert "bot1" in hub._bots
+    assert "bot1" in hub._workers
 
 
 async def test_prune_if_idle_keeps_bot_with_active_rest_session() -> None:
     hub = TermHub()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.hijack_session = HijackSession(
             hijack_id="x",
             owner="test",
@@ -379,18 +379,18 @@ async def test_prune_if_idle_keeps_bot_with_active_rest_session() -> None:
 
     await hub._prune_if_idle("bot1")
 
-    assert "bot1" in hub._bots
+    assert "bot1" in hub._workers
 
 
 async def test_prune_if_idle_keeps_bot_with_dashboard_owner() -> None:
     hub = TermHub()
     async with hub._lock:
-        st = hub._bots.setdefault("bot1", BotTermState())
+        st = hub._workers.setdefault("bot1", WorkerTermState())
         st.hijack_owner = AsyncMock()
 
     await hub._prune_if_idle("bot1")
 
-    assert "bot1" in hub._bots
+    assert "bot1" in hub._workers
 
 
 async def test_prune_if_idle_noop_for_unknown_bot() -> None:

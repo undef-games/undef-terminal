@@ -28,11 +28,11 @@ except ImportError as _e:  # pragma: no cover
 
 import logging
 
-from undef.terminal.hijack.models import BotTermState, HijackSession, extract_prompt_id
+from undef.terminal.hijack.models import WorkerTermState, HijackSession, extract_prompt_id
 
 logger = logging.getLogger(__name__)
 
-# Callback: (bot_id, is_hijacked, owner_or_None)
+# Callback: (worker_id, is_hijacked, owner_or_None)
 HijackStateCallback = Callable[[str, bool, str | None], Awaitable[None] | None]
 
 
@@ -43,7 +43,7 @@ class TermHub:
 
     Args:
         on_hijack_changed: Optional async or sync callback invoked whenever hijack
-            state changes for any bot. Signature: ``(bot_id, hijacked, owner) -> None``.
+            state changes for any worker. Signature: ``(worker_id, hijacked, owner) -> None``.
         dashboard_hijack_lease_s: Default dashboard WS hijack lease duration in seconds.
     """
 
@@ -53,7 +53,7 @@ class TermHub:
         dashboard_hijack_lease_s: int = 45,
     ) -> None:
         self._lock = asyncio.Lock()
-        self._bots: dict[str, BotTermState] = {}
+        self._workers: dict[str, WorkerTermState] = {}
         self._on_hijack_changed = on_hijack_changed
         self._dashboard_hijack_lease_s = max(1, min(int(dashboard_hijack_lease_s), 600))
 
@@ -62,61 +62,61 @@ class TermHub:
         return max(1, min(int(lease_s), 3600))
 
     @staticmethod
-    def _is_rest_session_active(st: BotTermState) -> bool:
+    def _is_rest_session_active(st: WorkerTermState) -> bool:
         hs = st.hijack_session
         return hs is not None and hs.lease_expires_at > time.time()
 
     @staticmethod
-    def _is_dashboard_hijack_active(st: BotTermState) -> bool:
+    def _is_dashboard_hijack_active(st: WorkerTermState) -> bool:
         if st.hijack_owner is None:
             return False
         if st.hijack_owner_expires_at is None:
             return True
         return st.hijack_owner_expires_at > time.time()
 
-    def _is_hijacked(self, st: BotTermState) -> bool:
+    def _is_hijacked(self, st: WorkerTermState) -> bool:
         return self._is_dashboard_hijack_active(st) or self._is_rest_session_active(st)
 
-    async def _get(self, bot_id: str) -> BotTermState:
+    async def _get(self, worker_id: str) -> WorkerTermState:
         async with self._lock:
-            st = self._bots.get(bot_id)
+            st = self._workers.get(worker_id)
             if st is None:
-                st = BotTermState()
-                self._bots[bot_id] = st
+                st = WorkerTermState()
+                self._workers[worker_id] = st
             return st
 
-    def _notify_hijack_changed(self, bot_id: str, *, enabled: bool, owner: str | None = None) -> None:
+    def _notify_hijack_changed(self, worker_id: str, *, enabled: bool, owner: str | None = None) -> None:
         cb = self._on_hijack_changed
         if cb is None:
             return
-        result = cb(bot_id, enabled, owner)
+        result = cb(worker_id, enabled, owner)
         if inspect.isawaitable(result):
             task = asyncio.create_task(result)  # type: ignore[arg-type]
             task.add_done_callback(
                 lambda t: (
-                    logger.warning("on_hijack_changed callback raised bot_id=%s error=%s", bot_id, t.exception())
+                    logger.warning("on_hijack_changed callback raised worker_id=%s error=%s", worker_id, t.exception())
                     if not t.cancelled() and t.exception() is not None
                     else None
                 )
             )
 
-    async def _append_event(self, bot_id: str, event_type: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def _append_event(self, worker_id: str, event_type: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
         payload = data or {}
         async with self._lock:
-            st = self._bots.setdefault(bot_id, BotTermState())
+            st = self._workers.setdefault(worker_id, WorkerTermState())
             st.event_seq += 1
             evt: dict[str, Any] = {"seq": st.event_seq, "ts": time.time(), "type": event_type, "data": payload}
             st.events.append(evt)
             return evt
 
-    async def _cleanup_expired_hijack(self, bot_id: str) -> bool:
+    async def _cleanup_expired_hijack(self, worker_id: str) -> bool:
         now = time.time()
         rest_expired = False
         dashboard_expired = False
         should_resume = False
 
         async with self._lock:
-            st = self._bots.get(bot_id)
+            st = self._workers.get(worker_id)
             if st is None:
                 return False
 
@@ -142,26 +142,26 @@ class TermHub:
 
         if should_resume:
             await self._send_worker(
-                bot_id,
+                worker_id,
                 {"type": "control", "action": "resume", "owner": "lease-expired", "lease_s": 0, "ts": now},
             )
-            self._notify_hijack_changed(bot_id, enabled=False, owner=None)
+            self._notify_hijack_changed(worker_id, enabled=False, owner=None)
 
         if rest_expired:
-            await self._append_event(bot_id, "hijack_lease_expired")
+            await self._append_event(worker_id, "hijack_lease_expired")
         if dashboard_expired:
-            await self._append_event(bot_id, "hijack_owner_expired")
-        await self._broadcast_hijack_state(bot_id)
-        await self._prune_if_idle(bot_id)
+            await self._append_event(worker_id, "hijack_owner_expired")
+        await self._broadcast_hijack_state(worker_id)
+        await self._prune_if_idle(worker_id)
         return True
 
-    async def _get_rest_session(self, bot_id: str, hijack_id: str) -> HijackSession | None:
-        await self._cleanup_expired_hijack(bot_id)
+    async def _get_rest_session(self, worker_id: str, hijack_id: str) -> HijackSession | None:
+        await self._cleanup_expired_hijack(worker_id)
         # Re-read hijack_session under the lock to avoid a TOCTOU window where
         # _cleanup_expired_hijack drops the lock and a concurrent request clears
         # or replaces the session before we inspect it.
         async with self._lock:
-            st = self._bots.get(bot_id)
+            st = self._workers.get(worker_id)
             if st is None:
                 return None
             hs = st.hijack_session
@@ -182,24 +182,24 @@ class TermHub:
             return False
         return not (expect_regex is not None and not expect_regex.search(str(snapshot.get("screen", ""))))
 
-    async def _wait_for_snapshot(self, bot_id: str, timeout_ms: int = 1500) -> dict[str, Any] | None:
+    async def _wait_for_snapshot(self, worker_id: str, timeout_ms: int = 1500) -> dict[str, Any] | None:
         end = time.time() + max(50, timeout_ms) / 1000.0
         while time.time() < end:
             async with self._lock:
-                st = self._bots.get(bot_id)
+                st = self._workers.get(worker_id)
             if st is None:
                 return None
             if st.last_snapshot is not None:
                 return st.last_snapshot
-            await self._request_snapshot(bot_id)
+            await self._request_snapshot(worker_id)
             await asyncio.sleep(0.08)
         async with self._lock:
-            st = self._bots.get(bot_id)
+            st = self._workers.get(worker_id)
         return st.last_snapshot if st is not None else None
 
     async def _wait_for_guard(
         self,
-        bot_id: str,
+        worker_id: str,
         *,
         expect_prompt_id: str | None,
         expect_regex: str | None,
@@ -214,28 +214,28 @@ class TermHub:
                 return False, None, f"invalid expect_regex: {exc}"
 
         if not expect_prompt_id and regex_obj is None:
-            return True, (await self._get(bot_id)).last_snapshot, None
+            return True, (await self._get(worker_id)).last_snapshot, None
 
         end = time.time() + max(50, timeout_ms) / 1000.0
         interval = max(20, poll_interval_ms) / 1000.0
         last_snapshot: dict[str, Any] | None = None
         while time.time() < end:
-            st = await self._get(bot_id)
+            st = await self._get(worker_id)
             last_snapshot = st.last_snapshot
             if self._snapshot_matches(last_snapshot, expect_prompt_id=expect_prompt_id, expect_regex=regex_obj):
                 return True, last_snapshot, None
-            await self._request_snapshot(bot_id)
+            await self._request_snapshot(worker_id)
             await asyncio.sleep(interval)
 
         return False, last_snapshot, "prompt_guard_not_satisfied"
 
-    async def _broadcast(self, bot_id: str, msg: dict[str, Any]) -> None:
+    async def _broadcast(self, worker_id: str, msg: dict[str, Any]) -> None:
         # Snapshot browsers under the lock — mirrors _broadcast_hijack_state.
         # A concurrent disconnect finally block can mutate st.browsers between
         # the _get() lock release and iteration, so we must hold the lock while
         # taking the snapshot.
         async with self._lock:
-            st = self._bots.get(bot_id)
+            st = self._workers.get(worker_id)
             if st is None:
                 return
             browsers = list(st.browsers)
@@ -245,21 +245,21 @@ class TermHub:
             try:
                 await ws.send_text(payload)
             except Exception as exc:
-                logger.debug("broadcast_send_failed bot_id=%s: %s", bot_id, exc)
+                logger.debug("broadcast_send_failed worker_id=%s: %s", worker_id, exc)
                 dead.add(ws)
         if dead:
             async with self._lock:
-                st2 = self._bots.get(bot_id)
+                st2 = self._workers.get(worker_id)
                 if st2 is not None:
                     for ws in dead:
                         st2.browsers.discard(ws)
 
-    async def _broadcast_hijack_state(self, bot_id: str) -> None:
+    async def _broadcast_hijack_state(self, worker_id: str) -> None:
         # Snapshot all mutable fields under the lock so that concurrent hijack
         # state changes during the async broadcast loop don't produce inconsistent
         # per-client messages (e.g. owner changing between two send_text awaits).
         async with self._lock:
-            st = self._bots.get(bot_id)
+            st = self._workers.get(worker_id)
             if st is None:
                 return
             browsers = list(st.browsers)
@@ -294,34 +294,34 @@ class TermHub:
                     )
                 )
             except Exception as exc:
-                logger.debug("broadcast_hijack_state_send_failed bot_id=%s: %s", bot_id, exc)
+                logger.debug("broadcast_hijack_state_send_failed worker_id=%s: %s", worker_id, exc)
                 dead.add(ws)
         if dead:
             async with self._lock:
-                st2 = self._bots.get(bot_id)
+                st2 = self._workers.get(worker_id)
                 if st2 is not None:
                     for ws in dead:
                         st2.browsers.discard(ws)
 
-    async def _send_worker(self, bot_id: str, msg: dict[str, Any]) -> bool:
-        st = await self._get(bot_id)
+    async def _send_worker(self, worker_id: str, msg: dict[str, Any]) -> bool:
+        st = await self._get(worker_id)
         if st.worker_ws is None:
             return False
         try:
             await st.worker_ws.send_text(json.dumps(msg, ensure_ascii=True))
             return True
         except Exception as exc:
-            logger.debug("send_worker_failed bot_id=%s: %s", bot_id, exc)
+            logger.debug("send_worker_failed worker_id=%s: %s", worker_id, exc)
             async with self._lock:
-                st2 = self._bots.get(bot_id)
+                st2 = self._workers.get(worker_id)
                 if st2 is not None and st2.worker_ws is st.worker_ws:
                     st2.worker_ws = None
             return False
 
-    async def _prune_if_idle(self, bot_id: str) -> None:
-        """Remove bot state when no connections or leases remain."""
+    async def _prune_if_idle(self, worker_id: str) -> None:
+        """Remove worker state when no connections or leases remain."""
         async with self._lock:
-            st = self._bots.get(bot_id)
+            st = self._workers.get(worker_id)
             if st is None:
                 return
             if (
@@ -330,12 +330,12 @@ class TermHub:
                 and st.hijack_owner is None
                 and st.hijack_session is None
             ):
-                del self._bots[bot_id]
-                logger.debug("pruned idle bot_id=%s", bot_id)
+                del self._workers[worker_id]
+                logger.debug("pruned idle worker_id=%s", worker_id)
 
     async def _try_acquire_rest_hijack(
         self,
-        bot_id: str,
+        worker_id: str,
         *,
         owner: str,
         lease_s: int,
@@ -353,7 +353,7 @@ class TermHub:
             ``(False, "already_hijacked")`` if another session is active.
         """
         async with self._lock:
-            st = self._bots.setdefault(bot_id, BotTermState())
+            st = self._workers.setdefault(worker_id, WorkerTermState())
             if st.hijack_owner is not None or self._is_rest_session_active(st):
                 return False, "already_hijacked"
             st.hijack_session = HijackSession(
@@ -365,7 +365,7 @@ class TermHub:
             )
         return True, None
 
-    async def _try_acquire_ws_hijack(self, bot_id: str, ws: WebSocket) -> tuple[bool, str | None]:
+    async def _try_acquire_ws_hijack(self, worker_id: str, ws: WebSocket) -> tuple[bool, str | None]:
         """Atomically check availability and set the dashboard WS hijack owner.
 
         Returns:
@@ -374,7 +374,7 @@ class TermHub:
             ``(False, "already_hijacked")`` if another hijack is active.
         """
         async with self._lock:
-            st = self._bots.get(bot_id)
+            st = self._workers.get(worker_id)
             if st is None or st.worker_ws is None:
                 return False, "no_worker"
             if st.hijack_owner is not None or self._is_rest_session_active(st):
@@ -384,9 +384,9 @@ class TermHub:
             st.hijack_owner_expires_at = time.time() + ttl
         return True, None
 
-    async def _set_hijack_owner(self, bot_id: str, owner: WebSocket | None, lease_s: int | None = None) -> None:
+    async def _set_hijack_owner(self, worker_id: str, owner: WebSocket | None, lease_s: int | None = None) -> None:
         async with self._lock:
-            st = self._bots.setdefault(bot_id, BotTermState())
+            st = self._workers.setdefault(worker_id, WorkerTermState())
             st.hijack_owner = owner
             if owner is None:
                 st.hijack_owner_expires_at = None
@@ -394,34 +394,34 @@ class TermHub:
                 ttl = self._dashboard_hijack_lease_s if lease_s is None else max(1, min(int(lease_s), 600))
                 st.hijack_owner_expires_at = time.time() + ttl
 
-    async def _touch_hijack_owner(self, bot_id: str, lease_s: int | None = None) -> float | None:
+    async def _touch_hijack_owner(self, worker_id: str, lease_s: int | None = None) -> float | None:
         async with self._lock:
-            st = self._bots.get(bot_id)
+            st = self._workers.get(worker_id)
             if st is None or st.hijack_owner is None:
                 return None
             ttl = self._dashboard_hijack_lease_s if lease_s is None else max(1, min(int(lease_s), 600))
             st.hijack_owner_expires_at = time.time() + ttl
             return st.hijack_owner_expires_at
 
-    async def _touch_if_owner(self, bot_id: str, ws: WebSocket) -> float | None:
+    async def _touch_if_owner(self, worker_id: str, ws: WebSocket) -> float | None:
         """Atomically verify WS ownership and extend lease; returns new expiry or None."""
         async with self._lock:
-            st = self._bots.get(bot_id)
+            st = self._workers.get(worker_id)
             if st is None or not self._is_dashboard_hijack_active(st) or st.hijack_owner is not ws:
                 return None
             st.hijack_owner_expires_at = time.time() + self._dashboard_hijack_lease_s
             return st.hijack_owner_expires_at
 
-    async def _is_owner(self, bot_id: str, ws: WebSocket) -> bool:
+    async def _is_owner(self, worker_id: str, ws: WebSocket) -> bool:
         # Read under the lock so the owner identity check is not a TOCTOU with
         # concurrent hijack_request / hijack_release / disconnect handlers.
         async with self._lock:
-            st = self._bots.get(bot_id)
+            st = self._workers.get(worker_id)
             if st is None:
                 return False
             return self._is_dashboard_hijack_active(st) and st.hijack_owner is ws
 
-    async def _try_release_ws_hijack(self, bot_id: str, ws: WebSocket) -> tuple[bool, bool]:
+    async def _try_release_ws_hijack(self, worker_id: str, ws: WebSocket) -> tuple[bool, bool]:
         """Atomically verify ownership and clear it in a single lock block.
 
         Prevents the TOCTOU window in voluntary ``hijack_release`` where
@@ -440,7 +440,7 @@ class TermHub:
             after the release.
         """
         async with self._lock:
-            st = self._bots.get(bot_id)
+            st = self._workers.get(worker_id)
             if st is None or not self._is_dashboard_hijack_active(st) or st.hijack_owner is not ws:
                 rest_active = st is not None and self._is_rest_session_active(st)
                 return False, rest_active
@@ -449,11 +449,11 @@ class TermHub:
             rest_active = self._is_rest_session_active(st)
         return True, rest_active
 
-    async def _hijack_state_msg_for(self, bot_id: str, ws: WebSocket) -> dict[str, Any]:
+    async def _hijack_state_msg_for(self, worker_id: str, ws: WebSocket) -> dict[str, Any]:
         # Snapshot all mutable fields under the lock — mirrors _broadcast_hijack_state
         # to prevent stale reads when concurrent hijack changes race against this call.
         async with self._lock:
-            st = self._bots.get(bot_id)
+            st = self._workers.get(worker_id)
             if st is None:
                 return {"type": "hijack_state", "hijacked": False, "owner": None, "lease_expires_at": None}
             is_dashboard = self._is_dashboard_hijack_active(st)
@@ -477,11 +477,11 @@ class TermHub:
             "lease_expires_at": lease_expires_at,
         }
 
-    async def _request_snapshot(self, bot_id: str) -> None:
-        await self._send_worker(bot_id, {"type": "snapshot_req", "req_id": str(uuid.uuid4()), "ts": time.time()})
+    async def _request_snapshot(self, worker_id: str) -> None:
+        await self._send_worker(worker_id, {"type": "snapshot_req", "req_id": str(uuid.uuid4()), "ts": time.time()})
 
-    async def _request_analysis(self, bot_id: str) -> None:
-        await self._send_worker(bot_id, {"type": "analyze_req", "req_id": str(uuid.uuid4()), "ts": time.time()})
+    async def _request_analysis(self, worker_id: str) -> None:
+        await self._send_worker(worker_id, {"type": "analyze_req", "req_id": str(uuid.uuid4()), "ts": time.time()})
 
     def create_router(self) -> Any:
         """Create and return a FastAPI ``APIRouter`` with all terminal routes registered."""

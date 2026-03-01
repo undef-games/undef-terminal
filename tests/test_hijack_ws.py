@@ -12,7 +12,7 @@ deterministic via internal queues.
 
 Initial messages sent by the hub on connection
 ----------------------------------------------
-Browser (/ws/bot/{id}/term):
+Browser (/ws/browser/{id}/term):
   1. {"type": "hello", ...}
   2. {"type": "hijack_state", ...}
   3. last_snapshot if one exists (otherwise _request_snapshot is called, no browser msg)
@@ -31,7 +31,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from undef.terminal.hijack.hub import TermHub
-from undef.terminal.hijack.models import BotTermState, HijackSession
+from undef.terminal.hijack.models import WorkerTermState, HijackSession
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -72,7 +72,7 @@ def _read_worker_snapshot_req(worker) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Worker WebSocket — /ws/worker/{bot_id}/term
+# Worker WebSocket — /ws/worker/{worker_id}/term
 # ---------------------------------------------------------------------------
 
 
@@ -88,8 +88,8 @@ def test_worker_registers_in_hub() -> None:
     app, hub = make_app()
     with TestClient(app) as client, client.websocket_connect("/ws/worker/bot1/term") as worker:
         _read_worker_snapshot_req(worker)
-        assert hub._bots.get("bot1") is not None
-        assert hub._bots["bot1"].worker_ws is not None
+        assert hub._workers.get("bot1") is not None
+        assert hub._workers["bot1"].worker_ws is not None
 
 
 def test_worker_disconnect_clears_ws() -> None:
@@ -97,14 +97,14 @@ def test_worker_disconnect_clears_ws() -> None:
     with TestClient(app) as client, client.websocket_connect("/ws/worker/bot1/term") as worker:
         _read_worker_snapshot_req(worker)
     # After context exits worker_ws must be cleared
-    st = hub._bots.get("bot1")
+    st = hub._workers.get("bot1")
     if st is not None:
         assert st.worker_ws is None
 
 
 def test_worker_term_broadcast_to_browser() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -119,7 +119,7 @@ def test_worker_term_broadcast_to_browser() -> None:
 
 def test_worker_snapshot_updates_hub_state() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -145,13 +145,13 @@ def test_worker_snapshot_updates_hub_state() -> None:
             assert msg["screen"] == "Welcome to TW2002"
 
             # Hub state updated while connections are still live.
-            assert hub._bots["bot1"].last_snapshot is not None
-            assert hub._bots["bot1"].last_snapshot["screen"] == "Welcome to TW2002"
+            assert hub._workers["bot1"].last_snapshot is not None
+            assert hub._workers["bot1"].last_snapshot["screen"] == "Welcome to TW2002"
 
 
 def test_worker_snapshot_appends_event() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
             _read_worker_snapshot_req(worker)
@@ -174,7 +174,7 @@ def test_worker_snapshot_appends_event() -> None:
             msg = browser.receive_json()
             assert msg["type"] == "snapshot"
 
-            st = hub._bots.get("bot1")
+            st = hub._workers.get("bot1")
             assert st is not None
             types = [e["type"] for e in st.events]
             assert "snapshot" in types
@@ -182,7 +182,7 @@ def test_worker_snapshot_appends_event() -> None:
 
 def test_worker_status_broadcast() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -196,7 +196,7 @@ def test_worker_status_broadcast() -> None:
 
 def test_worker_analysis_broadcast() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -221,16 +221,16 @@ def test_worker_invalid_json_ignored() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Browser WebSocket — /ws/bot/{bot_id}/term
+# Browser WebSocket — /ws/browser/{worker_id}/term
 # ---------------------------------------------------------------------------
 
 
 def test_browser_connect_receives_hello_and_hijack_state() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         hello = browser.receive_json()
         assert hello["type"] == "hello"
-        assert hello["bot_id"] == "bot1"
+        assert hello["worker_id"] == "bot1"
         assert hello["can_hijack"] is True
         assert "hijacked" in hello
 
@@ -241,8 +241,8 @@ def test_browser_connect_receives_hello_and_hijack_state() -> None:
 
 def test_browser_connect_receives_existing_snapshot() -> None:
     app, hub = make_app()
-    hub._bots["bot1"] = BotTermState(last_snapshot={"type": "snapshot", "screen": "existing screen", "ts": 0.0})
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    hub._workers["bot1"] = WorkerTermState(last_snapshot={"type": "snapshot", "screen": "existing screen", "ts": 0.0})
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
         snapshot = browser.receive_json()
         assert snapshot["screen"] == "existing screen"
@@ -250,7 +250,7 @@ def test_browser_connect_receives_existing_snapshot() -> None:
 
 def test_browser_snapshot_req_forwarded_to_worker() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -265,7 +265,7 @@ def test_browser_snapshot_req_forwarded_to_worker() -> None:
 
 def test_browser_analyze_req_forwarded_to_worker() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -279,7 +279,7 @@ def test_browser_analyze_req_forwarded_to_worker() -> None:
 
 def test_browser_hijack_request_no_worker() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         browser.send_json({"type": "hijack_request"})
@@ -295,11 +295,11 @@ def test_browser_hijack_request_no_worker() -> None:
 
 def test_browser_hijack_request_already_held() -> None:
     app, hub = make_app()
-    hub._bots["bot1"] = BotTermState(
+    hub._workers["bot1"] = WorkerTermState(
         worker_ws=AsyncMock(),
         hijack_session=_active_session(str(uuid.uuid4()), "other"),
     )
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         browser.send_json({"type": "hijack_request"})
@@ -312,7 +312,7 @@ def test_browser_hijack_request_already_held() -> None:
 
 def test_browser_hijack_request_with_worker() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -334,7 +334,7 @@ def test_browser_hijack_request_with_worker() -> None:
 
 def test_browser_heartbeat_as_owner() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -359,7 +359,7 @@ def test_browser_heartbeat_as_owner() -> None:
 
 def test_browser_input_as_owner() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -381,7 +381,7 @@ def test_browser_input_as_owner() -> None:
 def test_browser_input_not_owner_ignored() -> None:
     """Input from a non-owner browser should be silently dropped."""
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -397,7 +397,7 @@ def test_browser_input_not_owner_ignored() -> None:
 
 def test_browser_hijack_step() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -417,7 +417,7 @@ def test_browser_hijack_step() -> None:
 
 def test_browser_hijack_release() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -440,7 +440,7 @@ def test_browser_hijack_release() -> None:
             assert state["hijacked"] is False
 
     # Confirmed clear in hub
-    st = hub._bots.get("bot1")
+    st = hub._workers.get("bot1")
     if st:
         assert st.hijack_owner is None
 
@@ -450,7 +450,7 @@ def test_browser_disconnect_as_owner_sends_resume() -> None:
     with TestClient(app) as client, client.websocket_connect("/ws/worker/bot1/term") as worker:
         _read_worker_snapshot_req(worker)  # snapshot_req from worker connect
 
-        with client.websocket_connect("/ws/bot/bot1/term") as browser:
+        with client.websocket_connect("/ws/browser/bot1/term") as browser:
             _read_initial_browser_messages(browser)
             # Browser connect triggers _request_snapshot → a second snapshot_req to worker
             _read_worker_snapshot_req(worker)
@@ -468,23 +468,23 @@ def test_browser_disconnect_as_owner_sends_resume() -> None:
 
 def test_browser_registers_and_unregisters_in_browsers_set() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
-        st = hub._bots.get("bot1")
+        st = hub._workers.get("bot1")
         assert st is not None
         assert len(st.browsers) == 1
 
-    st = hub._bots.get("bot1")
+    st = hub._workers.get("bot1")
     if st:
         assert len(st.browsers) == 0
 
 
 def test_multiple_browsers_receive_broadcast() -> None:
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser1:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser1:
         _read_initial_browser_messages(browser1)
 
-        with client.websocket_connect("/ws/bot/bot1/term") as browser2:
+        with client.websocket_connect("/ws/browser/bot1/term") as browser2:
             _read_initial_browser_messages(browser2)
 
             with client.websocket_connect("/ws/worker/bot1/term") as worker:

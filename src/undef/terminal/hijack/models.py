@@ -38,8 +38,8 @@ class HijackSession:
 
 
 @dataclass
-class BotTermState:
-    """Per-bot connection state held by :class:`~undef.terminal.hijack.hub.TermHub`."""
+class WorkerTermState:
+    """Per-worker connection state held by :class:`~undef.terminal.hijack.hub.TermHub`."""
 
     worker_ws: WebSocket | None = None
     browsers: set[WebSocket] = field(default_factory=set)

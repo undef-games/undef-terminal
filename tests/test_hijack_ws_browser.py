@@ -51,7 +51,7 @@ def _read_worker_snapshot_req(worker) -> dict:
 def test_browser_invalid_json_ignored() -> None:
     """Invalid JSON from browser should not crash the connection."""
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -67,7 +67,7 @@ def test_browser_invalid_json_ignored() -> None:
 def test_browser_snapshot_req_as_owner_touches_lease() -> None:
     """snapshot_req from owner calls _touch_hijack_owner."""
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -87,7 +87,7 @@ def test_browser_snapshot_req_as_owner_touches_lease() -> None:
 def test_browser_analyze_req_as_owner_touches_lease() -> None:
     """analyze_req from owner calls _touch_hijack_owner."""
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -107,7 +107,7 @@ def test_browser_analyze_req_as_owner_touches_lease() -> None:
 def test_browser_hijack_step_no_worker() -> None:
     """hijack_step as owner with no worker returns error message."""
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         # Acquire hijack with a worker present
@@ -128,7 +128,7 @@ def test_browser_hijack_step_no_worker() -> None:
 def test_browser_input_no_worker() -> None:
     """Input as owner with no worker returns error message."""
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:

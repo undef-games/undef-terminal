@@ -1,11 +1,11 @@
 /**
  * UndefHijack - Embeddable terminal hijack control widget.
  *
- * Connects to the TermHub browser WebSocket endpoint (/ws/bot/{botId}/term)
+ * Connects to the TermHub browser WebSocket endpoint (/ws/browser/{workerId}/term)
  * and provides live terminal viewing plus hijack controls (pause/step/release).
  *
  * Usage:
- *   const w = new UndefHijack(containerEl, { botId: 'mybot' });
+ *   const w = new UndefHijack(containerEl, { workerId: 'myworker' });
  *   w.connect();    // called automatically on construction
  *   w.disconnect(); // close WS
  *   w.dispose();    // tear down entirely
@@ -38,9 +38,9 @@ class UndefHijack {
    *
    * @param {HTMLElement} container - Element to mount the widget into.
    * @param {object} [config={}] - Configuration options.
-   * @param {string} [config.wsUrl] - Full WS URL. If omitted, auto-built from botId.
-   * @param {string} [config.botId] - Bot ID (used in auto URL and display title).
-   * @param {string} [config.wsPathPrefix='/ws/bot'] - Path prefix for auto URL construction.
+   * @param {string} [config.wsUrl] - Full WS URL. If omitted, auto-built from workerId.
+   * @param {string} [config.workerId] - Worker ID (used in auto URL and display title).
+   * @param {string} [config.wsPathPrefix='/ws/browser'] - Path prefix for auto URL construction.
    * @param {string|null} [config.title] - Override toolbar title text.
    * @param {boolean} [config.showInput=true] - Show text-input bar when hijacked.
    * @param {boolean} [config.showAnalysis=true] - Show collapsible analysis panel.
@@ -50,7 +50,7 @@ class UndefHijack {
   constructor(container, config = {}) {
     this._container = container;
     this._config = {
-      wsPathPrefix: '/ws/bot',
+      wsPathPrefix: '/ws/browser',
       showInput: true,
       showAnalysis: true,
       heartbeatInterval: 5000,
@@ -130,17 +130,17 @@ class UndefHijack {
       if (url.startsWith('/')) return `${proto}//${location.host}${url}`;
       return url; // already absolute ws:// or wss://
     }
-    const botId = encodeURIComponent(this._config.botId || 'default');
-    const prefix = this._config.wsPathPrefix || '/ws/bot';
-    return `${proto}//${location.host}${prefix}/${botId}/term`;
+    const workerId = encodeURIComponent(this._config.workerId || 'default');
+    const prefix = this._config.wsPathPrefix || '/ws/browser';
+    return `${proto}//${location.host}${prefix}/${workerId}/term`;
   }
 
   // ── DOM Construction ────────────────────────────────────────────────────────
 
   _buildDOM() {
     const p = (id) => `h-${this._uid}-${id}`; // ID prefix helper
-    const botId = this._config.botId || '';
-    const title = this._config.title || (botId ? `Terminal: ${botId}` : 'Terminal');
+    const workerId = this._config.workerId || '';
+    const title = this._config.title || (workerId ? `Terminal: ${workerId}` : 'Terminal');
     const showAnalysis = this._config.showAnalysis !== false;
 
     const root = document.createElement('div');
@@ -366,7 +366,7 @@ class UndefHijack {
       }
 
       case 'hello':
-        // {type, bot_id, can_hijack, hijacked, hijacked_by_me}
+        // {type, worker_id, can_hijack, hijacked, hijacked_by_me}
         this._hijacked = !!msg.hijacked;
         this._hijackedByMe = !!msg.hijacked_by_me;
         this._updateStatus();

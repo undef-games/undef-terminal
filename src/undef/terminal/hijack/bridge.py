@@ -5,8 +5,8 @@
 
 """Worker-side terminal bridge to a Swarm Manager.
 
-Connects a running bot/worker process to the manager WebSocket endpoint
-``/ws/worker/{bot_id}/term``.
+Connects a running worker process to the manager WebSocket endpoint
+``/ws/worker/{worker_id}/term``.
 
 Forwards:
 - Live terminal output from session watchers → hub → browsers.
@@ -70,8 +70,8 @@ class WorkerSession(Protocol):
 
 
 @runtime_checkable
-class WorkerBot(Protocol):
-    """Minimal interface that a bot must provide for TermBridge."""
+class Worker(Protocol):
+    """Minimal interface that a worker must provide for TermBridge."""
 
     @property
     def session(self) -> WorkerSession | None:
@@ -96,14 +96,14 @@ class TermBridge:
     """Worker-side WebSocket bridge to the Swarm Manager terminal hub.
 
     Args:
-        bot: Object implementing :class:`WorkerBot` (duck-typed).
-        bot_id: Unique bot identifier used in the WebSocket URL.
+        bot: Object implementing :class:`Worker` (duck-typed).
+        worker_id: Unique worker identifier used in the WebSocket URL.
         manager_url: Base URL of the Swarm Manager (``http://`` or ``https://``).
     """
 
-    def __init__(self, bot: Any, bot_id: str, manager_url: str) -> None:
+    def __init__(self, bot: Any, worker_id: str, manager_url: str) -> None:
         self._bot = bot
-        self._bot_id = bot_id
+        self._worker_id = worker_id
         self._manager_url = manager_url
         self._send_q: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=2000)
         self._latest_snapshot: dict[str, Any] | None = None
@@ -129,7 +129,7 @@ class TermBridge:
             try:
                 self._send_q.put_nowait({"type": "term", "data": text, "ts": time.time()})
             except asyncio.QueueFull:
-                logger.debug("term_bridge_drop bot_id=%s queue_full", self._bot_id)
+                logger.debug("term_bridge_drop worker_id=%s queue_full", self._worker_id)
 
         session.add_watch(_watch, interval_s=0.0)
 
@@ -154,11 +154,11 @@ class TermBridge:
         try:
             import websockets
         except ImportError:  # pragma: no cover
-            logger.warning("term_bridge_no_websockets bot_id=%s", self._bot_id)
+            logger.warning("term_bridge_no_websockets worker_id=%s", self._worker_id)
             return
 
-        url = _to_ws_url(self._manager_url, f"/ws/worker/{self._bot_id}/term")
-        logger.info("term_bridge_connecting bot_id=%s url=%s", self._bot_id, url)
+        url = _to_ws_url(self._manager_url, f"/ws/worker/{self._worker_id}/term")
+        logger.info("term_bridge_connecting worker_id=%s url=%s", self._worker_id, url)
 
         attempt = 0
         while self._running:
@@ -183,8 +183,8 @@ class TermBridge:
                 return
             except Exception as exc:
                 logger.warning(
-                    "term_bridge_disconnected bot_id=%s error=%s attempt=%d",
-                    self._bot_id,
+                    "term_bridge_disconnected worker_id=%s error=%s attempt=%d",
+                    self._worker_id,
                     exc,
                     attempt,
                 )
@@ -213,7 +213,7 @@ class TermBridge:
             try:
                 raw = await ws.recv()
             except Exception as exc:
-                logger.debug("_recv_loop recv error bot_id=%s: %s", self._bot_id, exc)
+                logger.debug("_recv_loop recv error worker_id=%s: %s", self._worker_id, exc)
                 return
             try:
                 msg = json.loads(raw)
@@ -264,7 +264,7 @@ class TermBridge:
                 )
             )
         except Exception as exc:
-            logger.debug("_send_snapshot failed bot_id=%s: %s", self._bot_id, exc)
+            logger.debug("_send_snapshot failed worker_id=%s: %s", self._worker_id, exc)
             return
 
     async def _send_keys(self, data: str) -> None:

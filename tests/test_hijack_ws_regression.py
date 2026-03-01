@@ -20,7 +20,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from undef.terminal.hijack.hub import TermHub
-from undef.terminal.hijack.models import BotTermState, HijackSession
+from undef.terminal.hijack.models import WorkerTermState, HijackSession
 
 # ---------------------------------------------------------------------------
 # Shared helpers (mirrors test_hijack_ws.py)
@@ -73,11 +73,11 @@ def test_browser_hello_reflects_hijacked_state_at_connect() -> None:
 
     # Pre-install an active REST hijack session so the hub considers this bot hijacked.
     session_id = str(uuid.uuid4())
-    hub._bots["bot42"] = BotTermState(
+    hub._workers["bot42"] = WorkerTermState(
         hijack_session=_active_session(session_id, "rest_user"),
     )
 
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot42/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot42/term") as browser:
         hello = browser.receive_json()
         assert hello["type"] == "hello"
         # The hello must reflect the hijacked state captured inside the lock.
@@ -88,7 +88,7 @@ def test_browser_hello_reflects_not_hijacked_when_no_session() -> None:
     """Regression counter-case: hello.hijacked is False when no session exists."""
     app, hub = make_app()
 
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot99/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot99/term") as browser:
         hello = browser.receive_json()
         assert hello["type"] == "hello"
         assert hello["hijacked"] is False
@@ -105,7 +105,7 @@ def test_browser_receives_cached_snapshot_on_connect() -> None:
     app, hub = make_app()
 
     # Pre-populate a snapshot so the browser should receive it immediately on connect.
-    hub._bots["snap_bot"] = BotTermState(
+    hub._workers["snap_bot"] = WorkerTermState(
         last_snapshot={
             "type": "snapshot",
             "screen": "cached screen",
@@ -120,7 +120,7 @@ def test_browser_receives_cached_snapshot_on_connect() -> None:
         }
     )
 
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/snap_bot/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/snap_bot/term") as browser:
         _read_initial_browser_messages(browser)
         # Third message must be the cached snapshot
         snap = browser.receive_json()
@@ -135,7 +135,7 @@ def test_browser_requests_snapshot_when_none_cached() -> None:
     with (
         TestClient(app) as client,
         client.websocket_connect("/ws/worker/bot_nosnap/term") as worker,
-        client.websocket_connect("/ws/bot/bot_nosnap/term") as browser,
+        client.websocket_connect("/ws/browser/bot_nosnap/term") as browser,
     ):
         # Drain worker's initial snapshot_req from connect
         _read_worker_snapshot_req(worker)
@@ -162,7 +162,7 @@ def test_non_owner_browser_disconnect_does_not_send_resume() -> None:
         _read_worker_snapshot_req(worker)
 
         # Browser connects but never acquires the hijack
-        with client.websocket_connect("/ws/bot/bot1/term") as browser:
+        with client.websocket_connect("/ws/browser/bot1/term") as browser:
             _read_initial_browser_messages(browser)
             # Browser connect triggers a snapshot_req to the worker
             _read_worker_snapshot_req(worker)
@@ -173,7 +173,7 @@ def test_non_owner_browser_disconnect_does_not_send_resume() -> None:
         # and the test would fail with a 500 or an uncaught exception.
         worker.send_json({"type": "term", "data": "alive", "ts": 0.0})
         # Worker is still alive — no crash from the finally block
-        assert hub._bots["bot1"].worker_ws is not None
+        assert hub._workers["bot1"].worker_ws is not None
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +194,7 @@ def test_hijack_request_send_fail_fires_notify_disabled() -> None:
     fapp = FastAPI()
     fapp.include_router(hub.create_router())
 
-    with TestClient(fapp) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(fapp) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -217,7 +217,7 @@ def test_hijack_request_send_fail_fires_notify_disabled() -> None:
             assert disabled_calls[-1][0] == "bot1"
             # Hub must not consider bot1 hijacked after the rollback.
             # Check while connections are live — bot is pruned once all disconnect.
-            st = hub._bots.get("bot1")
+            st = hub._workers.get("bot1")
             assert st is not None
             assert st.hijack_owner is None
 
@@ -226,7 +226,7 @@ def test_ping_is_silently_ignored() -> None:
     """ping from browser must produce no reply; the next received message should
     be from a subsequent snapshot_req, proving nothing was queued by the ping."""
     app, hub = make_app()
-    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
@@ -256,11 +256,11 @@ def test_hijack_request_send_fail_no_notify_when_rest_session_active() -> None:
 
     # Pre-install an active REST session so rest_active=True after WS release
     rest_id = str(uuid.uuid4())
-    hub._bots["bot1"] = BotTermState(
+    hub._workers["bot1"] = WorkerTermState(
         hijack_session=_active_session(rest_id, "rest_owner"),
     )
 
-    with TestClient(fapp) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+    with TestClient(fapp) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
