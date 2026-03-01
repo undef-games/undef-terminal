@@ -136,6 +136,8 @@ class TermBridge:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
 
+    _RECONNECT_BACKOFF: tuple[int, ...] = (1, 2, 5, 10, 30)
+
     async def _run(self) -> None:
         try:
             import websockets
@@ -146,21 +148,43 @@ class TermBridge:
         url = _to_ws_url(self._manager_url, f"/ws/worker/{self._bot_id}/term")
         logger.info("term_bridge_connecting bot_id=%s url=%s", self._bot_id, url)
 
-        try:
-            async with websockets.connect(url, max_size=10 * 1024 * 1024) as ws:
-                send_task = asyncio.create_task(self._send_loop(ws))
-                recv_task = asyncio.create_task(self._recv_loop(ws))
-                done, pending = await asyncio.wait({send_task, recv_task}, return_when=asyncio.FIRST_EXCEPTION)
-                for t in pending:  # pragma: no cover
-                    t.cancel()
-                for t in done:  # pragma: no cover
-                    exc = t.exception()
-                    if exc:
-                        raise exc
-        except asyncio.CancelledError:
-            return
-        except Exception as exc:  # pragma: no cover
-            logger.warning("term_bridge_disconnected bot_id=%s error=%s", self._bot_id, exc)
+        attempt = 0
+        while self._running:
+            try:
+                async with websockets.connect(url, max_size=10 * 1024 * 1024) as ws:
+                    attempt = 0  # reset backoff on successful connect
+                    send_task = asyncio.create_task(self._send_loop(ws))
+                    recv_task = asyncio.create_task(self._recv_loop(ws))
+                    # Use FIRST_COMPLETED so a normal recv-loop return (connection
+                    # closed cleanly) cancels the send-loop rather than leaving it
+                    # blocked forever on queue.get().
+                    done, pending = await asyncio.wait(
+                        {send_task, recv_task}, return_when=asyncio.FIRST_COMPLETED
+                    )
+                    for t in pending:
+                        t.cancel()
+                    await asyncio.gather(*pending, return_exceptions=True)
+                    for t in done:
+                        if not t.cancelled():
+                            exc = t.exception()
+                            if exc:
+                                raise exc
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                logger.warning(
+                    "term_bridge_disconnected bot_id=%s error=%s attempt=%d",
+                    self._bot_id, exc, attempt,
+                )
+
+            if not self._running:
+                break
+            delay = self._RECONNECT_BACKOFF[min(attempt, len(self._RECONNECT_BACKOFF) - 1)]
+            attempt += 1
+            try:
+                await asyncio.sleep(delay)
+            except asyncio.CancelledError:
+                return
 
     async def _send_loop(self, ws: Any) -> None:
         while self._running:
@@ -228,7 +252,6 @@ class TermBridge:
         session = getattr(self._bot, "session", None)
         if session is None:
             return
-        data = data.replace("\\r", "\r").replace("\\n", "\n")
         with contextlib.suppress(Exception):
             await session.send(data)
 

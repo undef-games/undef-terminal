@@ -289,6 +289,9 @@ class TelnetTransport:
         except (ConnectionResetError, BrokenPipeError, RuntimeError):  # pragma: no cover
             pass
         finally:
+            for t in list(self._tasks):
+                t.cancel()
+            self._tasks.clear()
             self._writer = None
             self._reader = None
             self._rx_buf.clear()

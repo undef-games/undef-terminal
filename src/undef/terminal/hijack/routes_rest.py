@@ -29,11 +29,9 @@ except ImportError as _e:  # pragma: no cover
 import logging
 
 from undef.terminal.hijack.models import (
-    BotTermState,
     HijackAcquireRequest,
     HijackHeartbeatRequest,
     HijackSendRequest,
-    HijackSession,
     extract_prompt_id,
 )
 
@@ -54,11 +52,11 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         if request is None:
             request = HijackAcquireRequest()
         await hub._cleanup_expired_hijack(bot_id)
-        st = await hub._get(bot_id)
-        if st.worker_ws is None:
+
+        # Quick worker check before acquiring the lock (avoids waiting on I/O).
+        st_pre = await hub._get(bot_id)
+        if st_pre.worker_ws is None:
             return JSONResponse({"error": "No worker connected for this bot."}, status_code=409)
-        if st.hijack_owner is not None or hub._is_rest_session_active(st):
-            return JSONResponse({"error": "Bot is already hijacked."}, status_code=409)
 
         lease_s = hub._clamp_lease(request.lease_s)
         hijack_id = str(uuid.uuid4())
@@ -70,15 +68,21 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         if not ok:
             return JSONResponse({"error": "No worker connected for this bot."}, status_code=409)
 
-        async with hub._lock:
-            st2 = hub._bots.setdefault(bot_id, BotTermState())
-            st2.hijack_session = HijackSession(
-                hijack_id=hijack_id,
-                owner=request.owner,
-                acquired_at=now,
-                lease_expires_at=now + lease_s,
-                last_heartbeat=now,
+        # Atomically check for concurrent hijackers and write the session.
+        acquired, err = await hub._try_acquire_rest_hijack(
+            bot_id,
+            owner=request.owner,
+            lease_s=lease_s,
+            hijack_id=hijack_id,
+            now=now,
+        )
+        if not acquired:
+            # Another request raced in and acquired the hijack; send resume to undo our pause.
+            await hub._send_worker(
+                bot_id,
+                {"type": "control", "action": "resume", "owner": request.owner, "lease_s": 0, "ts": now},
             )
+            return JSONResponse({"error": "Bot is already hijacked."}, status_code=409)
         hub._notify_hijack_changed(bot_id, enabled=True, owner=request.owner)
         await hub._append_event(
             bot_id, "hijack_acquired", {"hijack_id": hijack_id, "owner": request.owner, "lease_s": lease_s}

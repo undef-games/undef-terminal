@@ -19,6 +19,7 @@ from undef.terminal.transports.telnet import (
     NAWS,
     WILL,
     TelnetClient,
+    TelnetTransport,
     start_telnet_server,
 )
 
@@ -138,3 +139,65 @@ class TestStartTelnetServer:
             await server.wait_closed()
 
         assert data == b"", "server writer was not closed after handler returned"
+
+
+# ---------------------------------------------------------------------------
+# Regression: TelnetTransport cancels in-flight negotiation tasks on disconnect
+# ---------------------------------------------------------------------------
+
+
+class TestTelnetTransportTasksCleanup:
+    async def test_disconnect_cancels_pending_tasks(self, free_port: int) -> None:
+        """Regression: disconnect() must cancel and clear any in-flight negotiation tasks.
+
+        Previously self._tasks was not touched in disconnect(), leaving orphaned
+        asyncio tasks running against a closed writer on repeated connect/disconnect
+        cycles.
+        """
+        transport = TelnetTransport()
+
+        # Connect to a simple echo-type server that accepts and closes.
+        handler_ready = asyncio.Event()
+
+        async def handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+            handler_ready.set()
+            # Keep writer open long enough for connect to succeed, then close.
+            await asyncio.sleep(0.2)
+            writer.close()
+
+        server = await start_telnet_server(handler, host="127.0.0.1", port=free_port)
+        try:
+            await transport.connect("127.0.0.1", free_port)
+            await asyncio.wait_for(handler_ready.wait(), timeout=2.0)
+            # Inject a fake task into _tasks to simulate in-flight negotiation.
+            fake_task = asyncio.create_task(asyncio.sleep(60))
+            transport._tasks.add(fake_task)
+            assert not fake_task.cancelled()
+
+            await transport.disconnect()
+
+            # Yield to let the cancellation propagate.
+            await asyncio.sleep(0)
+
+            # After disconnect, _tasks must be empty and the fake task cancelled.
+            assert len(transport._tasks) == 0
+            assert fake_task.cancelled()
+        finally:
+            server.close()
+            await server.wait_closed()
+
+    async def test_disconnect_noop_when_tasks_empty(self, free_port: int) -> None:
+        """disconnect() with no pending tasks must not raise."""
+        transport = TelnetTransport()
+
+        async def handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+            writer.close()
+
+        server = await start_telnet_server(handler, host="127.0.0.1", port=free_port)
+        try:
+            await transport.connect("127.0.0.1", free_port)
+            assert len(transport._tasks) == 0
+            await transport.disconnect()  # must not raise
+        finally:
+            server.close()
+            await server.wait_closed()

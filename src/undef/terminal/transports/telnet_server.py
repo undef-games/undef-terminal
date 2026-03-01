@@ -12,6 +12,7 @@ a caller-supplied async handler.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
@@ -109,6 +110,8 @@ async def start_telnet_server(
             await handler(reader, writer)
         finally:
             writer.close()
+            with contextlib.suppress(Exception):
+                await writer.wait_closed()
 
     server = await asyncio.start_server(_client_cb, host, port)
     logger.info("telnet server started host=%s port=%d", host, port)

@@ -163,9 +163,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         await hub._broadcast_hijack_state(bot_id)
 
                 elif mtype == "hijack_request":
-                    st_now = await hub._get(bot_id)
-                    if st_now.hijack_owner is None and not hub._is_rest_session_active(st_now):
-                        await hub._set_hijack_owner(bot_id, websocket)
+                    acquired, err = await hub._try_acquire_ws_hijack(bot_id, websocket)
+                    if acquired:
                         ok = await hub._send_worker(
                             bot_id,
                             {
@@ -190,10 +189,13 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         hub._notify_hijack_changed(bot_id, enabled=True, owner="dashboard")
                         await hub._append_event(bot_id, "hijack_acquired", {"owner": "dashboard_ws"})
                     else:
+                        msg_text = (
+                            "No worker connected for this bot."
+                            if err == "no_worker"
+                            else "Already hijacked by another client."
+                        )
                         await websocket.send_text(
-                            json.dumps(
-                                {"type": "error", "message": "Already hijacked by another client."}, ensure_ascii=True
-                            )
+                            json.dumps({"type": "error", "message": msg_text}, ensure_ascii=True)
                         )
                         await websocket.send_text(
                             json.dumps(await hub._hijack_state_msg_for(bot_id, websocket), ensure_ascii=True)
@@ -262,13 +264,21 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         except Exception as exc:  # pragma: no cover
             logger.warning("term_browser_ws_error bot_id=%s error=%s", bot_id, exc)
         finally:
-            was_owner = await hub._is_owner(bot_id, websocket)
+            # Atomically detect ownership and clear it in one lock block to avoid
+            # a race where _is_owner() returns True but another coroutine steals
+            # hijack_owner before we get to clear it (or vice-versa).
             async with hub._lock:
                 st3 = hub._bots.get(bot_id)
+                was_owner = (
+                    st3 is not None
+                    and hub._is_dashboard_hijack_active(st3)
+                    and st3.hijack_owner is websocket
+                )
                 if st3 is not None:
                     st3.browsers.discard(websocket)
-                    if was_owner and st3.hijack_owner is websocket:
+                    if was_owner:
                         st3.hijack_owner = None
+                        st3.hijack_owner_expires_at = None
             if was_owner:
                 await hub._send_worker(
                     bot_id,

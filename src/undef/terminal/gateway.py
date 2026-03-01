@@ -195,7 +195,7 @@ class SshWsGateway:
         if self._server_key:
             host_keys = [asyncssh.read_private_key(str(self._server_key))]
         else:
-            host_keys = [asyncssh.generate_private_key("ssh-rsa")]
+            host_keys = [asyncssh.generate_private_key("ssh-ed25519")]
 
         async def _process_handler(process: asyncssh.SSHServerProcess) -> None:  # pragma: no cover
             try:

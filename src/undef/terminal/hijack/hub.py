@@ -277,6 +277,57 @@ class TermHub:
                     st2.worker_ws = None
             return False
 
+    async def _try_acquire_rest_hijack(
+        self,
+        bot_id: str,
+        *,
+        owner: str,
+        lease_s: int,
+        hijack_id: str,
+        now: float,
+    ) -> tuple[bool, str | None]:
+        """Atomically check availability and create a REST hijack session.
+
+        Must be called *after* confirming the worker is present via
+        :meth:`_send_worker`; this method only guards against concurrent
+        hijack requests racing to write the session.
+
+        Returns:
+            ``(True, None)`` on success.
+            ``(False, "already_hijacked")`` if another session is active.
+        """
+        async with self._lock:
+            st = self._bots.setdefault(bot_id, BotTermState())
+            if st.hijack_owner is not None or self._is_rest_session_active(st):
+                return False, "already_hijacked"
+            st.hijack_session = HijackSession(
+                hijack_id=hijack_id,
+                owner=owner,
+                acquired_at=now,
+                lease_expires_at=now + lease_s,
+                last_heartbeat=now,
+            )
+        return True, None
+
+    async def _try_acquire_ws_hijack(self, bot_id: str, ws: WebSocket) -> tuple[bool, str | None]:
+        """Atomically check availability and set the dashboard WS hijack owner.
+
+        Returns:
+            ``(True, None)`` on success.
+            ``(False, "no_worker")`` if no worker is connected.
+            ``(False, "already_hijacked")`` if another hijack is active.
+        """
+        async with self._lock:
+            st = self._bots.get(bot_id)
+            if st is None or st.worker_ws is None:
+                return False, "no_worker"
+            if st.hijack_owner is not None or self._is_rest_session_active(st):
+                return False, "already_hijacked"
+            ttl = self._dashboard_hijack_lease_s
+            st.hijack_owner = ws
+            st.hijack_owner_expires_at = time.time() + ttl
+        return True, None
+
     async def _set_hijack_owner(self, bot_id: str, owner: WebSocket | None, lease_s: int | None = None) -> None:
         async with self._lock:
             st = self._bots.setdefault(bot_id, BotTermState())

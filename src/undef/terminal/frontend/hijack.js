@@ -314,6 +314,12 @@ class UndefHijack {
         // {type, hijacked, owner: "me"|"other"|null, lease_expires_at}
         this._hijacked = !!msg.hijacked;
         this._hijackedByMe = msg.owner === 'me';
+        // Keep the heartbeat interval in sync with ownership.
+        if (this._hijackedByMe) {
+          this._startHeartbeat();
+        } else {
+          this._clearHeartbeat();
+        }
         this._updateStatus();
         this._updateButtons();
         break;

@@ -82,11 +82,26 @@ class TestTermBridgeAttachSession:
 
 
 class TestTermBridgeHelpers:
-    async def test_send_keys_decodes_escapes(self) -> None:
+    async def test_send_keys_passes_data_verbatim(self) -> None:
+        """Regression: _send_keys must NOT convert \\r two-char sequences to CR.
+
+        The JS text-input bar already converts \\r → real CR before sending via
+        JSON, so Python receives an actual CR.  A literal backslash-r typed at
+        the keyboard should arrive at the terminal unchanged, not silently become
+        a carriage-return.
+        """
         session = MockSession()
         bot = MockBot(session)
         bridge = TermBridge(bot, "bot1", "http://localhost:8000")
         await bridge._send_keys("hello\\r")
+        assert session.sent == ["hello\\r"]  # no silent conversion
+
+    async def test_send_keys_real_cr_passes_through(self) -> None:
+        """A real carriage-return in the data is forwarded unchanged."""
+        session = MockSession()
+        bot = MockBot(session)
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        await bridge._send_keys("hello\r")
         assert session.sent == ["hello\r"]
 
     async def test_set_hijacked_calls_bot(self) -> None:
@@ -307,12 +322,15 @@ class TestRecvLoop:
         assert bot.step_calls == 1
 
     async def test_recv_loop_input(self) -> None:
+        """Regression: input data from the WS is forwarded verbatim (no escape conversion)."""
         session = MockSession()
         bot = MockBot(session)
         bridge = TermBridge(bot, "bot1", "http://localhost:8000")
         bridge._running = True
 
-        ws = MockWS([json.dumps({"type": "input", "data": "hello\\r"})])
+        # The JS text-input bar sends a real CR (\\r → \r before JSON encode).
+        # Simulate that: the JSON string contains a real CR character.
+        ws = MockWS([json.dumps({"type": "input", "data": "hello\r"})])
         await bridge._recv_loop(ws)
 
         assert session.sent == ["hello\r"]
