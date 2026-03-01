@@ -63,7 +63,14 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         now = time.time()
         ok = await hub._send_worker(
             bot_id,
-            {"type": "control", "action": "pause", "owner": request.owner, "lease_s": lease_s, "ts": now},
+            {
+                "type": "control",
+                "action": "pause",
+                "owner": request.owner,
+                "lease_s": lease_s,
+                "hijack_id": hijack_id,
+                "ts": now,
+            },
         )
         if not ok:
             return JSONResponse({"error": "No worker connected for this bot."}, status_code=409)
@@ -78,9 +85,17 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         )
         if not acquired:
             # Another request raced in and acquired the hijack; send resume to undo our pause.
+            # Include hijack_id so the worker can correlate it with our pause message.
             await hub._send_worker(
                 bot_id,
-                {"type": "control", "action": "resume", "owner": request.owner, "lease_s": 0, "ts": now},
+                {
+                    "type": "control",
+                    "action": "resume",
+                    "owner": request.owner,
+                    "lease_s": 0,
+                    "hijack_id": hijack_id,
+                    "ts": now,
+                },
             )
             return JSONResponse({"error": "Bot is already hijacked."}, status_code=409)
         hub._notify_hijack_changed(bot_id, enabled=True, owner=request.owner)

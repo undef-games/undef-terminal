@@ -13,6 +13,7 @@ Requires the ``websocket`` extra::
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import re
 import time
@@ -88,11 +89,16 @@ class TermHub:
         cb = self._on_hijack_changed
         if cb is None:
             return
-        import inspect
-
         result = cb(bot_id, enabled, owner)
         if inspect.isawaitable(result):
-            asyncio.create_task(result)  # type: ignore[arg-type]
+            task = asyncio.create_task(result)  # type: ignore[arg-type]
+            task.add_done_callback(
+                lambda t: logger.warning(
+                    "on_hijack_changed callback raised bot_id=%s error=%s", bot_id, t.exception()
+                )
+                if not t.cancelled() and t.exception() is not None
+                else None
+            )
 
     async def _append_event(self, bot_id: str, event_type: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
         payload = data or {}
@@ -228,18 +234,30 @@ class TermHub:
                         st2.browsers.discard(ws)
 
     async def _broadcast_hijack_state(self, bot_id: str) -> None:
-        st = await self._get(bot_id)
+        # Snapshot all mutable fields under the lock so that concurrent hijack
+        # state changes during the async broadcast loop don't produce inconsistent
+        # per-client messages (e.g. owner changing between two send_text awaits).
+        async with self._lock:
+            st = self._bots.get(bot_id)
+            if st is None:
+                return
+            browsers = list(st.browsers)
+            hijack_owner = st.hijack_owner
+            is_hijacked = self._is_hijacked(st)
+            is_dashboard = self._is_dashboard_hijack_active(st)
+            is_rest = self._is_rest_session_active(st)
+            lease_expires_at = (
+                st.hijack_session.lease_expires_at
+                if is_rest and st.hijack_session is not None
+                else st.hijack_owner_expires_at
+            )
+
         dead: set[WebSocket] = set()
-        lease_expires_at = (
-            st.hijack_session.lease_expires_at
-            if self._is_rest_session_active(st) and st.hijack_session is not None
-            else st.hijack_owner_expires_at
-        )
-        for ws in list(st.browsers):
+        for ws in browsers:
             try:
-                if self._is_dashboard_hijack_active(st) and st.hijack_owner is ws:
-                    owner = "me"
-                elif self._is_dashboard_hijack_active(st) or self._is_rest_session_active(st):
+                if is_dashboard and hijack_owner is ws:
+                    owner: str | None = "me"
+                elif is_dashboard or is_rest:
                     owner = "other"
                 else:
                     owner = None
@@ -247,7 +265,7 @@ class TermHub:
                     json.dumps(
                         {
                             "type": "hijack_state",
-                            "hijacked": self._is_hijacked(st),
+                            "hijacked": is_hijacked,
                             "owner": owner,
                             "lease_expires_at": lease_expires_at,
                         },

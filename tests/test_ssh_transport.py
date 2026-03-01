@@ -148,77 +148,123 @@ class TestSSHStreamWriterEdgeCases:
 
 class TestTerminalSSHServer:
     def test_connection_made_increments_count(self) -> None:
-        from undef.terminal.transports.ssh import TerminalSSHServer, _ip_connections
+        from undef.terminal.transports.ssh import TerminalSSHServer
 
-        _ip_connections.clear()
-        server = TerminalSSHServer()
+        ip_connections: dict = {}
+        server = TerminalSSHServer(ip_connections, max_connections_per_ip=5)
         conn = MagicMock()
         conn.get_extra_info = MagicMock(return_value=("127.0.0.1", 12345))
         server.connection_made(conn)
-        assert _ip_connections.get("127.0.0.1", 0) >= 1
-        _ip_connections.clear()
+        assert ip_connections.get("127.0.0.1", 0) >= 1
 
     def test_connection_made_rate_limit(self) -> None:
-        from undef.terminal.transports.ssh import TerminalSSHServer, _ip_connections
+        from undef.terminal.transports.ssh import TerminalSSHServer
 
-        _ip_connections.clear()
-        _ip_connections["10.0.0.1"] = 10  # over limit
-        server = TerminalSSHServer()
+        ip_connections: dict = {"10.0.0.1": 10}  # over limit
+        server = TerminalSSHServer(ip_connections, max_connections_per_ip=5)
         conn = MagicMock()
         conn.get_extra_info = MagicMock(return_value=("10.0.0.1", 5678))
         server.connection_made(conn)
         conn.close.assert_called_once()
-        _ip_connections.clear()
 
     def test_connection_made_no_peer(self) -> None:
-        from undef.terminal.transports.ssh import TerminalSSHServer, _ip_connections
+        from undef.terminal.transports.ssh import TerminalSSHServer
 
-        _ip_connections.clear()
-        server = TerminalSSHServer()
+        ip_connections: dict = {}
+        server = TerminalSSHServer(ip_connections, max_connections_per_ip=5)
         conn = MagicMock()
         conn.get_extra_info = MagicMock(return_value=None)
         # Should not raise even with no peer info
         server.connection_made(conn)
-        _ip_connections.clear()
 
     def test_connection_lost_decrements_count(self) -> None:
-        from undef.terminal.transports.ssh import TerminalSSHServer, _ip_connections
+        from undef.terminal.transports.ssh import TerminalSSHServer
 
-        _ip_connections.clear()
-        _ip_connections["127.0.0.1"] = 2
-        server = TerminalSSHServer()
+        ip_connections: dict = {"127.0.0.1": 2}
+        server = TerminalSSHServer(ip_connections, max_connections_per_ip=5)
         server._peer_ip = "127.0.0.1"
         server.connection_lost(None)
-        assert _ip_connections.get("127.0.0.1") == 1
-        _ip_connections.clear()
+        assert ip_connections.get("127.0.0.1") == 1
 
     def test_connection_lost_removes_zero_count(self) -> None:
-        from undef.terminal.transports.ssh import TerminalSSHServer, _ip_connections
+        from undef.terminal.transports.ssh import TerminalSSHServer
 
-        _ip_connections.clear()
-        _ip_connections["127.0.0.1"] = 1
-        server = TerminalSSHServer()
+        ip_connections: dict = {"127.0.0.1": 1}
+        server = TerminalSSHServer(ip_connections, max_connections_per_ip=5)
         server._peer_ip = "127.0.0.1"
         server.connection_lost(None)
-        assert "127.0.0.1" not in _ip_connections
+        assert "127.0.0.1" not in ip_connections
 
     def test_connection_lost_unknown_ip_noop(self) -> None:
-        from undef.terminal.transports.ssh import TerminalSSHServer, _ip_connections
+        from undef.terminal.transports.ssh import TerminalSSHServer
 
-        _ip_connections.clear()
-        server = TerminalSSHServer()
+        ip_connections: dict = {}
+        server = TerminalSSHServer(ip_connections, max_connections_per_ip=5)
         server._peer_ip = "unknown_ip"
         server.connection_lost(None)  # should not raise
 
     def test_auth_methods(self) -> None:
         from undef.terminal.transports.ssh import TerminalSSHServer
 
-        server = TerminalSSHServer()
+        server = TerminalSSHServer({}, max_connections_per_ip=5)
         assert server.begin_auth("user") is True
         assert server.password_auth_supported() is True
         assert server.validate_password("user", "pass") is True
         assert server.public_key_auth_supported() is True
         assert server.validate_public_key("user", MagicMock()) is True
+
+
+class TestSSHPerInstanceIsolation:
+    """Regression: fix 5 — two server instances must not share connection counts."""
+
+    def test_two_factories_have_independent_counts(self) -> None:
+        """Regression: _make_ssh_server_factory creates isolated ip_connections per call."""
+        from undef.terminal.transports.ssh import _make_ssh_server_factory
+
+        ip_a: dict = {}
+        ip_b: dict = {}
+        factory_a = _make_ssh_server_factory(ip_a, max_connections_per_ip=5)
+        factory_b = _make_ssh_server_factory(ip_b, max_connections_per_ip=5)
+
+        server_a = factory_a()
+        conn_a = MagicMock()
+        conn_a.get_extra_info = MagicMock(return_value=("1.2.3.4", 1000))
+        server_a.connection_made(conn_a)
+
+        # server_a's connection must appear in ip_a but NOT in ip_b
+        assert ip_a.get("1.2.3.4", 0) >= 1
+        assert ip_b.get("1.2.3.4", 0) == 0
+
+        # server_b should independently track its own connections
+        server_b = factory_b()
+        conn_b = MagicMock()
+        conn_b.get_extra_info = MagicMock(return_value=("5.6.7.8", 2000))
+        server_b.connection_made(conn_b)
+        assert ip_b.get("5.6.7.8", 0) >= 1
+        assert ip_a.get("5.6.7.8", 0) == 0
+
+    def test_rate_limit_applies_per_instance(self) -> None:
+        """Regression: per-IP limit is scoped to each server instance."""
+        from undef.terminal.transports.ssh import _make_ssh_server_factory
+
+        ip_a: dict = {"10.0.0.1": 3}   # 3 connections in server A
+        ip_b: dict = {}                  # 0 connections in server B
+        factory_a = _make_ssh_server_factory(ip_a, max_connections_per_ip=3)
+        factory_b = _make_ssh_server_factory(ip_b, max_connections_per_ip=3)
+
+        server_a = factory_a()
+        conn_a = MagicMock()
+        conn_a.get_extra_info = MagicMock(return_value=("10.0.0.1", 9999))
+        server_a.connection_made(conn_a)
+        # server_a should reject (at limit)
+        conn_a.close.assert_called_once()
+
+        server_b = factory_b()
+        conn_b = MagicMock()
+        conn_b.get_extra_info = MagicMock(return_value=("10.0.0.1", 9999))
+        server_b.connection_made(conn_b)
+        # server_b should accept (not at limit in its own dict)
+        conn_b.close.assert_not_called()
 
 
 class TestGetOrCreateHostKey:

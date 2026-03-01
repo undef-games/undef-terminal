@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import time
 from pathlib import Path
@@ -52,7 +53,8 @@ class SessionLogger:
         async with self._lock:
             if self._file:
                 await self._write_event_unlocked("log_stop", {})
-                self._file.close()
+                with contextlib.suppress(OSError):
+                    self._file.close()
                 self._file = None
 
     async def log_send(self, keys: str) -> None:
@@ -111,3 +113,4 @@ class SessionLogger:
             if "action" in ctx:
                 record["action"] = ctx["action"]
         self._file.write(json.dumps(record, ensure_ascii=True) + "\n")
+        self._file.flush()

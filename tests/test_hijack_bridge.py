@@ -515,3 +515,51 @@ class TestRunLoop:
 
         # Should not raise
         await bridge._send_snapshot(_BrokenWs())
+
+
+# ---------------------------------------------------------------------------
+# Fix 6 regression — dropped frames logged at DEBUG when queue is full
+# ---------------------------------------------------------------------------
+
+
+class TestTermBridgeDroppedFrameLogging:
+    """Regression fix 6: queue-full drops must be logged at DEBUG level."""
+
+    def test_watch_logs_debug_on_queue_full(self, caplog) -> None:
+        """Regression fix 6: when the send queue is full, a debug log is emitted for each dropped frame."""
+        import logging
+
+        session = MockSession()
+        bot = MockBot(session)
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge.attach_session()
+
+        # Fill the queue to capacity
+        for _ in range(bridge._send_q.maxsize):
+            bridge._send_q.put_nowait({"type": "term", "data": "x", "ts": 0.0})
+
+        watch_fn = session._watches[0]
+
+        with caplog.at_level(logging.DEBUG, logger="undef.terminal.hijack.bridge"):
+            # This call should drop the frame and emit a debug log
+            watch_fn({"screen": "test"}, b"dropped data")
+
+        assert any("term_bridge_drop" in r.message for r in caplog.records), (
+            "expected debug log for dropped frame when queue is full"
+        )
+
+    def test_watch_does_not_log_when_queue_has_space(self, caplog) -> None:
+        """Regression fix 6: no debug log when the queue is not full."""
+        import logging
+
+        session = MockSession()
+        bot = MockBot(session)
+        bridge = TermBridge(bot, "bot1", "http://localhost:8000")
+        bridge.attach_session()
+
+        watch_fn = session._watches[0]
+
+        with caplog.at_level(logging.DEBUG, logger="undef.terminal.hijack.bridge"):
+            watch_fn({"screen": "test"}, b"normal data")
+
+        assert not any("term_bridge_drop" in r.message for r in caplog.records)

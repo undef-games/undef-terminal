@@ -104,3 +104,42 @@ class TestSessionLoggerExtra:
         logger = SessionLogger(tmp_path / "test.jsonl")
         # Should not raise even with no file open
         await logger._write_event("test_event", {"data": "value"})
+
+
+class TestSessionLoggerFlushRegression:
+    """Regression tests for fix 1: flush() called after write; close() OSError suppressed."""
+
+    async def test_flush_called_after_every_write(self, tmp_path: Path) -> None:
+        """Regression fix 1: file.flush() must be called after each write to prevent data loss on crash."""
+        from unittest.mock import MagicMock
+
+        log = SessionLogger(tmp_path / "flush_test.jsonl")
+        await log.start(session_id=99)
+
+        mock_file = MagicMock()
+        log._file = mock_file
+
+        await log.log_event("ping", {"x": 1})
+
+        # Each write must be followed by a flush
+        assert mock_file.flush.called, "flush() was not called after write()"
+        write_calls = mock_file.write.call_count
+        flush_calls = mock_file.flush.call_count
+        assert flush_calls >= write_calls, "flush() must be called at least once per write()"
+
+        log._file = None  # prevent stop() from closing the mock
+
+    async def test_stop_suppresses_oserror_on_close(self, tmp_path: Path) -> None:
+        """Regression fix 1: stop() must not propagate OSError from file.close()."""
+        from unittest.mock import MagicMock
+
+        log = SessionLogger(tmp_path / "close_err.jsonl")
+        await log.start(session_id=100)
+
+        mock_file = MagicMock()
+        mock_file.close = MagicMock(side_effect=OSError("disk full"))
+        log._file = mock_file
+
+        # Must not raise despite OSError from close()
+        await log.stop()
+        assert log._file is None

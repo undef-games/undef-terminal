@@ -630,3 +630,57 @@ def test_browser_hello_reflects_not_hijacked_when_no_session() -> None:
         hello = browser.receive_json()
         assert hello["type"] == "hello"
         assert hello["hijacked"] is False
+
+
+# ---------------------------------------------------------------------------
+# Fix 8 regression — last_snapshot captured inside lock at browser connect
+# ---------------------------------------------------------------------------
+
+
+def test_browser_receives_cached_snapshot_on_connect() -> None:
+    """Regression fix 8: last_snapshot must be captured inside the registration lock
+    and sent to the browser atomically to prevent stale reads."""
+    app, hub = make_app()
+
+    # Pre-populate a snapshot so the browser should receive it immediately on connect.
+    hub._bots["snap_bot"] = BotTermState(
+        last_snapshot={
+            "type": "snapshot",
+            "screen": "cached screen",
+            "cursor": {"x": 0, "y": 0},
+            "cols": 80,
+            "rows": 25,
+            "screen_hash": "hash_abc",
+            "cursor_at_end": True,
+            "has_trailing_space": False,
+            "prompt_detected": None,
+            "ts": 0.0,
+        }
+    )
+
+    with TestClient(app) as client, client.websocket_connect("/ws/bot/snap_bot/term") as browser:
+        _read_initial_browser_messages(browser)
+        # Third message must be the cached snapshot
+        snap = browser.receive_json()
+        assert snap["type"] == "snapshot"
+        assert snap["screen"] == "cached screen"
+
+
+def test_browser_requests_snapshot_when_none_cached() -> None:
+    """Regression fix 8: when no snapshot is cached, hub sends snapshot_req to worker."""
+    app, hub = make_app()
+
+    with (
+        TestClient(app) as client,
+        client.websocket_connect("/ws/worker/bot_nosnap/term") as worker,
+        client.websocket_connect("/ws/bot/bot_nosnap/term") as browser,
+    ):
+        # Drain worker's initial snapshot_req from connect
+        _read_worker_snapshot_req(worker)
+
+        # Browser joins — hub should send another snapshot_req since no snapshot cached
+        _read_initial_browser_messages(browser)
+
+        # Worker should have received a snapshot_req for the new browser connect
+        msg = worker.receive_json()
+        assert msg["type"] == "snapshot_req"

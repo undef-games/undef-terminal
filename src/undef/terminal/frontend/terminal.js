@@ -207,9 +207,17 @@ class UndefTerminal {
 
   // ── Frame Builders ────────────────────────────────────────────────────────
 
+  /** HTML-escape a string so it is safe to render via textContent assignment. */
+  _escHtml(s) {
+    const el = document.createElement('span');
+    el.textContent = String(s);
+    return el.innerHTML;
+  }
+
   _buildCRTFrame() {
     const uid = this._uid;
-    const label = this._config.title || 'Warp Agent Runtime Platform';
+    // Use _escHtml to prevent XSS when title comes from config/URL params.
+    const label = this._escHtml(this._config.title || 'Warp Agent Runtime Platform');
     return `
       <div class="terminal-frame">
         <div class="screen-inset">
@@ -230,7 +238,7 @@ class UndefTerminal {
 
   _buildBBSFrame() {
     const uid = this._uid;
-    const title = (this._config.title || 'Warp Agent Runtime Platform').toUpperCase();
+    const title = this._escHtml((this._config.title || 'Warp Agent Runtime Platform').toUpperCase());
     return `
       <div class="terminal-frame">
         <div class="frame-header">
@@ -252,7 +260,7 @@ class UndefTerminal {
 
   _buildGlassFrame() {
     const uid = this._uid;
-    const title = (this._config.title || 'Warp Agent Runtime Platform').toUpperCase();
+    const title = this._escHtml((this._config.title || 'Warp Agent Runtime Platform').toUpperCase());
     return `
       <div class="terminal-frame">
         <div class="frame-titlebar">${title}</div>

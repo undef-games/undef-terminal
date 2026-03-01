@@ -112,12 +112,17 @@ class TermBridge:
         self._attached_session = session
 
         def _watch(snapshot: dict[str, Any], raw: bytes) -> None:
+            # Called from the session's watcher thread (same event loop thread as
+            # the bridge tasks).  Writing _latest_snapshot here is safe because all
+            # accesses happen on the single asyncio event-loop thread.
             self._latest_snapshot = snapshot
             if not raw:
                 return
             text = raw.decode("cp437", errors="replace")
-            with contextlib.suppress(asyncio.QueueFull):
+            try:
                 self._send_q.put_nowait({"type": "term", "data": text, "ts": time.time()})
+            except asyncio.QueueFull:
+                logger.debug("term_bridge_drop bot_id=%s queue_full", self._bot_id)
 
         session.add_watch(_watch, interval_s=0.0)
 

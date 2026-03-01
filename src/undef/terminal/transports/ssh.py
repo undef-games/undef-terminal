@@ -31,8 +31,6 @@ except ImportError as _e:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
-_MAX_CONNECTIONS_PER_IP = 5
-_ip_connections: dict[str, int] = {}
 
 ConnectionHandler = Callable[
     [Any, Any],  # (SSHStreamReader, SSHStreamWriter)
@@ -104,32 +102,45 @@ class SSHStreamWriter:
 
 
 class TerminalSSHServer(asyncssh.SSHServer):
-    """SSH server that accepts all credentials (session handler performs auth)."""
+    """SSH server that accepts all credentials (session handler performs auth).
 
-    def __init__(self) -> None:
+    Each server instance gets its own ``ip_connections`` dict and
+    ``max_connections_per_ip`` limit, passed via
+    :func:`_make_ssh_server_factory`.  This avoids the module-global state
+    that caused different server instances to share connection counts and
+    overwrite each other's per-IP limit.
+    """
+
+    def __init__(
+        self,
+        ip_connections: dict[str, int],
+        max_connections_per_ip: int,
+    ) -> None:
         super().__init__()
         self._peer_ip: str = ""
+        self._ip_connections = ip_connections
+        self._max_connections_per_ip = max_connections_per_ip
 
     def connection_made(self, conn: asyncssh.SSHServerConnection) -> None:
         peer = conn.get_extra_info("peername")
         peer_ip = peer[0] if peer else ""
         addr = f"{peer[0]}:{peer[1]}" if peer else "unknown"
 
-        count = _ip_connections.get(peer_ip, 0)
-        if count >= _MAX_CONNECTIONS_PER_IP:
+        count = self._ip_connections.get(peer_ip, 0)
+        if count >= self._max_connections_per_ip:
             logger.warning("ssh connection rejected: per-IP limit exceeded addr=%s count=%d", addr, count)
             conn.close()
             return
 
         self._peer_ip = peer_ip
-        _ip_connections[self._peer_ip] = count + 1
+        self._ip_connections[self._peer_ip] = count + 1
         logger.info("ssh connection made addr=%s", addr)
 
     def connection_lost(self, exc: Exception | None) -> None:
-        if self._peer_ip and self._peer_ip in _ip_connections:
-            _ip_connections[self._peer_ip] -= 1
-            if _ip_connections[self._peer_ip] <= 0:
-                del _ip_connections[self._peer_ip]
+        if self._peer_ip and self._peer_ip in self._ip_connections:
+            self._ip_connections[self._peer_ip] -= 1
+            if self._ip_connections[self._peer_ip] <= 0:
+                del self._ip_connections[self._peer_ip]
 
     def begin_auth(self, username: str) -> bool:
         return True
@@ -145,6 +156,19 @@ class TerminalSSHServer(asyncssh.SSHServer):
 
     def validate_public_key(self, username: str, key: asyncssh.SSHKey) -> bool:  # noqa: ARG002
         return True
+
+
+def _make_ssh_server_factory(
+    ip_connections: dict[str, int],
+    max_connections_per_ip: int,
+) -> type[TerminalSSHServer]:
+    """Return a zero-arg factory class that passes per-server state to each instance."""
+
+    class _BoundServer(TerminalSSHServer):
+        def __init__(self) -> None:
+            super().__init__(ip_connections, max_connections_per_ip)
+
+    return _BoundServer
 
 
 def _get_or_create_host_key(data_dir: Path) -> asyncssh.SSHKey:
@@ -187,8 +211,8 @@ async def start_ssh_server(
     Returns:
         The running asyncssh server instance.
     """
-    global _MAX_CONNECTIONS_PER_IP
-    _MAX_CONNECTIONS_PER_IP = max_connections_per_ip
+    ip_connections: dict[str, int] = {}
+    server_class = _make_ssh_server_factory(ip_connections, max_connections_per_ip)
 
     key_dir = host_key_path if host_key_path is not None else Path.cwd()
     host_key = _get_or_create_host_key(key_dir)
@@ -202,7 +226,7 @@ async def start_ssh_server(
 
     logger.info("ssh server starting host=%s port=%d", host, port)
     server = await asyncssh.create_server(
-        TerminalSSHServer,
+        server_class,
         host,
         port,
         server_host_keys=[host_key],

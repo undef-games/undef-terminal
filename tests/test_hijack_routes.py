@@ -544,3 +544,57 @@ def test_release_session_mismatch_inside_lock() -> None:
         r = client.post(f"/bot/bot1/hijack/{real_id}/release")
 
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Fix 3 regression — hijack_id propagated in pause / rollback-resume messages
+# ---------------------------------------------------------------------------
+
+
+def test_acquire_pause_message_contains_hijack_id() -> None:
+    """Regression fix 3: pause control message sent to worker must include hijack_id for correlation."""
+    app, hub = make_app()
+    mock_ws = AsyncMock()
+    hub._bots["bot1"] = BotTermState(worker_ws=mock_ws)
+
+    with TestClient(app) as client:
+        r = client.post("/bot/bot1/hijack/acquire", json={"owner": "test", "lease_s": 60})
+
+    assert r.status_code == 200
+    hijack_id = r.json()["hijack_id"]
+
+    # The pause message sent to the worker must include hijack_id
+    mock_ws.send_text.assert_awaited()
+    import json as _json
+    sent_calls = [_json.loads(call.args[0]) for call in mock_ws.send_text.await_args_list]
+    pause_msgs = [m for m in sent_calls if m.get("type") == "control" and m.get("action") == "pause"]
+    assert pause_msgs, "No pause control message sent to worker"
+    assert pause_msgs[0].get("hijack_id") == hijack_id, "hijack_id missing from pause message"
+
+
+def test_acquire_rollback_resume_contains_hijack_id() -> None:
+    """Regression fix 3: rollback resume sent on race loss must include hijack_id."""
+    import asyncio as _asyncio
+    import json as _json
+
+    app, hub = make_app()
+    mock_ws = AsyncMock()
+
+    # Pre-inject an active session so _try_acquire_rest_hijack returns (False, ...)
+    existing_id = str(uuid.uuid4())
+    hub._bots["bot1"] = BotTermState(
+        worker_ws=mock_ws,
+        hijack_session=_active_session(existing_id, "owner_a"),
+    )
+
+    with TestClient(app) as client:
+        r = client.post("/bot/bot1/hijack/acquire", json={"owner": "owner_b", "lease_s": 60})
+
+    # The acquire should fail with 409
+    assert r.status_code == 409
+
+    # The rollback resume must have been sent with hijack_id
+    sent_calls = [_json.loads(call.args[0]) for call in mock_ws.send_text.await_args_list]
+    resume_msgs = [m for m in sent_calls if m.get("type") == "control" and m.get("action") == "resume"]
+    assert resume_msgs, "No rollback resume message sent"
+    assert "hijack_id" in resume_msgs[0], "hijack_id missing from rollback resume message"
