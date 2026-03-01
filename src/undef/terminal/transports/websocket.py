@@ -41,7 +41,7 @@ class WebSocketStreamReader:
         while len(self._buffer) < n:
             try:
                 text = await self._ws.receive_text()
-                self._buffer.extend(text.encode("latin-1", errors="replace"))
+                self._buffer.extend(text.encode("utf-8"))
             except (WebSocketDisconnect, RuntimeError):
                 self._closed = True
                 return b""

@@ -53,6 +53,16 @@ class TestWebSocketStreamReader:
         data = await reader.read(1)
         assert data == b""
 
+    async def test_read_non_ascii_utf8_roundtrip(self) -> None:
+        """Non-ASCII text from the browser must survive the encode step intact."""
+        ws = _make_ws()
+        text = "→ café 🎮"
+        encoded = text.encode("utf-8")
+        ws.receive_text.return_value = text
+        reader = WebSocketStreamReader(ws)
+        data = await reader.read(len(encoded))
+        assert data == encoded
+
     async def test_closed_returns_empty_immediately(self) -> None:
         ws = _make_ws()
         reader = WebSocketStreamReader(ws)
