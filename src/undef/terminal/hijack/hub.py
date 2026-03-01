@@ -219,9 +219,15 @@ class TermHub:
                 return False, None, f"invalid expect_regex: {exc}"
 
         if not expect_prompt_id and regex_obj is None:
+            # No guard constraints: return the most recently cached snapshot.
+            # Contract: callers receive whatever was last broadcast by the worker;
+            # the value may be stale if the worker has been idle.  A snapshot_req
+            # is fired so the next caller gets a fresher value, but this call does
+            # not wait for the worker's response.
             async with self._lock:
                 st = self._workers.get(worker_id)
                 snap = st.last_snapshot if st is not None else None
+            await self._request_snapshot(worker_id)
             return True, snap, None
 
         end = time.time() + max(50, timeout_ms) / 1000.0

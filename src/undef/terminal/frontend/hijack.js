@@ -101,8 +101,7 @@ class UndefHijack {
 
   /** Tear down entirely: xterm, WebSocket, ResizeObserver, and DOM. */
   dispose() {
-    this.disconnect();
-    if (this._ro) { this._ro.disconnect(); this._ro = null; }
+    this.disconnect(); // handles _ro, _heartbeatTimer, _ws, _reconnectTimer
     if (this._term) { this._term.dispose(); this._term = null; }
     this._fitAddon = null;
     if (this._root && this._root.parentNode) {

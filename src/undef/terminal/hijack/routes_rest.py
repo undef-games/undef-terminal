@@ -250,9 +250,17 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
             if st is None:  # pragma: no cover
                 rows: list[dict[str, Any]] = []
                 latest_seq = 0
+                fresh_expires = hs.lease_expires_at
             else:
                 rows = [evt for evt in list(st.events) if int(evt.get("seq", 0)) > after_seq][:limit]
                 latest_seq = st.event_seq
+                # Re-read under lock: a concurrent heartbeat may have extended
+                # the lease since _get_rest_session returned.
+                fresh_expires = (
+                    st.hijack_session.lease_expires_at
+                    if st.hijack_session is not None and st.hijack_session.hijack_id == hijack_id
+                    else hs.lease_expires_at
+                )
         return {
             "ok": True,
             "worker_id": worker_id,
@@ -260,7 +268,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
             "after_seq": after_seq,
             "latest_seq": latest_seq,
             "events": rows,
-            "lease_expires_at": hs.lease_expires_at,
+            "lease_expires_at": fresh_expires,
         }
 
     @router.post("/worker/{worker_id}/hijack/{hijack_id}/send")

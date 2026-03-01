@@ -170,9 +170,19 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                 mtype = msg_b.get("type")
 
                 if mtype == "snapshot_req":
-                    # Atomically verify ownership and extend lease in one lock block.
-                    await hub._touch_if_owner(worker_id, websocket)
-                    await hub._request_snapshot(worker_id)
+                    # Touch the lease if this browser is the owner (extends it).
+                    is_owner = await hub._touch_if_owner(worker_id, websocket) is not None
+                    if is_owner:
+                        await hub._request_snapshot(worker_id)
+                    else:
+                        # Non-owner viewers may request snapshots only when no
+                        # hijack is active — forwarding during an active hijack
+                        # disrupts the owner's _wait_for_guard prompt detection.
+                        async with hub._lock:
+                            _st = hub._workers.get(worker_id)
+                            _hijack_active = _st is not None and hub._is_hijacked(_st)
+                        if not _hijack_active:
+                            await hub._request_snapshot(worker_id)
 
                 elif mtype == "analyze_req":
                     if await hub._touch_if_owner(worker_id, websocket) is not None:
