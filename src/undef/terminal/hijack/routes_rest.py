@@ -16,6 +16,7 @@ Registers:
 
 from __future__ import annotations
 
+import contextlib
 import time
 import uuid
 from typing import TYPE_CHECKING, Any
@@ -75,41 +76,66 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         if not ok:
             return JSONResponse({"error": "No worker connected for this bot."}, status_code=409)
 
-        # Atomically check for concurrent hijackers and write the session.
-        acquired, err = await hub._try_acquire_rest_hijack(
-            bot_id,
-            owner=request.owner,
-            lease_s=lease_s,
-            hijack_id=hijack_id,
-            now=now,
-        )
-        if not acquired:
-            # Another request raced in and acquired the hijack; send resume to undo our pause.
-            # Include hijack_id so the worker can correlate it with our pause message.
-            await hub._send_worker(
+        # From here the worker is paused. Guard against CancelledError (client
+        # disconnect) or any other exception raised before the session is
+        # committed: the finally block sends a compensating resume so the worker
+        # is not permanently stuck in the paused state.
+        session_committed = False
+        try:
+            # Atomically check for concurrent hijackers and write the session.
+            acquired, err = await hub._try_acquire_rest_hijack(
                 bot_id,
-                {
-                    "type": "control",
-                    "action": "resume",
-                    "owner": request.owner,
-                    "lease_s": 0,
-                    "hijack_id": hijack_id,
-                    "ts": now,
-                },
+                owner=request.owner,
+                lease_s=lease_s,
+                hijack_id=hijack_id,
+                now=now,
             )
-            return JSONResponse({"error": "Bot is already hijacked."}, status_code=409)
-        hub._notify_hijack_changed(bot_id, enabled=True, owner=request.owner)
-        await hub._append_event(
-            bot_id, "hijack_acquired", {"hijack_id": hijack_id, "owner": request.owner, "lease_s": lease_s}
-        )
-        await hub._broadcast_hijack_state(bot_id)
-        return {
-            "ok": True,
-            "bot_id": bot_id,
-            "hijack_id": hijack_id,
-            "lease_expires_at": now + lease_s,
-            "owner": request.owner,
-        }
+            if not acquired:
+                # Another request raced in; send resume to undo our pause.
+                # Set session_committed so the finally block skips a second send.
+                session_committed = True
+                await hub._send_worker(
+                    bot_id,
+                    {
+                        "type": "control",
+                        "action": "resume",
+                        "owner": request.owner,
+                        "lease_s": 0,
+                        "hijack_id": hijack_id,
+                        "ts": now,
+                    },
+                )
+                return JSONResponse({"error": "Bot is already hijacked."}, status_code=409)
+            session_committed = True
+            hub._notify_hijack_changed(bot_id, enabled=True, owner=request.owner)
+            await hub._append_event(
+                bot_id, "hijack_acquired", {"hijack_id": hijack_id, "owner": request.owner, "lease_s": lease_s}
+            )
+            await hub._broadcast_hijack_state(bot_id)
+            return {
+                "ok": True,
+                "bot_id": bot_id,
+                "hijack_id": hijack_id,
+                "lease_expires_at": now + lease_s,
+                "owner": request.owner,
+            }
+        finally:
+            if not session_committed:
+                # Pause was sent but the session was never committed (e.g. client
+                # disconnected and the request was cancelled).  Send a resume so
+                # the worker exits the paused state.
+                with contextlib.suppress(Exception):
+                    await hub._send_worker(
+                        bot_id,
+                        {
+                            "type": "control",
+                            "action": "resume",
+                            "owner": request.owner,
+                            "lease_s": 0,
+                            "hijack_id": hijack_id,
+                            "ts": now,
+                        },
+                    )
 
     @router.post("/bot/{bot_id}/hijack/{hijack_id}/heartbeat")
     async def hijack_heartbeat(
@@ -144,13 +170,22 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         if hs is None:
             return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)
         snapshot = await hub._wait_for_snapshot(bot_id, timeout_ms=wait_ms)
+        # Re-read lease_expires_at under the lock: a concurrent heartbeat may
+        # have extended it during the _wait_for_snapshot poll loop.
+        async with hub._lock:
+            st = hub._bots.get(bot_id)
+            fresh_expires = (
+                st.hijack_session.lease_expires_at
+                if st is not None and st.hijack_session is not None and st.hijack_session.hijack_id == hijack_id
+                else hs.lease_expires_at
+            )
         return {
             "ok": True,
             "bot_id": bot_id,
             "hijack_id": hijack_id,
             "snapshot": snapshot,
             "prompt_id": extract_prompt_id(snapshot),
-            "lease_expires_at": hs.lease_expires_at,
+            "lease_expires_at": fresh_expires,
         }
 
     @router.get("/bot/{bot_id}/hijack/{hijack_id}/events")

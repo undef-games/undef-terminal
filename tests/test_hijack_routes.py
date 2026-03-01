@@ -626,3 +626,176 @@ def test_events_empty_bot_state_via_direct_dict_assignment() -> None:
     assert data["events"] == []
     assert data["bot_id"] == "botA"
     assert data["hijack_id"] == hijack_id
+
+
+# ---------------------------------------------------------------------------
+# Round-7 regression — hijack_acquire compensating resume on cancellation
+# ---------------------------------------------------------------------------
+
+
+def test_acquire_sends_compensating_resume_on_error_after_pause() -> None:
+    """Round-7 fix 1: if an error fires after the pause is sent but before the
+    session is committed, a compensating resume must be dispatched so the worker
+    does not remain stuck in the paused state indefinitely."""
+    import json as _json
+    from unittest.mock import patch
+
+    app, hub = make_app()
+    mock_ws = AsyncMock()
+    hub._bots["bot1"] = BotTermState(worker_ws=mock_ws)
+
+    async def _raise(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("simulated error after pause")
+
+    with patch.object(hub, "_try_acquire_rest_hijack", side_effect=_raise):
+        with TestClient(app, raise_server_exceptions=False) as client:
+            r = client.post("/bot/bot1/hijack/acquire", json={"owner": "test"})
+
+    assert r.status_code == 500
+
+    sent = [_json.loads(c.args[0]) for c in mock_ws.send_text.await_args_list]
+    pause_msgs = [m for m in sent if m.get("type") == "control" and m.get("action") == "pause"]
+    resume_msgs = [m for m in sent if m.get("type") == "control" and m.get("action") == "resume"]
+    assert pause_msgs, "pause must have been sent to worker before the error"
+    assert resume_msgs, "compensating resume must be sent when session commit fails"
+    assert resume_msgs[0].get("hijack_id") == pause_msgs[0].get("hijack_id"), (
+        "compensating resume must carry the same hijack_id as the pause"
+    )
+
+
+def test_acquire_sends_compensating_resume_on_cancellation_after_pause() -> None:
+    """Round-7 fix 1: CancelledError after pause (simulating client disconnect)
+    must trigger the compensating resume in the finally block."""
+    import asyncio as _asyncio
+    import json as _json
+    from unittest.mock import patch
+
+    app, hub = make_app()
+    mock_ws = AsyncMock()
+    hub._bots["bot1"] = BotTermState(worker_ws=mock_ws)
+
+    async def _cancel(*args: object, **kwargs: object) -> None:
+        raise _asyncio.CancelledError()
+
+    with patch.object(hub, "_try_acquire_rest_hijack", side_effect=_cancel):
+        with TestClient(app, raise_server_exceptions=False) as client:
+            client.post("/bot/bot1/hijack/acquire", json={"owner": "test"})
+
+    sent = [_json.loads(c.args[0]) for c in mock_ws.send_text.await_args_list]
+    resume_msgs = [m for m in sent if m.get("type") == "control" and m.get("action") == "resume"]
+    assert resume_msgs, "compensating resume must be sent on CancelledError after pause"
+
+
+def test_acquire_no_compensating_resume_on_success() -> None:
+    """Round-7 fix 1: a successful acquire must NOT send an extra compensating resume."""
+    import json as _json
+
+    app, hub = make_app()
+    mock_ws = AsyncMock()
+    hub._bots["bot1"] = BotTermState(worker_ws=mock_ws)
+
+    with TestClient(app) as client:
+        r = client.post("/bot/bot1/hijack/acquire", json={"owner": "test"})
+
+    assert r.status_code == 200
+
+    sent = [_json.loads(c.args[0]) for c in mock_ws.send_text.await_args_list]
+    resume_msgs = [m for m in sent if m.get("type") == "control" and m.get("action") == "resume"]
+    assert not resume_msgs, "no resume should be sent after a successful acquire"
+
+
+def test_acquire_no_compensating_resume_on_race_loss() -> None:
+    """Round-7 fix 1: when _try_acquire_rest_hijack returns (False, ...) the
+    explicit rollback resume is sent once — the finally block must not send a
+    second resume."""
+    import json as _json
+
+    app, hub = make_app()
+    mock_ws = AsyncMock()
+    existing_id = str(uuid.uuid4())
+    hub._bots["bot1"] = BotTermState(
+        worker_ws=mock_ws,
+        hijack_session=_active_session(existing_id, "owner_a"),
+    )
+
+    with TestClient(app) as client:
+        r = client.post("/bot/bot1/hijack/acquire", json={"owner": "owner_b"})
+
+    assert r.status_code == 409
+
+    sent = [_json.loads(c.args[0]) for c in mock_ws.send_text.await_args_list]
+    resume_msgs = [m for m in sent if m.get("type") == "control" and m.get("action") == "resume"]
+    assert len(resume_msgs) == 1, (
+        f"exactly one resume expected on race loss, got {len(resume_msgs)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Round-7 regression — hijack_snapshot returns fresh lease_expires_at
+# ---------------------------------------------------------------------------
+
+
+def test_snapshot_returns_fresh_lease_after_concurrent_heartbeat() -> None:
+    """Round-7 fix 3: snapshot must return the current lease_expires_at even if
+    a concurrent heartbeat extended it during the _wait_for_snapshot poll."""
+    from unittest.mock import patch
+
+    app, hub = make_app()
+    mock_ws = AsyncMock()
+    hijack_id = str(uuid.uuid4())
+    hub._bots["bot1"] = BotTermState(
+        worker_ws=mock_ws,
+        hijack_session=_active_session(hijack_id),
+    )
+
+    original_expires = hub._bots["bot1"].hijack_session.lease_expires_at  # type: ignore[union-attr]
+    extended_expires = original_expires + 3600
+
+    async def _extend_and_return(bot_id: str, timeout_ms: int = 1500) -> dict:
+        # Simulate a concurrent heartbeat mutating the lease while we wait
+        st = hub._bots.get(bot_id)
+        if st and st.hijack_session:
+            st.hijack_session.lease_expires_at = extended_expires
+        return {"screen": "hello", "cols": 80, "rows": 25}
+
+    with patch.object(hub, "_wait_for_snapshot", side_effect=_extend_and_return):
+        with TestClient(app) as client:
+            r = client.get(f"/bot/bot1/hijack/{hijack_id}/snapshot?wait_ms=100")
+
+    assert r.status_code == 200
+    data = r.json()
+    assert data["lease_expires_at"] == extended_expires, (
+        f"expected fresh expiry {extended_expires}, got {data['lease_expires_at']}"
+    )
+
+
+def test_snapshot_falls_back_to_original_lease_if_session_gone() -> None:
+    """Round-7 fix 3: if the session is released during the snapshot wait, the
+    originally-captured lease_expires_at is used (session gone guard)."""
+    from unittest.mock import patch
+
+    app, hub = make_app()
+    mock_ws = AsyncMock()
+    hijack_id = str(uuid.uuid4())
+    hub._bots["bot1"] = BotTermState(
+        worker_ws=mock_ws,
+        hijack_session=_active_session(hijack_id),
+    )
+
+    original_expires = hub._bots["bot1"].hijack_session.lease_expires_at  # type: ignore[union-attr]
+
+    async def _release_and_return(bot_id: str, timeout_ms: int = 1500) -> dict:
+        # Simulate the session being released while waiting for a snapshot
+        st = hub._bots.get(bot_id)
+        if st:
+            st.hijack_session = None
+        return {"screen": "bye"}
+
+    with patch.object(hub, "_wait_for_snapshot", side_effect=_release_and_return):
+        with TestClient(app) as client:
+            r = client.get(f"/bot/bot1/hijack/{hijack_id}/snapshot?wait_ms=100")
+
+    assert r.status_code == 200
+    data = r.json()
+    # Falls back to the originally-captured expiry
+    assert data["lease_expires_at"] == original_expires

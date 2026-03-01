@@ -236,8 +236,11 @@ class UndefHijack {
       try { this._ws.close(); } catch (_) {}
       this._ws = null;
     }
-    this._hijacked = false;
-    this._hijackedByMe = false;
+    // Do NOT reset _hijacked/_hijackedByMe here: the server will confirm the
+    // actual state via 'hello'/'hijack_state' once the socket opens.  Resetting
+    // eagerly would briefly re-enable the Hijack button even when another client
+    // holds the lock, and could prompt a spurious hijack_request click.
+    // (State is correctly reset to false in ws.onclose when the connection drops.)
 
     let ws;
     try {
