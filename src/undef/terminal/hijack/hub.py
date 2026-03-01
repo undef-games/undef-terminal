@@ -366,8 +366,33 @@ class TermHub:
             return st.hijack_owner_expires_at
 
     async def _is_owner(self, bot_id: str, ws: WebSocket) -> bool:
-        st = await self._get(bot_id)
-        return self._is_dashboard_hijack_active(st) and st.hijack_owner is ws
+        # Read under the lock so the owner identity check is not a TOCTOU with
+        # concurrent hijack_request / hijack_release / disconnect handlers.
+        async with self._lock:
+            st = self._bots.get(bot_id)
+            if st is None:
+                return False
+            return self._is_dashboard_hijack_active(st) and st.hijack_owner is ws
+
+    async def _try_release_ws_hijack(self, bot_id: str, ws: WebSocket) -> bool:
+        """Atomically verify ownership and clear it in a single lock block.
+
+        Prevents the TOCTOU window in voluntary ``hijack_release`` where
+        a concurrent ``hijack_request`` could steal ownership between
+        :meth:`_is_owner` returning ``True`` and :meth:`_set_hijack_owner`
+        clearing the owner field.
+
+        Returns:
+            ``True`` if *ws* was the active dashboard hijack owner and was
+            cleared.  ``False`` if *ws* is not (or is no longer) the owner.
+        """
+        async with self._lock:
+            st = self._bots.get(bot_id)
+            if st is None or not self._is_dashboard_hijack_active(st) or st.hijack_owner is not ws:
+                return False
+            st.hijack_owner = None
+            st.hijack_owner_expires_at = None
+        return True
 
     async def _hijack_state_msg_for(self, bot_id: str, ws: WebSocket) -> dict[str, Any]:
         st = await self._get(bot_id)

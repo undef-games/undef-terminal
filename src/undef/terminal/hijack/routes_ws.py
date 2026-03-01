@@ -225,8 +225,11 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                             await hub._append_event(bot_id, "hijack_step", {"owner": "dashboard_ws"})
 
                 elif mtype == "hijack_release":
-                    if await hub._is_owner(bot_id, websocket):
-                        await hub._set_hijack_owner(bot_id, None)
+                    # Atomically check ownership and clear in one lock block to
+                    # prevent a concurrent hijack_request stealing ownership
+                    # between _is_owner() and _set_hijack_owner(None).
+                    released = await hub._try_release_ws_hijack(bot_id, websocket)
+                    if released:
                         await hub._send_worker(
                             bot_id,
                             {

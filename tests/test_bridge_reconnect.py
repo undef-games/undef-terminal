@@ -94,14 +94,20 @@ class TestFirstCompleted:
         done, pending = await asyncio.wait(
             {send_task, recv_task}, return_when=asyncio.FIRST_COMPLETED
         )
+        # Capture membership before cancellation mutates task state.
+        recv_completed_first = recv_task in done
+        send_was_pending = send_task in pending
+
         for t in pending:
             t.cancel()
         await asyncio.gather(*pending, return_exceptions=True)
 
-        # recv_task completed (it got an exception and returned).
-        # send_task should have been in pending and been cancelled — not hanging.
-        assert recv_task in done or send_task in done
-        # send_loop_done fires once cancel propagates
+        # recv_task must be the one that completed first (WS closed → exception).
+        assert recv_completed_first, "recv_task should have completed first"
+        # send_task must have been waiting (not self-completing) — FIRST_COMPLETED
+        # should have left it in pending so we could cancel it cleanly.
+        assert send_was_pending, "send_task should have been pending (waiting on queue.get)"
+        # send_loop_done fires once cancel propagates through the finally block.
         assert send_loop_done.is_set()
 
     async def test_send_loop_exception_cancels_recv_loop(self) -> None:

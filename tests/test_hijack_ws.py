@@ -592,8 +592,8 @@ def test_browser_input_no_worker() -> None:
         browser.send_json({"type": "input", "data": "hello\r"})
         # The worker WS is None now, so _send_worker returns False → error sent
         msg = browser.receive_json()
-        # Could be error or hijack_state depending on cleanup order
-        assert msg["type"] in ("error", "hijack_state", "control")
+        assert msg["type"] == "error", f"expected error message when worker disconnected, got: {msg}"
+        assert "worker" in msg["message"].lower()
 
 
 # ---------------------------------------------------------------------------

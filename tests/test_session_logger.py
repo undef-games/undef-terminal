@@ -149,7 +149,11 @@ class TestSessionLoggerNonBlockingFlush:
     """Regression tests for fix B: flush() must not block the asyncio event loop."""
 
     async def test_flush_runs_in_executor_not_inline(self, tmp_path: Path) -> None:
-        """Regression fix B: file.flush() must be dispatched via run_in_executor, not called inline."""
+        """Regression fix B: file.flush() must be dispatched via run_in_executor, not called inline.
+
+        Also validates fix 1 (issue 2): get_running_loop() is used, not the
+        deprecated get_event_loop().
+        """
         import asyncio
         from unittest.mock import MagicMock, patch
 
@@ -161,13 +165,14 @@ class TestSessionLoggerNonBlockingFlush:
 
         executor_calls: list[object] = []
 
-        original_run = asyncio.get_event_loop().run_in_executor
+        loop = asyncio.get_running_loop()
+        original_run = loop.run_in_executor
 
-        async def _spy_executor(executor: object, fn: object, *args: object) -> None:
+        async def _spy_executor(executor: object, fn: object, *args: object) -> object:
             executor_calls.append(fn)
-            return original_run(executor, fn, *args)
+            return await original_run(executor, fn, *args)
 
-        with patch.object(asyncio.get_event_loop(), "run_in_executor", side_effect=_spy_executor):
+        with patch.object(loop, "run_in_executor", side_effect=_spy_executor):
             await log.log_event("exec_test", {})
 
         assert executor_calls, "flush was not dispatched via run_in_executor"
@@ -208,4 +213,55 @@ class TestSessionLoggerNonBlockingFlush:
         )
 
         assert ran, "concurrent coroutine was starved — flush is blocking the event loop"
+        await log.stop()
+
+
+class TestSessionLoggerRunningLoopRegression:
+    """Regression fix 1 (issue 2): get_running_loop() must be used, not deprecated get_event_loop()."""
+
+    async def test_uses_get_running_loop_not_get_event_loop(self, tmp_path: Path) -> None:
+        """Regression: _write_event_unlocked must call asyncio.get_running_loop(), not get_event_loop().
+
+        get_event_loop() is deprecated in Python 3.10+ and raises DeprecationWarning
+        (and in some contexts RuntimeError) when there is no current event loop.
+        get_running_loop() always works correctly from within an async context.
+        """
+        import asyncio
+        from unittest.mock import patch
+
+        log = SessionLogger(tmp_path / "loop_test.jsonl")
+        await log.start(session_id=103)
+
+        running_loop_calls: list[bool] = []
+
+        original_get_running = asyncio.get_running_loop
+
+        def _spy_get_running_loop() -> asyncio.AbstractEventLoop:
+            running_loop_calls.append(True)
+            return original_get_running()
+
+        with patch("undef.terminal.session_logger.asyncio.get_running_loop", side_effect=_spy_get_running_loop):
+            await log.log_event("loop_check", {})
+
+        assert running_loop_calls, "get_running_loop() was not called — executor dispatch may be broken"
+        await log.stop()
+
+    async def test_no_deprecation_warning_during_write(self, tmp_path: Path) -> None:
+        """Regression: writing an event must not emit a DeprecationWarning for get_event_loop()."""
+        import warnings
+
+        log = SessionLogger(tmp_path / "warn_test.jsonl")
+        await log.start(session_id=104)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            await log.log_event("warn_check", {})
+
+        event_loop_warnings = [
+            w for w in caught
+            if issubclass(w.category, DeprecationWarning) and "event_loop" in str(w.message).lower()
+        ]
+        assert not event_loop_warnings, (
+            f"Unexpected DeprecationWarning for get_event_loop: {event_loop_warnings}"
+        )
         await log.stop()

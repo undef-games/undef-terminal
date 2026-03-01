@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import socket
 
 import pytest
@@ -21,9 +20,7 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
-@pytest.fixture()
-def event_loop():
-    """Provide a new event loop for each test."""
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
+# event_loop fixture intentionally omitted: pytest-asyncio >= 0.21 with
+# asyncio_mode="auto" manages per-test loops automatically.  A custom
+# event_loop fixture at function scope conflicts with the auto-mode
+# machinery and can cause asyncio.Lock cross-loop corruption.
