@@ -150,7 +150,8 @@ def test_heartbeat_wrong_id() -> None:
     with TestClient(app) as client:
         r = client.post("/bot/bot1/hijack/wrong-hijack-id/heartbeat", json={})
 
-    assert r.status_code == 404
+    # "wrong-hijack-id" fails the UUID path pattern → 422 before route logic runs
+    assert r.status_code == 422
 
 
 def test_heartbeat_request_none_defaults() -> None:
@@ -234,7 +235,8 @@ def test_release_invalid_session() -> None:
     with TestClient(app) as client:
         r = client.post("/bot/bot1/hijack/no-such-id/release")
 
-    assert r.status_code == 404
+    # "no-such-id" fails the UUID path pattern → 422 before route logic runs
+    assert r.status_code == 422
 
 
 def test_release_inner_session_none() -> None:
@@ -296,7 +298,8 @@ def test_send_invalid_session() -> None:
     with TestClient(app) as client:
         r = client.post("/bot/bot1/hijack/no-such-id/send", json={"keys": "hi"})
 
-    assert r.status_code == 404
+    # "no-such-id" fails the UUID path pattern → 422 before route logic runs
+    assert r.status_code == 422
 
 
 def test_send_empty_keys() -> None:

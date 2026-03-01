@@ -28,6 +28,13 @@ import logging
 import time
 from typing import Any, Protocol, runtime_checkable
 
+
+def _safe_int(val: Any, default: int) -> int:
+    try:
+        return int(val or default)
+    except (ValueError, TypeError):
+        return default
+
 logger = logging.getLogger(__name__)
 
 
@@ -205,7 +212,8 @@ class TermBridge:
         while self._running:
             try:
                 raw = await ws.recv()
-            except Exception:
+            except Exception as exc:
+                logger.debug("_recv_loop recv error bot_id=%s: %s", self._bot_id, exc)
                 return
             try:
                 msg = json.loads(raw)
@@ -227,7 +235,7 @@ class TermBridge:
                 if data:
                     await self._send_keys(data)
             elif mtype == "resize":
-                await self._set_size(int(msg.get("cols", 80) or 80), int(msg.get("rows", 25) or 25))
+                await self._set_size(_safe_int(msg.get("cols"), 80), _safe_int(msg.get("rows"), 25))
 
     async def _send_snapshot(self, ws: Any) -> None:
         session = getattr(self._bot, "session", None)
@@ -255,7 +263,8 @@ class TermBridge:
                     ensure_ascii=True,
                 )
             )
-        except Exception:
+        except Exception as exc:
+            logger.debug("_send_snapshot failed bot_id=%s: %s", self._bot_id, exc)
             return
 
     async def _send_keys(self, data: str) -> None:

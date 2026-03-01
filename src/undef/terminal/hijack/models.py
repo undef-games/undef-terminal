@@ -57,7 +57,7 @@ class BotTermState:
 
 
 class HijackAcquireRequest(BaseModel):
-    owner: str = "mcp"
+    owner: str = Field("mcp", max_length=200)
     lease_s: int = 90
 
 

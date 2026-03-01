@@ -185,12 +185,17 @@ class TermHub:
     async def _wait_for_snapshot(self, bot_id: str, timeout_ms: int = 1500) -> dict[str, Any] | None:
         end = time.time() + max(50, timeout_ms) / 1000.0
         while time.time() < end:
-            st = await self._get(bot_id)
+            async with self._lock:
+                st = self._bots.get(bot_id)
+            if st is None:
+                return None
             if st.last_snapshot is not None:
                 return st.last_snapshot
             await self._request_snapshot(bot_id)
             await asyncio.sleep(0.08)
-        return (await self._get(bot_id)).last_snapshot
+        async with self._lock:
+            st = self._bots.get(bot_id)
+        return st.last_snapshot if st is not None else None
 
     async def _wait_for_guard(
         self,

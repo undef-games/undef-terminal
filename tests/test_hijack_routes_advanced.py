@@ -68,7 +68,8 @@ def test_snapshot_invalid_session() -> None:
     with TestClient(app) as client:
         r = client.get("/bot/bot1/hijack/no-such-id/snapshot")
 
-    assert r.status_code == 404
+    # "no-such-id" fails the UUID path pattern → 422 before route logic runs
+    assert r.status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +101,8 @@ def test_events_invalid_session() -> None:
     with TestClient(app) as client:
         r = client.get("/bot/bot1/hijack/no-such-id/events")
 
-    assert r.status_code == 404
+    # "no-such-id" fails the UUID path pattern → 422 before route logic runs
+    assert r.status_code == 422
 
 
 def test_events_empty_bot_state() -> None:
@@ -199,7 +201,8 @@ def test_step_invalid_hijack_session() -> None:
     with TestClient(app) as client:
         r = client.post("/bot/bot1/hijack/no-such-id/step")
 
-    assert r.status_code == 404
+    # "no-such-id" fails the UUID path pattern → 422 before route logic runs
+    assert r.status_code == 422
 
 
 # ---------------------------------------------------------------------------

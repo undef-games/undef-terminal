@@ -178,7 +178,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
     @router.post("/bot/{bot_id}/hijack/{hijack_id}/heartbeat")
     async def hijack_heartbeat(
         bot_id: str = Path(pattern=r"^[\w\-]+$"),
-        hijack_id: str = Path(),
+        hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$"),
         request: HijackHeartbeatRequest | None = None,
     ) -> Any:
         if request is None:
@@ -201,7 +201,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
     @router.get("/bot/{bot_id}/hijack/{hijack_id}/snapshot")
     async def hijack_snapshot(
         bot_id: str = Path(pattern=r"^[\w\-]+$"),
-        hijack_id: str = Path(),
+        hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$"),
         wait_ms: int = Query(default=1500, ge=0, le=10000),
     ) -> Any:
         hs = await hub._get_rest_session(bot_id, hijack_id)
@@ -229,7 +229,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
     @router.get("/bot/{bot_id}/hijack/{hijack_id}/events")
     async def hijack_events(
         bot_id: str = Path(pattern=r"^[\w\-]+$"),
-        hijack_id: str = Path(),
+        hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$"),
         after_seq: int = Query(default=0, ge=0),
         limit: int = Query(default=200, ge=1, le=2000),
     ) -> Any:
@@ -257,7 +257,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
     @router.post("/bot/{bot_id}/hijack/{hijack_id}/send")
     async def hijack_send(
         bot_id: str = Path(pattern=r"^[\w\-]+$"),
-        hijack_id: str = Path(),
+        hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$"),
         request: HijackSendRequest = Body(...),  # noqa: B008
     ) -> Any:
         hs = await hub._get_rest_session(bot_id, hijack_id)
@@ -300,7 +300,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         }
 
     @router.post("/bot/{bot_id}/hijack/{hijack_id}/step")
-    async def hijack_step(bot_id: str = Path(pattern=r"^[\w\-]+$"), hijack_id: str = Path()) -> Any:
+    async def hijack_step(bot_id: str = Path(pattern=r"^[\w\-]+$"), hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$")) -> Any:
         hs = await hub._get_rest_session(bot_id, hijack_id)
         if hs is None:
             return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)
@@ -313,7 +313,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         return {"ok": True, "bot_id": bot_id, "hijack_id": hijack_id, "lease_expires_at": hs.lease_expires_at}
 
     @router.post("/bot/{bot_id}/hijack/{hijack_id}/release")
-    async def hijack_release(bot_id: str = Path(pattern=r"^[\w\-]+$"), hijack_id: str = Path()) -> Any:
+    async def hijack_release(bot_id: str = Path(pattern=r"^[\w\-]+$"), hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$")) -> Any:
         hs = await hub._get_rest_session(bot_id, hijack_id)
         if hs is None:
             return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)
