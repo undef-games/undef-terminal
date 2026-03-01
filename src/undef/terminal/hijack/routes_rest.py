@@ -12,6 +12,38 @@ Registers:
 - ``POST /bot/{id}/hijack/{hid}/send``
 - ``POST /bot/{id}/hijack/{hid}/step``
 - ``POST /bot/{id}/hijack/{hid}/release``
+
+.. rubric:: Authentication
+
+These routes have **no built-in authentication or authorisation**.  Any caller
+that can reach the router can acquire a hijack lease and send keystrokes to any
+bot.  You *must* protect the router at the application layer before exposing it
+to untrusted clients.  Typical approaches:
+
+* Mount the router behind a FastAPI dependency that validates an API key or
+  session token::
+
+      from fastapi import Depends, HTTPException, Security
+      from fastapi.security import HTTPBearer
+
+      token_scheme = HTTPBearer()
+
+      def require_token(token=Security(token_scheme)):
+          if token.credentials != MY_SECRET:
+              raise HTTPException(status_code=401)
+
+      app.include_router(hub.create_router(), dependencies=[Depends(require_token)])
+
+* Place the service behind a reverse proxy (nginx, Caddy, Traefik) that
+  enforces mutual TLS or an ``Authorization`` header check.
+
+* Bind only to localhost and restrict access via network policy when the
+  hijack clients run on the same host.
+
+The ``owner`` field in :class:`~undef.terminal.hijack.models.HijackAcquireRequest`
+is an **opaque display label** — it is recorded in the event log and broadcast
+to dashboard observers, but it is *not* verified.  Do not rely on it for access
+control.
 """
 
 from __future__ import annotations
@@ -43,7 +75,13 @@ logger = logging.getLogger(__name__)
 
 
 def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
-    """Attach REST hijack routes to *router*."""
+    """Attach REST hijack routes to *router*.
+
+    .. warning::
+        No authentication is applied.  Callers are responsible for protecting
+        the router before exposing it to untrusted clients — see the module
+        docstring for guidance.
+    """
 
     @router.post("/bot/{bot_id}/hijack/acquire")
     async def hijack_acquire(
