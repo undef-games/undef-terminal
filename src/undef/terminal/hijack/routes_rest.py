@@ -292,13 +292,22 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
                 "expect_regex": request.expect_regex,
             },
         )
+        # Re-read lease_expires_at under the lock: a concurrent heartbeat may
+        # have extended it during the _wait_for_guard poll (mirrors hijack_snapshot).
+        async with hub._lock:
+            st = hub._workers.get(worker_id)
+            fresh_expires = (
+                st.hijack_session.lease_expires_at
+                if st is not None and st.hijack_session is not None and st.hijack_session.hijack_id == hijack_id
+                else hs.lease_expires_at
+            )
         return {
             "ok": True,
             "worker_id": worker_id,
             "hijack_id": hijack_id,
             "sent": request.keys,
             "matched_prompt_id": extract_prompt_id(snapshot),
-            "lease_expires_at": hs.lease_expires_at,
+            "lease_expires_at": fresh_expires,
         }
 
     @router.post("/worker/{worker_id}/hijack/{hijack_id}/step")

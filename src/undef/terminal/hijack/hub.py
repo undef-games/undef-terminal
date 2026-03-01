@@ -103,7 +103,11 @@ class TermHub:
     async def _append_event(self, worker_id: str, event_type: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
         payload = data or {}
         async with self._lock:
-            st = self._workers.setdefault(worker_id, WorkerTermState())
+            st = self._workers.get(worker_id)
+            if st is None:
+                # Worker was pruned before this event could be recorded; drop it
+                # rather than resurrecting a ghost WorkerTermState.
+                return {"seq": 0, "ts": time.time(), "type": event_type, "data": payload}
             st.event_seq += 1
             evt: dict[str, Any] = {"seq": st.event_seq, "ts": time.time(), "type": event_type, "data": payload}
             st.events.append(evt)
@@ -356,15 +360,21 @@ class TermHub:
         """Atomically check availability and create a REST hijack session.
 
         Must be called *after* confirming the worker is present via
-        :meth:`_send_worker`; this method only guards against concurrent
-        hijack requests racing to write the session.
+        :meth:`_send_worker`; this method re-validates liveness inside the
+        lock so that a worker disconnect racing between :meth:`_send_worker`
+        returning ``True`` and this method acquiring the lock cannot create
+        an orphaned session (a ``HijackSession`` with no live ``worker_ws``
+        that blocks future hijack attempts until the lease expires).
 
         Returns:
             ``(True, None)`` on success.
+            ``(False, "no_worker")`` if the worker disconnected before the lock.
             ``(False, "already_hijacked")`` if another session is active.
         """
         async with self._lock:
-            st = self._workers.setdefault(worker_id, WorkerTermState())
+            st = self._workers.get(worker_id)
+            if st is None or st.worker_ws is None:
+                return False, "no_worker"
             if st.hijack_owner is not None or self._is_rest_session_active(st):
                 return False, "already_hijacked"
             st.hijack_session = HijackSession(

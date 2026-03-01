@@ -211,10 +211,18 @@ class TermBridge:
                 continue
             try:
                 await ws.send(payload)
-            finally:
-                # Always mark the item done so queue.join() never deadlocks if
-                # it is added as a shutdown fence in the future.
+            except Exception as exc:
+                logger.warning(
+                    "_send_loop network_error worker_id=%s msg_type=%s: %s",
+                    self._worker_id,
+                    msg.get("type"),
+                    exc,
+                )
                 self._send_q.task_done()
+                raise  # propagate to _run to trigger reconnect
+            # Always mark the item done so queue.join() never deadlocks if
+            # it is added as a shutdown fence in the future.
+            self._send_q.task_done()
 
     async def _recv_loop(self, ws: Any) -> None:
         while self._running:
