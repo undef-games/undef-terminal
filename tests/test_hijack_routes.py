@@ -499,11 +499,9 @@ def test_events_no_bot_state() -> None:
     )
     # Remove bot2's state to trigger the None branch
     del hub._bots["bot2"]
-    # Now re-add an empty state to allow routing but test empty events
-    import asyncio
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(hub._get("bot2"))
-    loop.close()
+    # Re-add an empty state without using a separate event loop (asyncio.Lock is
+    # loop-bound; running hub coroutines on a different loop is incorrect).
+    hub._bots["bot2"] = BotTermState()
     hub._bots["bot2"].hijack_session = _active_session(hijack_id)
 
     with TestClient(app) as client:
@@ -598,3 +596,33 @@ def test_acquire_rollback_resume_contains_hijack_id() -> None:
     resume_msgs = [m for m in sent_calls if m.get("type") == "control" and m.get("action") == "resume"]
     assert resume_msgs, "No rollback resume message sent"
     assert "hijack_id" in resume_msgs[0], "hijack_id missing from rollback resume message"
+
+
+# ---------------------------------------------------------------------------
+# Fix A regression — hub state setup must not use a separate event loop
+# ---------------------------------------------------------------------------
+
+
+def test_events_empty_bot_state_via_direct_dict_assignment() -> None:
+    """Regression fix A: bot state must be set up via direct dict assignment, not a
+    separate asyncio event loop, to avoid asyncio.Lock cross-loop corruption."""
+    app, hub = make_app()
+    mock_ws = AsyncMock()
+    hijack_id = str(uuid.uuid4())
+
+    # Correct pattern: direct dict assignment — no extra event loop
+    hub._bots["botA"] = BotTermState(
+        worker_ws=mock_ws,
+        hijack_session=_active_session(hijack_id),
+    )
+
+    with TestClient(app) as client:
+        r = client.get(f"/bot/botA/hijack/{hijack_id}/events?after_seq=0")
+
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    # No events have been appended, so the list is empty
+    assert data["events"] == []
+    assert data["bot_id"] == "botA"
+    assert data["hijack_id"] == hijack_id

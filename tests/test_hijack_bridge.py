@@ -110,6 +110,31 @@ class TestTermBridgeHelpers:
         await bridge._set_hijacked(True)
         assert bot.hijacked_calls == [True]
 
+    async def test_set_hijacked_exception_does_not_propagate(self) -> None:
+        """Regression fix C: exception from bot.set_hijacked() must not propagate to _recv_loop."""
+
+        class _RaisingBot:
+            async def set_hijacked(self, enabled: bool) -> None:
+                raise RuntimeError("bot exploded")
+
+        bridge = TermBridge(_RaisingBot(), "bot1", "http://localhost:8000")
+        # Must not raise
+        await bridge._set_hijacked(True)
+
+    async def test_set_hijacked_status_enqueued_even_when_bot_raises(self) -> None:
+        """Regression fix C: status message is still enqueued even when bot.set_hijacked() raises."""
+
+        class _RaisingBot:
+            async def set_hijacked(self, enabled: bool) -> None:
+                raise RuntimeError("bot exploded")
+
+        bridge = TermBridge(_RaisingBot(), "bot1", "http://localhost:8000")
+        await bridge._set_hijacked(False)
+        assert not bridge._send_q.empty()
+        msg = bridge._send_q.get_nowait()
+        assert msg["type"] == "status"
+        assert msg["hijacked"] is False
+
     async def test_request_step_calls_bot(self) -> None:
         bot = MockBot()
         bridge = TermBridge(bot, "bot1", "http://localhost:8000")

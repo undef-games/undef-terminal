@@ -276,6 +276,7 @@ class TermBridge:
     async def _set_hijacked(self, enabled: bool) -> None:
         fn = getattr(self._bot, "set_hijacked", None)
         if callable(fn):
-            await fn(enabled)
+            with contextlib.suppress(Exception):
+                await fn(enabled)
         with contextlib.suppress(asyncio.QueueFull):
             self._send_q.put_nowait({"type": "status", "hijacked": enabled, "ts": time.time()})

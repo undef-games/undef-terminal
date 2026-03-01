@@ -143,3 +143,69 @@ class TestSessionLoggerFlushRegression:
         # Must not raise despite OSError from close()
         await log.stop()
         assert log._file is None
+
+
+class TestSessionLoggerNonBlockingFlush:
+    """Regression tests for fix B: flush() must not block the asyncio event loop."""
+
+    async def test_flush_runs_in_executor_not_inline(self, tmp_path: Path) -> None:
+        """Regression fix B: file.flush() must be dispatched via run_in_executor, not called inline."""
+        import asyncio
+        from unittest.mock import MagicMock, patch
+
+        log = SessionLogger(tmp_path / "exec_flush.jsonl")
+        await log.start(session_id=101)
+
+        mock_file = MagicMock()
+        log._file = mock_file
+
+        executor_calls: list[object] = []
+
+        original_run = asyncio.get_event_loop().run_in_executor
+
+        async def _spy_executor(executor: object, fn: object, *args: object) -> None:
+            executor_calls.append(fn)
+            return original_run(executor, fn, *args)
+
+        with patch.object(asyncio.get_event_loop(), "run_in_executor", side_effect=_spy_executor):
+            await log.log_event("exec_test", {})
+
+        assert executor_calls, "flush was not dispatched via run_in_executor"
+        assert mock_file.flush in executor_calls, "expected file.flush to be the executor callable"
+
+        log._file = None
+
+    async def test_flush_does_not_block_concurrent_coroutine(self, tmp_path: Path) -> None:
+        """Regression fix B: a slow flush must not starve a concurrent coroutine.
+
+        We simulate a slow flush with a blocking sleep inside the executor and
+        verify that an independent coroutine still runs during that time.
+        """
+        import asyncio
+        import time as _time
+
+        log = SessionLogger(tmp_path / "concurrent_flush.jsonl")
+        await log.start(session_id=102)
+
+        ran: list[bool] = []
+
+        async def _other_coro() -> None:
+            ran.append(True)
+
+        # Patch flush to take 50 ms in the executor (simulates a slow syscall)
+        original_flush = log._file.flush  # type: ignore[union-attr]
+
+        def _slow_flush() -> None:
+            _time.sleep(0.05)
+            original_flush()
+
+        log._file.flush = _slow_flush  # type: ignore[union-attr]
+
+        # Run the slow write and the independent coroutine concurrently
+        await asyncio.gather(
+            log.log_event("slow", {}),
+            _other_coro(),
+        )
+
+        assert ran, "concurrent coroutine was starved — flush is blocking the event loop"
+        await log.stop()

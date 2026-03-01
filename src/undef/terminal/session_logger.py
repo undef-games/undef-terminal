@@ -113,4 +113,5 @@ class SessionLogger:
             if "action" in ctx:
                 record["action"] = ctx["action"]
         self._file.write(json.dumps(record, ensure_ascii=True) + "\n")
-        self._file.flush()
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._file.flush)
