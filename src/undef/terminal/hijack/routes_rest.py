@@ -133,20 +133,23 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
                 # sending a second resume.  If err=="no_worker" (worker
                 # disconnected between _send_worker and the lock), _send_worker
                 # below is a silent no-op — there is nobody to resume, which is
-                # correct.  For err=="already_hijacked" the resume undoes the
-                # pause we sent to the correct (still-connected) worker.
+                # correct.  Do NOT send resume for err=="already_hijacked":
+                # set_hijacked is a boolean (not a reference count), so the
+                # pause we sent was a no-op (worker already paused), and
+                # sending resume here would unpause the legitimate owner's session.
                 session_committed = True
-                await hub._send_worker(
-                    worker_id,
-                    {
-                        "type": "control",
-                        "action": "resume",
-                        "owner": request.owner,
-                        "lease_s": 0,
-                        "hijack_id": hijack_id,
-                        "ts": now,
-                    },
-                )
+                if err != "already_hijacked":
+                    await hub._send_worker(
+                        worker_id,
+                        {
+                            "type": "control",
+                            "action": "resume",
+                            "owner": request.owner,
+                            "lease_s": 0,
+                            "hijack_id": hijack_id,
+                            "ts": now,
+                        },
+                    )
                 error_msg = (
                     "No worker connected." if err == "no_worker" else "Worker is already hijacked."
                 )
@@ -336,7 +339,14 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         if not ok:
             return JSONResponse({"error": "No worker connected for this worker."}, status_code=409)
         await hub._append_event(worker_id, "hijack_step", {"hijack_id": hijack_id})
-        return {"ok": True, "worker_id": worker_id, "hijack_id": hijack_id, "lease_expires_at": hs.lease_expires_at}
+        async with hub._lock:
+            st = hub._workers.get(worker_id)
+            fresh_expires = (
+                st.hijack_session.lease_expires_at
+                if st is not None and st.hijack_session is not None and st.hijack_session.hijack_id == hijack_id
+                else hs.lease_expires_at
+            )
+        return {"ok": True, "worker_id": worker_id, "hijack_id": hijack_id, "lease_expires_at": fresh_expires}
 
     @router.post("/worker/{worker_id}/hijack/{hijack_id}/release")
     async def hijack_release(worker_id: str = Path(pattern=r"^[\w\-]+$"), hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$")) -> Any:

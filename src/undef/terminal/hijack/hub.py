@@ -381,7 +381,7 @@ class TermHub:
             st = self._workers.get(worker_id)
             if st is None or st.worker_ws is None:
                 return False, "no_worker"
-            if st.hijack_owner is not None or self._is_rest_session_active(st):
+            if self._is_dashboard_hijack_active(st) or self._is_rest_session_active(st):
                 return False, "already_hijacked"
             st.hijack_session = HijackSession(
                 hijack_id=hijack_id,
@@ -404,7 +404,7 @@ class TermHub:
             st = self._workers.get(worker_id)
             if st is None or st.worker_ws is None:
                 return False, "no_worker"
-            if st.hijack_owner is not None or self._is_rest_session_active(st):
+            if self._is_dashboard_hijack_active(st) or self._is_rest_session_active(st):
                 return False, "already_hijacked"
             ttl = self._dashboard_hijack_lease_s
             st.hijack_owner = ws

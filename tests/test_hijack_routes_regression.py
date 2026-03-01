@@ -67,15 +67,16 @@ def test_acquire_pause_message_contains_hijack_id() -> None:
     assert pause_msgs[0].get("hijack_id") == hijack_id, "hijack_id missing from pause message"
 
 
-def test_acquire_rollback_resume_contains_hijack_id() -> None:
-    """Regression fix 3: rollback resume sent on race loss must include hijack_id."""
-    import asyncio as _asyncio
+def test_acquire_already_hijacked_does_not_send_resume() -> None:
+    """Regression: compensating resume must NOT be sent when acquire fails due to
+    already_hijacked.  set_hijacked is a boolean — sending resume would unpause the
+    legitimate owner's session."""
     import json as _json
 
     app, hub = make_app()
     mock_ws = AsyncMock()
 
-    # Pre-inject an active session so _try_acquire_rest_hijack returns (False, ...)
+    # Pre-inject an active session so _try_acquire_rest_hijack returns (False, already_hijacked)
     existing_id = str(uuid.uuid4())
     hub._workers["bot1"] = WorkerTermState(
         worker_ws=mock_ws,
@@ -88,11 +89,11 @@ def test_acquire_rollback_resume_contains_hijack_id() -> None:
     # The acquire should fail with 409
     assert r.status_code == 409
 
-    # The rollback resume must have been sent with hijack_id
+    # Pause was sent (to check liveness), but no resume must follow — that would
+    # unpause owner_a's active session.
     sent_calls = [_json.loads(call.args[0]) for call in mock_ws.send_text.await_args_list]
     resume_msgs = [m for m in sent_calls if m.get("type") == "control" and m.get("action") == "resume"]
-    assert resume_msgs, "No rollback resume message sent"
-    assert "hijack_id" in resume_msgs[0], "hijack_id missing from rollback resume message"
+    assert not resume_msgs, f"Spurious resume sent to worker while another owner holds the lease: {resume_msgs}"
 
 
 # ---------------------------------------------------------------------------
@@ -201,10 +202,10 @@ def test_acquire_no_compensating_resume_on_success() -> None:
     assert not resume_msgs, "no resume should be sent after a successful acquire"
 
 
-def test_acquire_no_compensating_resume_on_race_loss() -> None:
-    """Round-7 fix 1: when _try_acquire_rest_hijack returns (False, ...) the
-    explicit rollback resume is sent once — the finally block must not send a
-    second resume."""
+def test_acquire_no_resume_on_race_loss() -> None:
+    """When _try_acquire_rest_hijack returns (False, already_hijacked), no resume
+    must be sent.  The pre-lock pause was a no-op (worker already paused); sending
+    resume would unpause the legitimate owner's session."""
     import json as _json
 
     app, hub = make_app()
@@ -222,9 +223,7 @@ def test_acquire_no_compensating_resume_on_race_loss() -> None:
 
     sent = [_json.loads(c.args[0]) for c in mock_ws.send_text.await_args_list]
     resume_msgs = [m for m in sent if m.get("type") == "control" and m.get("action") == "resume"]
-    assert len(resume_msgs) == 1, (
-        f"exactly one resume expected on race loss, got {len(resume_msgs)}"
-    )
+    assert not resume_msgs, f"resume must not be sent on already_hijacked race loss: {resume_msgs}"
 
 
 # ---------------------------------------------------------------------------
