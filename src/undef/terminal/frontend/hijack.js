@@ -45,6 +45,7 @@ class UndefHijack {
    * @param {boolean} [config.showInput=true] - Show text-input bar when hijacked.
    * @param {boolean} [config.showAnalysis=true] - Show collapsible analysis panel.
    * @param {number} [config.heartbeatInterval=5000] - Heartbeat interval (ms) when hijacked.
+   * @param {boolean} [config.mobileKeys=true] - Show collapsible special-key toolbar when hijacked.
    */
   constructor(container, config = {}) {
     this._container = container;

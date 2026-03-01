@@ -69,6 +69,7 @@ class UndefTerminal {
    * @param {boolean} [config.glow=false]
    * @param {string} [config.storageKey='undef-terminal-settings']
    * @param {string|null} [config.title=null] - Override frame branding text.
+   * @param {number} [config.heartbeatMs=25000] - Keepalive ping interval (ms). 0 disables.
    */
   constructor(container, config = {}) {
     this._container = container;

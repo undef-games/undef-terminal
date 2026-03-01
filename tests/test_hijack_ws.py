@@ -763,6 +763,26 @@ def test_hijack_request_send_fail_fires_notify_disabled() -> None:
     assert st.hijack_owner is None
 
 
+def test_ping_is_silently_ignored() -> None:
+    """ping from browser must produce no reply; the next received message should
+    be from a subsequent snapshot_req, proving nothing was queued by the ping."""
+    app, hub = make_app()
+    with TestClient(app) as client, client.websocket_connect("/ws/bot/bot1/term") as browser:
+        _read_initial_browser_messages(browser)
+
+        with client.websocket_connect("/ws/worker/bot1/term") as worker:
+            _read_worker_snapshot_req(worker)
+
+            browser.send_json({"type": "ping"})
+            browser.send_json({"type": "snapshot_req"})
+
+            # Worker receives the snapshot_req forwarded from the browser
+            msg = worker.receive_json()
+            assert msg["type"] == "snapshot_req", (
+                f"Expected snapshot_req after ping but got: {msg}"
+            )
+
+
 def test_hijack_request_send_fail_no_notify_when_rest_session_active() -> None:
     """Round-8 fix 2: when _send_worker fails but a REST session is still active,
     on_hijack_changed(enabled=False) must NOT fire — the bot is still hijacked."""
