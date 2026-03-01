@@ -349,7 +349,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
             if st is None or st.hijack_session is None or st.hijack_session.hijack_id != hijack_id:  # pragma: no cover
                 return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)
             st.hijack_session = None
-            should_resume = st.hijack_owner is None
+            should_resume = not hub._is_dashboard_hijack_active(st)
         if should_resume:
             await hub._send_worker(
                 worker_id, {"type": "control", "action": "resume", "owner": hs.owner, "lease_s": 0, "ts": time.time()}

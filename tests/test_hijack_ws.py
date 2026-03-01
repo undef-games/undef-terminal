@@ -71,6 +71,13 @@ def _read_worker_snapshot_req(worker) -> dict:
     return msg
 
 
+def _read_worker_connected(browser) -> dict:
+    """Drain the worker_connected broadcast sent to browsers on worker connect."""
+    msg = browser.receive_json()
+    assert msg["type"] == "worker_connected"
+    return msg
+
+
 # ---------------------------------------------------------------------------
 # Worker WebSocket — /ws/worker/{worker_id}/term
 # ---------------------------------------------------------------------------
@@ -109,6 +116,7 @@ def test_worker_term_broadcast_to_browser() -> None:
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
             _read_worker_snapshot_req(worker)
+            _read_worker_connected(browser)
 
             worker.send_json({"type": "term", "data": "Hello world!", "ts": 0.0})
 
@@ -124,6 +132,7 @@ def test_worker_snapshot_updates_hub_state() -> None:
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
             _read_worker_snapshot_req(worker)
+            _read_worker_connected(browser)
 
             worker.send_json(
                 {
@@ -155,6 +164,7 @@ def test_worker_snapshot_appends_event() -> None:
         _read_initial_browser_messages(browser)
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
             _read_worker_snapshot_req(worker)
+            _read_worker_connected(browser)
             worker.send_json(
                 {
                     "type": "snapshot",
@@ -187,6 +197,7 @@ def test_worker_status_broadcast() -> None:
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
             _read_worker_snapshot_req(worker)
+            _read_worker_connected(browser)
 
             worker.send_json({"type": "status", "hijacked": False, "ts": 0.0})
 
@@ -201,6 +212,7 @@ def test_worker_analysis_broadcast() -> None:
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
             _read_worker_snapshot_req(worker)
+            _read_worker_connected(browser)
 
             worker.send_json({"type": "analysis", "formatted": "Found sector 1", "raw": None, "ts": 0.0})
 
@@ -255,6 +267,7 @@ def test_browser_snapshot_req_forwarded_to_worker() -> None:
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
             _read_worker_snapshot_req(worker)
+            _read_worker_connected(browser)
 
             browser.send_json({"type": "snapshot_req"})
 
@@ -304,6 +317,7 @@ def test_browser_hijack_request_with_worker() -> None:
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
             _read_worker_snapshot_req(worker)
+            _read_worker_connected(browser)
 
             browser.send_json({"type": "hijack_request"})
 
@@ -326,6 +340,7 @@ def test_browser_heartbeat_as_owner() -> None:
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
             _read_worker_snapshot_req(worker)
+            _read_worker_connected(browser)
 
             # Acquire hijack
             browser.send_json({"type": "hijack_request"})
@@ -351,6 +366,7 @@ def test_browser_input_as_owner() -> None:
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
             _read_worker_snapshot_req(worker)
+            _read_worker_connected(browser)
 
             # Acquire hijack
             browser.send_json({"type": "hijack_request"})
@@ -373,6 +389,7 @@ def test_browser_input_not_owner_ignored() -> None:
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
             _read_worker_snapshot_req(worker)
+            _read_worker_connected(browser)
 
             # Don't acquire hijack — send input anyway (should be ignored)
             browser.send_json({"type": "input", "data": "nope"})
@@ -389,6 +406,7 @@ def test_browser_hijack_step() -> None:
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
             _read_worker_snapshot_req(worker)
+            _read_worker_connected(browser)
 
             # Acquire hijack
             browser.send_json({"type": "hijack_request"})
@@ -409,6 +427,7 @@ def test_browser_hijack_release() -> None:
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
             _read_worker_snapshot_req(worker)
+            _read_worker_connected(browser)
 
             # Acquire hijack
             browser.send_json({"type": "hijack_request"})
@@ -476,6 +495,8 @@ def test_multiple_browsers_receive_broadcast() -> None:
 
             with client.websocket_connect("/ws/worker/bot1/term") as worker:
                 _read_worker_snapshot_req(worker)
+                _read_worker_connected(browser1)
+                _read_worker_connected(browser2)
 
                 worker.send_json({"type": "term", "data": "broadcast!", "ts": 0.0})
 

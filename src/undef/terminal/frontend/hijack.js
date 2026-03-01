@@ -379,6 +379,12 @@ class UndefHijack {
         this._updateButtons();
         break;
 
+      case 'worker_connected':
+        this._workerOnline = true;
+        this._updateStatus();
+        this._updateButtons();
+        break;
+
       case 'hijack_state':
         // {type, hijacked, owner: "me"|"other"|null, lease_expires_at}
         this._hijacked = !!msg.hijacked;
@@ -394,6 +400,7 @@ class UndefHijack {
         break;
 
       case 'worker_disconnected':
+        this._workerOnline = false;
         this._hijacked = false;
         this._hijackedByMe = false;
         this._clearHeartbeat();
@@ -465,7 +472,7 @@ class UndefHijack {
     if (stepBtn)    stepBtn.disabled    = !this._hijackedByMe;
     if (releaseBtn) releaseBtn.disabled = !this._hijackedByMe;
     if (resyncBtn)  resyncBtn.disabled  = !this._workerOnline;
-    if (analyzeBtn) analyzeBtn.disabled = !this._workerOnline;
+    if (analyzeBtn) analyzeBtn.disabled = !this._hijackedByMe;
   }
 
   _setPromptId(id) {
@@ -512,6 +519,7 @@ class UndefHijack {
 
     this._q('analyze').addEventListener('click', () => {
       if (!this._ws || this._ws.readyState !== WebSocket.OPEN) return;
+      if (!this._hijackedByMe) return;
       this._wsSend({ type: 'analyze_req' });
     });
 

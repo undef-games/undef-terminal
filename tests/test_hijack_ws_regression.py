@@ -58,6 +58,12 @@ def _read_worker_snapshot_req(worker) -> dict:
     return msg
 
 
+def _read_worker_connected(browser) -> dict:
+    msg = browser.receive_json()
+    assert msg["type"] == "worker_connected"
+    return msg
+
+
 # ---------------------------------------------------------------------------
 # Regression: hello message reflects atomic hijack state (fix 4)
 # ---------------------------------------------------------------------------
@@ -198,6 +204,7 @@ def test_hijack_request_send_fail_fires_notify_disabled() -> None:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
+            _read_worker_connected(browser)
             _read_worker_snapshot_req(worker)
 
             orig_send = hub._send_worker
@@ -230,6 +237,7 @@ def test_ping_is_silently_ignored() -> None:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
+            _read_worker_connected(browser)
             _read_worker_snapshot_req(worker)
 
             browser.send_json({"type": "ping"})
@@ -264,6 +272,7 @@ def test_hijack_request_send_fail_no_notify_when_rest_session_active() -> None:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
+            _read_worker_connected(browser)
             _read_worker_snapshot_req(worker)
 
             orig_send = hub._send_worker
@@ -308,6 +317,7 @@ def test_worker_disconnect_broadcasts_worker_disconnected_to_browsers() -> None:
             _read_initial_browser_messages(browser)
 
             with client.websocket_connect("/ws/worker/bot1/term") as worker:
+                _read_worker_connected(browser)
                 _read_worker_snapshot_req(worker)
                 # worker exits this block → disconnect
 
@@ -361,6 +371,7 @@ def test_worker_disconnect_clears_ws_hijack_owner() -> None:
             _read_initial_browser_messages(browser)
 
             with client.websocket_connect("/ws/worker/bot1/term") as worker:
+                _read_worker_connected(browser)
                 _read_worker_snapshot_req(worker)
 
                 # Browser acquires dashboard WS hijack.
@@ -402,6 +413,7 @@ def test_worker_disconnect_fires_notify_when_ws_hijack_active() -> None:
             _read_initial_browser_messages(browser)
 
             with client.websocket_connect("/ws/worker/bot1/term") as worker:
+                _read_worker_connected(browser)
                 _read_worker_snapshot_req(worker)
 
                 browser.send_json({"type": "hijack_request"})

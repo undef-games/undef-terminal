@@ -43,6 +43,12 @@ def _read_worker_snapshot_req(worker) -> dict:
     return msg
 
 
+def _read_worker_connected(browser) -> dict:
+    msg = browser.receive_json()
+    assert msg["type"] == "worker_connected"
+    return msg
+
+
 # ---------------------------------------------------------------------------
 # Browser — invalid JSON, ownership lease touch, no-worker error paths
 # ---------------------------------------------------------------------------
@@ -55,6 +61,7 @@ def test_browser_invalid_json_ignored() -> None:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
+            _read_worker_connected(browser)
             _read_worker_snapshot_req(worker)
 
             browser.send_text("not json {{{{")
@@ -64,6 +71,22 @@ def test_browser_invalid_json_ignored() -> None:
             assert msg["type"] == "snapshot_req"
 
 
+def test_browser_sees_worker_come_online_after_connect() -> None:
+    """A browser that connects before the worker must receive a worker_connected event."""
+    app, hub = make_app()
+    with TestClient(app) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
+        hello, _ = _read_initial_browser_messages(browser)
+        assert hello["worker_online"] is False
+
+        with client.websocket_connect("/ws/worker/bot1/term") as worker:
+            msg = _read_worker_connected(browser)
+            assert msg["type"] == "worker_connected"
+            assert msg["worker_id"] == "bot1"
+
+            snapshot_req = worker.receive_json()
+            assert snapshot_req["type"] == "snapshot_req"
+
+
 def test_browser_snapshot_req_as_owner_touches_lease() -> None:
     """snapshot_req from owner calls _touch_hijack_owner."""
     app, hub = make_app()
@@ -71,6 +94,7 @@ def test_browser_snapshot_req_as_owner_touches_lease() -> None:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
+            _read_worker_connected(browser)
             _read_worker_snapshot_req(worker)
 
             # Acquire hijack
@@ -91,6 +115,7 @@ def test_browser_analyze_req_as_owner_touches_lease() -> None:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
+            _read_worker_connected(browser)
             _read_worker_snapshot_req(worker)
 
             # Acquire hijack
@@ -117,6 +142,7 @@ def test_browser_loses_ownership_on_worker_disconnect() -> None:
 
         # Acquire hijack with a worker present
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
+            _read_worker_connected(browser)
             _read_worker_snapshot_req(worker)
             browser.send_json({"type": "hijack_request"})
             worker.receive_json()  # pause
@@ -139,6 +165,7 @@ def test_browser_input_no_worker() -> None:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
+            _read_worker_connected(browser)
             _read_worker_snapshot_req(worker)
 
             # Acquire hijack

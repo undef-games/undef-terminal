@@ -31,7 +31,7 @@ from typing import Any, Protocol, runtime_checkable
 
 def _safe_int(val: Any, default: int) -> int:
     try:
-        return int(val or default)
+        return int(default if val is None else val)
     except (ValueError, TypeError):
         return default
 

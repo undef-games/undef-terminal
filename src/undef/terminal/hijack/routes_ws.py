@@ -36,7 +36,7 @@ _BROWSER_IDLE_TIMEOUT_S = 180.0  # browsers may be silent while watching
 
 def _safe_int(val: Any, default: int) -> int:
     try:
-        return int(val or default)
+        return int(default if val is None else val)
     except (ValueError, TypeError):
         return default
 
@@ -51,6 +51,10 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
             st = hub._workers.setdefault(worker_id, WorkerTermState())
             st.worker_ws = websocket
         logger.info("term_worker_connected worker_id=%s", worker_id)
+        await hub._broadcast(
+            worker_id,
+            {"type": "worker_connected", "worker_id": worker_id, "ts": time.time()},
+        )
         await hub._request_snapshot(worker_id)
 
         try:
