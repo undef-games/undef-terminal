@@ -314,13 +314,7 @@ class TermHub:
             return False
 
     async def _prune_if_idle(self, bot_id: str) -> None:
-        """Remove a bot's state if it has no active connections or hijack leases.
-
-        Called at lifecycle exits (worker disconnect, browser disconnect, REST
-        release, lease expiry) so that bots that go fully idle don't accumulate
-        in memory indefinitely.  Safe to call speculatively — a no-op when any
-        connection or lease is still active.
-        """
+        """Remove bot state when no connections or leases remain."""
         async with self._lock:
             st = self._bots.get(bot_id)
             if st is None:
@@ -405,18 +399,7 @@ class TermHub:
             return st.hijack_owner_expires_at
 
     async def _touch_if_owner(self, bot_id: str, ws: WebSocket) -> float | None:
-        """Atomically verify WS ownership and extend the lease in one lock block.
-
-        Prevents the TOCTOU window between a separate :meth:`_is_owner` check
-        and a subsequent :meth:`_touch_hijack_owner` call, where a concurrent
-        ``hijack_release`` or disconnect handler could clear ownership between
-        the two operations.
-
-        Returns:
-            The new ``lease_expires_at`` timestamp if *ws* is the active
-            dashboard hijack owner.  ``None`` if *ws* is not (or is no longer)
-            the owner.
-        """
+        """Atomically verify WS ownership and extend lease; returns new expiry or None."""
         async with self._lock:
             st = self._bots.get(bot_id)
             if st is None or not self._is_dashboard_hijack_active(st) or st.hijack_owner is not ws:
