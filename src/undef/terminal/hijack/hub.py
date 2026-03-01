@@ -187,15 +187,16 @@ class TermHub:
         while time.time() < end:
             async with self._lock:
                 st = self._workers.get(worker_id)
-            if st is None:
-                return None
-            if st.last_snapshot is not None:
-                return st.last_snapshot
+                if st is None:
+                    return None
+                snap = st.last_snapshot
+            if snap is not None:
+                return snap
             await self._request_snapshot(worker_id)
             await asyncio.sleep(0.08)
         async with self._lock:
             st = self._workers.get(worker_id)
-        return st.last_snapshot if st is not None else None
+            return st.last_snapshot if st is not None else None
 
     async def _wait_for_guard(
         self,
@@ -214,14 +215,18 @@ class TermHub:
                 return False, None, f"invalid expect_regex: {exc}"
 
         if not expect_prompt_id and regex_obj is None:
-            return True, (await self._get(worker_id)).last_snapshot, None
+            async with self._lock:
+                st = self._workers.get(worker_id)
+                snap = st.last_snapshot if st is not None else None
+            return True, snap, None
 
         end = time.time() + max(50, timeout_ms) / 1000.0
         interval = max(20, poll_interval_ms) / 1000.0
         last_snapshot: dict[str, Any] | None = None
         while time.time() < end:
-            st = await self._get(worker_id)
-            last_snapshot = st.last_snapshot
+            async with self._lock:
+                st = self._workers.get(worker_id)
+                last_snapshot = st.last_snapshot if st is not None else None
             if self._snapshot_matches(last_snapshot, expect_prompt_id=expect_prompt_id, expect_regex=regex_obj):
                 return True, last_snapshot, None
             await self._request_snapshot(worker_id)
@@ -304,17 +309,23 @@ class TermHub:
                         st2.browsers.discard(ws)
 
     async def _send_worker(self, worker_id: str, msg: dict[str, Any]) -> bool:
-        st = await self._get(worker_id)
-        if st.worker_ws is None:
-            return False
+        # Capture ws under the lock: avoids both creating blank state for unknown
+        # workers (the old _get used setdefault) and a TOCTOU window where a
+        # concurrent disconnect could set worker_ws=None between lock release and
+        # the send_text call below.
+        async with self._lock:
+            st = self._workers.get(worker_id)
+            if st is None or st.worker_ws is None:
+                return False
+            ws = st.worker_ws
         try:
-            await st.worker_ws.send_text(json.dumps(msg, ensure_ascii=True))
+            await ws.send_text(json.dumps(msg, ensure_ascii=True))
             return True
         except Exception as exc:
             logger.debug("send_worker_failed worker_id=%s: %s", worker_id, exc)
             async with self._lock:
                 st2 = self._workers.get(worker_id)
-                if st2 is not None and st2.worker_ws is st.worker_ws:
+                if st2 is not None and st2.worker_ws is ws:
                     st2.worker_ws = None
             return False
 

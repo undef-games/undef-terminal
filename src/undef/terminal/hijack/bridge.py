@@ -202,7 +202,15 @@ class TermBridge:
         while self._running:
             msg = await self._send_q.get()
             try:
-                await ws.send(json.dumps(msg, ensure_ascii=True))
+                payload = json.dumps(msg, ensure_ascii=True)
+            except Exception as exc:
+                # Serialization failure: skip the bad message rather than
+                # tearing down the connection and triggering reconnect churn.
+                logger.warning("_send_loop serialization_error worker_id=%s: %s", self._worker_id, exc)
+                self._send_q.task_done()
+                continue
+            try:
+                await ws.send(payload)
             finally:
                 # Always mark the item done so queue.join() never deadlocks if
                 # it is added as a shutdown fence in the future.
