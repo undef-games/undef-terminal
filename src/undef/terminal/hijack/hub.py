@@ -147,6 +147,15 @@ class TermHub:
             return False
 
         if should_resume:
+            # Re-check under lock: a concurrent hijack_acquire may have written a
+            # new session between the first lock release and _send_worker.  If so,
+            # skip the resume — unpausing a newly-paused worker would break the new
+            # owner's session guarantee.
+            async with self._lock:
+                st2 = self._workers.get(worker_id)
+                if st2 is not None and self._is_hijacked(st2):
+                    should_resume = False
+        if should_resume:
             await self._send_worker(
                 worker_id,
                 {"type": "control", "action": "resume", "owner": "lease-expired", "lease_s": 0, "ts": now},

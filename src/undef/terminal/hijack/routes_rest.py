@@ -382,6 +382,13 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
             st.hijack_session = None
             should_resume = not hub._is_dashboard_hijack_active(st)
         if should_resume:
+            # Re-check under lock: a concurrent hijack_acquire may have written a
+            # new session between the lock release above and _send_worker below.
+            async with hub._lock:
+                _st2 = hub._workers.get(worker_id)
+                if _st2 is not None and hub._is_hijacked(_st2):
+                    should_resume = False
+        if should_resume:
             await hub._send_worker(
                 worker_id, {"type": "control", "action": "resume", "owner": hs.owner, "lease_s": 0, "ts": time.time()}
             )

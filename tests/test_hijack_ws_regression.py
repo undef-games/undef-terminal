@@ -260,18 +260,17 @@ def test_hijack_request_send_fail_no_notify_when_rest_session_active() -> None:
     fapp = FastAPI()
     fapp.include_router(hub.create_router())
 
-    # Pre-install an active REST session so rest_active=True after WS release
-    rest_id = str(uuid.uuid4())
-    hub._workers["bot1"] = WorkerTermState(
-        hijack_session=_active_session(rest_id, "rest_owner"),
-    )
-
     with TestClient(fapp) as client, client.websocket_connect("/ws/browser/bot1/term") as browser:
         _read_initial_browser_messages(browser)
 
         with client.websocket_connect("/ws/worker/bot1/term") as worker:
             _read_worker_connected(browser)
             _read_worker_snapshot_req(worker)
+
+            # Install the REST session AFTER the worker connects so it is not
+            # cleared by the reconnect stale-state cleanup.
+            rest_id = str(uuid.uuid4())
+            hub._workers["bot1"].hijack_session = _active_session(rest_id, "rest_owner")
 
             orig_send = hub._send_worker
 
@@ -337,13 +336,11 @@ def test_worker_disconnect_clears_rest_hijack_session() -> None:
     fapp = FastAPI()
     fapp.include_router(hub.create_router())
 
-    session_id = str(uuid.uuid4())
-    hub._workers["bot1"] = WorkerTermState(
-        hijack_session=_active_session(session_id, "rest_owner"),
-    )
-
     with TestClient(fapp) as client, client.websocket_connect("/ws/worker/bot1/term") as worker:
         _read_worker_snapshot_req(worker)
+        # Install REST session after connect so it is not cleared by reconnect cleanup.
+        session_id = str(uuid.uuid4())
+        hub._workers["bot1"].hijack_session = _active_session(session_id, "rest_owner")
         assert hub._workers["bot1"].hijack_session is not None
         # worker disconnects → finally block clears hijack_session
 

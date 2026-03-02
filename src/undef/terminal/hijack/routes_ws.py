@@ -46,10 +46,24 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
     @router.websocket("/ws/worker/{worker_id}/term")
     async def ws_worker_term(websocket: WebSocket, worker_id: Annotated[str, Path(pattern=r"^[\w\-]+$")]) -> None:
         await websocket.accept()
+        prev_was_hijacked = False
         async with hub._lock:
             st = hub._workers.setdefault(worker_id, WorkerTermState())
+            # A crashed worker may reconnect before its old finally block clears
+            # state (the identity check `worker_ws is old_ws` skips cleanup when
+            # a new connection has already overwritten worker_ws).  Clear any stale
+            # hijack state now so the new worker starts unpaused and REST clients
+            # cannot send keystrokes under a dead session.
+            if st.hijack_session is not None or st.hijack_owner is not None:
+                prev_was_hijacked = True
+                st.hijack_session = None
+                st.hijack_owner = None
+                st.hijack_owner_expires_at = None
             st.worker_ws = websocket
         logger.info("term_worker_connected worker_id=%s", worker_id)
+        if prev_was_hijacked:
+            hub._notify_hijack_changed(worker_id, enabled=False, owner=None)
+            await hub._broadcast_hijack_state(worker_id)
         await hub._broadcast(
             worker_id,
             {"type": "worker_connected", "worker_id": worker_id, "ts": time.time()},
@@ -354,7 +368,15 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         st3.hijack_owner_expires_at = None
                         rest_still_active = hub._is_rest_session_active(st3)
             if was_owner:
-                if not rest_still_active:
+                _do_resume = not rest_still_active
+                if _do_resume:
+                    # Re-check: a concurrent hijack_acquire may have written a new
+                    # session between the lock release above and _send_worker below.
+                    async with hub._lock:
+                        _st4 = hub._workers.get(worker_id)
+                        if _st4 is not None and hub._is_hijacked(_st4):
+                            _do_resume = False
+                if _do_resume:
                     await hub._send_worker(
                         worker_id,
                         {"type": "control", "action": "resume", "owner": "dashboard", "lease_s": 0, "ts": time.time()},
