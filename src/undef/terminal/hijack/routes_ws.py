@@ -147,6 +147,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
             )
             if was_hijacked:
                 hub._notify_hijack_changed(worker_id, enabled=False, owner=None)
+                await hub._broadcast_hijack_state(worker_id)
             await hub._prune_if_idle(worker_id)
 
     @router.websocket("/ws/browser/{worker_id}/term")
@@ -382,7 +383,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         {"type": "control", "action": "resume", "owner": "dashboard", "lease_s": 0, "ts": time.time()},
                     )
                 await hub._broadcast_hijack_state(worker_id)
-                if not rest_still_active:
+                if _do_resume:
                     hub._notify_hijack_changed(worker_id, enabled=False, owner=None)
                 await hub._append_event(worker_id, "hijack_released", {"owner": "dashboard_ws_disconnect"})
             await hub._prune_if_idle(worker_id)
