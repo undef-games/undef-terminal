@@ -282,6 +282,10 @@ class TermHub:
                     {"type": "control", "action": "resume", "owner": "dead-socket", "lease_s": 0, "ts": time.time()},
                 )
                 self._notify_hijack_changed(worker_id, enabled=False, owner=None)
+            # Notify surviving browsers of the updated hijack state (owner cleared
+            # or socket removed).  Safe to call here — _broadcast_hijack_state
+            # builds its own snapshot under the lock and does not call _broadcast.
+            await self._broadcast_hijack_state(worker_id)
 
     async def _broadcast_hijack_state(self, worker_id: str) -> None:
         # Snapshot all mutable fields under the lock so that concurrent hijack

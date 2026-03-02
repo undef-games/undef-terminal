@@ -213,40 +213,47 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         await hub._broadcast_hijack_state(worker_id)
 
                 elif mtype == "hijack_request":
-                    acquired, err = await hub._try_acquire_ws_hijack(worker_id, websocket)
-                    if acquired:
-                        ok = await hub._send_worker(
-                            worker_id,
-                            {
-                                "type": "control",
-                                "action": "pause",
-                                "owner": "dashboard",
-                                "lease_s": 0,
-                                "ts": time.time(),
-                            },
-                        )
-                        if not ok:
-                            # Atomically verify we still own the hijack and clear
-                            # it. If a concurrent request stole ownership between
-                            # _try_acquire_ws_hijack and here, _try_release_ws_hijack
-                            # returns (False, ...) and we skip the notify — preventing
-                            # a spurious on_hijack_changed(enabled=False) while another
-                            # client legitimately holds the lease.
-                            released, rest_active = await hub._try_release_ws_hijack(worker_id, websocket)
-                            if released and not rest_active:
-                                hub._notify_hijack_changed(worker_id, enabled=False, owner=None)
-                            await websocket.send_text(
-                                json.dumps(
-                                    {"type": "error", "message": "No worker connected for this worker."},
-                                    ensure_ascii=True,
-                                )
+                    # Send pause to the worker *before* writing ownership — mirrors
+                    # REST hijack_acquire so that concurrent acquires see the worker
+                    # as free while the network send is in flight.
+                    pause_sent = await hub._send_worker(
+                        worker_id,
+                        {
+                            "type": "control",
+                            "action": "pause",
+                            "owner": "dashboard",
+                            "lease_s": 0,
+                            "ts": time.time(),
+                        },
+                    )
+                    if not pause_sent:
+                        await websocket.send_text(
+                            json.dumps(
+                                {"type": "error", "message": "No worker connected for this worker."},
+                                ensure_ascii=True,
                             )
-                            await hub._broadcast_hijack_state(worker_id)
-                            continue
-                        await hub._broadcast_hijack_state(worker_id)
-                        hub._notify_hijack_changed(worker_id, enabled=True, owner="dashboard")
-                        await hub._append_event(worker_id, "hijack_acquired", {"owner": "dashboard_ws"})
-                    else:
+                        )
+                        await websocket.send_text(
+                            json.dumps(await hub._hijack_state_msg_for(worker_id, websocket), ensure_ascii=True)
+                        )
+                        continue
+                    # Worker is paused — now atomically check-and-set ownership.
+                    acquired, err = await hub._try_acquire_ws_hijack(worker_id, websocket)
+                    if not acquired:
+                        # Compensating resume. Skip for "already_hijacked": set_hijacked
+                        # is a boolean; sending resume would unpause the legitimate
+                        # owner's session (same reasoning as REST hijack_acquire).
+                        if err != "already_hijacked":
+                            await hub._send_worker(
+                                worker_id,
+                                {
+                                    "type": "control",
+                                    "action": "resume",
+                                    "owner": "dashboard",
+                                    "lease_s": 0,
+                                    "ts": time.time(),
+                                },
+                            )
                         msg_text = (
                             "No worker connected for this worker."
                             if err == "no_worker"
@@ -256,6 +263,10 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         await websocket.send_text(
                             json.dumps(await hub._hijack_state_msg_for(worker_id, websocket), ensure_ascii=True)
                         )
+                        continue
+                    await hub._broadcast_hijack_state(worker_id)
+                    hub._notify_hijack_changed(worker_id, enabled=True, owner="dashboard")
+                    await hub._append_event(worker_id, "hijack_acquired", {"owner": "dashboard_ws"})
 
                 elif mtype == "hijack_step":
                     if await hub._touch_if_owner(worker_id, websocket) is not None:

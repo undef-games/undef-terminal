@@ -187,10 +187,9 @@ def test_non_owner_browser_disconnect_does_not_send_resume() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_hijack_request_send_fail_fires_notify_disabled() -> None:
-    """Round-8 fix 2: when _send_worker returns False after WS hijack acquired,
-    on_hijack_changed(enabled=False) must fire (so the bot automation can resume).
-    Previously a separate _set_hijack_owner + notify risked a spurious double-fire."""
+def test_hijack_request_send_fail_no_notify_no_owner() -> None:
+    """Pause send to worker fails before ownership is written — hijack is never
+    acquired so on_hijack_changed must NOT fire and hijack_owner stays None."""
     callbacks: list[tuple] = []
 
     def on_changed(bot_id: str, enabled: bool, owner: object) -> None:
@@ -217,13 +216,14 @@ def test_hijack_request_send_fail_fires_notify_disabled() -> None:
             with patch.object(hub, "_send_worker", side_effect=_fail_pause):
                 browser.send_json({"type": "hijack_request"})
                 err = browser.receive_json()
+                # browser also receives hijack_state after error
+                state = browser.receive_json()
 
             assert err["type"] == "error"
-            disabled_calls = [(b, e, o) for b, e, o in callbacks if not e]
-            assert disabled_calls, "on_hijack_changed(enabled=False) must be called after send failure"
-            assert disabled_calls[-1][0] == "bot1"
-            # Hub must not consider bot1 hijacked after the rollback.
-            # Check while connections are live — bot is pruned once all disconnect.
+            assert state["type"] == "hijack_state"
+            # Pause was never delivered so ownership was never written —
+            # on_hijack_changed must not fire at all.
+            assert not callbacks, "on_hijack_changed must not fire when pause send fails before ownership is written"
             st = hub._workers.get("bot1")
             assert st is not None
             assert st.hijack_owner is None
