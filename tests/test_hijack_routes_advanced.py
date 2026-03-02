@@ -54,7 +54,7 @@ def test_snapshot_no_worker() -> None:
     )
 
     with TestClient(app) as client:
-        r = client.get(f"/worker/bot1/hijack/{hijack_id}/snapshot?wait_ms=0")
+        r = client.get(f"/worker/bot1/hijack/{hijack_id}/snapshot?wait_ms=50")
 
     assert r.status_code == 200
     data = r.json()

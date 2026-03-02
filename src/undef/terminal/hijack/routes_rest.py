@@ -214,7 +214,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
     async def hijack_snapshot(
         worker_id: str = Path(pattern=r"^[\w\-]+$"),
         hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$"),
-        wait_ms: int = Query(default=1500, ge=0, le=10000),
+        wait_ms: int = Query(default=1500, ge=50, le=10000),
     ) -> Any:
         hs = await hub._get_rest_session(worker_id, hijack_id)
         if hs is None:

@@ -58,8 +58,12 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         await hub._request_snapshot(worker_id)
 
         try:
+            _last_cleanup = 0.0
             while True:
-                await hub._cleanup_expired_hijack(worker_id)
+                _now = time.monotonic()
+                if _now - _last_cleanup >= 1.0:
+                    await hub._cleanup_expired_hijack(worker_id)
+                    _last_cleanup = _now
                 raw = await websocket.receive_text()
                 try:
                     msg = json.loads(raw)
@@ -163,8 +167,12 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
             await hub._request_snapshot(worker_id)
 
         try:
+            _last_cleanup = 0.0
             while True:
-                await hub._cleanup_expired_hijack(worker_id)
+                _now = time.monotonic()
+                if _now - _last_cleanup >= 1.0:
+                    await hub._cleanup_expired_hijack(worker_id)
+                    _last_cleanup = _now
                 raw = await websocket.receive_text()
                 try:
                     msg_b: dict[str, Any] = json.loads(raw)

@@ -188,7 +188,7 @@ class TermHub:
 
     async def _wait_for_snapshot(self, worker_id: str, timeout_ms: int = 1500) -> dict[str, Any] | None:
         req_ts = time.time()
-        end = req_ts + max(50, timeout_ms) / 1000.0
+        end = req_ts + timeout_ms / 1000.0
         await self._request_snapshot(worker_id)
         while time.time() < end:
             async with self._lock:

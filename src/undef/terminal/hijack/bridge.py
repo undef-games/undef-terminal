@@ -125,7 +125,7 @@ class TermBridge:
             self._latest_snapshot = snapshot
             if not raw:
                 return
-            text = raw.decode("cp437", errors="replace")
+            text = raw.decode("latin-1", errors="replace")
             try:
                 self._send_q.put_nowait({"type": "term", "data": text, "ts": time.time()})
             except asyncio.QueueFull:
@@ -162,6 +162,8 @@ class TermBridge:
 
         attempt = 0
         while self._running:
+            send_task: asyncio.Task[None] | None = None
+            recv_task: asyncio.Task[None] | None = None
             try:
                 async with websockets.connect(url, max_size=10 * 1024 * 1024) as ws:
                     attempt = 0  # reset backoff on successful connect
@@ -180,6 +182,11 @@ class TermBridge:
                             if exc:
                                 raise exc
             except asyncio.CancelledError:
+                tasks = [task for task in (send_task, recv_task) if task is not None]
+                for task in tasks:
+                    task.cancel()
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
                 return
             except Exception as exc:
                 logger.warning(
