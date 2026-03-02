@@ -297,6 +297,20 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
                 {"error": reason or "prompt_guard_not_satisfied", "current_prompt_id": extract_prompt_id(snapshot)},
                 status_code=409,
             )
+        # Re-validate: session may have expired (or been replaced) during the
+        # _wait_for_guard poll window.  A concurrent acquire could have written a
+        # new HijackSession; we must confirm *this* hijack_id is still active
+        # before sending keystrokes on its behalf.
+        async with hub._lock:
+            _st = hub._workers.get(worker_id)
+            _still_valid = (
+                _st is not None
+                and _st.hijack_session is not None
+                and _st.hijack_session.hijack_id == hijack_id
+                and _st.hijack_session.lease_expires_at > time.time()
+            )
+        if not _still_valid:
+            return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)
         ok = await hub._send_worker(worker_id, {"type": "input", "data": request.keys, "ts": time.time()})
         if not ok:
             return JSONResponse({"error": "No worker connected for this worker."}, status_code=409)
