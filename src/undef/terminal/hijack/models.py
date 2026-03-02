@@ -58,11 +58,11 @@ class WorkerTermState:
 
 class HijackAcquireRequest(BaseModel):
     owner: str = Field("mcp", max_length=200)
-    lease_s: int = 90
+    lease_s: int = Field(90, ge=1, le=3600)
 
 
 class HijackHeartbeatRequest(BaseModel):
-    lease_s: int = 90
+    lease_s: int = Field(90, ge=1, le=3600)
 
 
 class HijackSendRequest(BaseModel):

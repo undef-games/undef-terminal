@@ -188,6 +188,7 @@ class TermHub:
 
     async def _wait_for_snapshot(self, worker_id: str, timeout_ms: int = 1500) -> dict[str, Any] | None:
         end = time.time() + max(50, timeout_ms) / 1000.0
+        await self._request_snapshot(worker_id)  # request once upfront
         while time.time() < end:
             async with self._lock:
                 st = self._workers.get(worker_id)
@@ -196,7 +197,6 @@ class TermHub:
                 snap = st.last_snapshot
             if snap is not None:
                 return snap
-            await self._request_snapshot(worker_id)
             await asyncio.sleep(0.08)
         async with self._lock:
             st = self._workers.get(worker_id)

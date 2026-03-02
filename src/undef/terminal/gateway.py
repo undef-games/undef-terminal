@@ -71,7 +71,7 @@ async def _ws_to_tcp(ws: object, writer: asyncio.StreamWriter) -> None:
     """Forward WebSocket messages → raw TCP bytes."""
     async for message in ws:  # type: ignore[attr-defined]
         if isinstance(message, str):
-            writer.write(message.encode("utf-8", errors="replace"))
+            writer.write(message.encode("latin-1", errors="replace"))
         else:
             writer.write(message)
         await writer.drain()
