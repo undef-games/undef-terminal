@@ -146,7 +146,10 @@ def test_acquire_sends_compensating_resume_on_error_after_pause() -> None:
     async def _raise(*args: object, **kwargs: object) -> None:
         raise RuntimeError("simulated error after pause")
 
-    with patch.object(hub, "_try_acquire_rest_hijack", side_effect=_raise), TestClient(app, raise_server_exceptions=False) as client:
+    with (
+        patch.object(hub, "_try_acquire_rest_hijack", side_effect=_raise),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
         r = client.post("/worker/bot1/hijack/acquire", json={"owner": "test"})
 
     assert r.status_code == 500
@@ -175,7 +178,10 @@ def test_acquire_sends_compensating_resume_on_cancellation_after_pause() -> None
     async def _cancel(*args: object, **kwargs: object) -> None:
         raise _asyncio.CancelledError()
 
-    with patch.object(hub, "_try_acquire_rest_hijack", side_effect=_cancel), TestClient(app, raise_server_exceptions=False) as client:
+    with (
+        patch.object(hub, "_try_acquire_rest_hijack", side_effect=_cancel),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
         client.post("/worker/bot1/hijack/acquire", json={"owner": "test"})
 
     sent = [_json.loads(c.args[0]) for c in mock_ws.send_text.await_args_list]
@@ -323,7 +329,11 @@ async def test_acquire_succeeds_when_worker_connects_after_cleanup() -> None:
     async def _fake_acquire(bot_id: str, **kw):  # type: ignore[override]
         return True, None
 
-    with patch.object(hub, "_send_worker", side_effect=_fake_send), patch.object(hub, "_try_acquire_rest_hijack", side_effect=_fake_acquire), TestClient(app) as client:
+    with (
+        patch.object(hub, "_send_worker", side_effect=_fake_send),
+        patch.object(hub, "_try_acquire_rest_hijack", side_effect=_fake_acquire),
+        TestClient(app) as client,
+    ):
         r = client.post("/worker/bot1/hijack/acquire", json={"owner": "tester"})
 
     assert r.status_code == 200

@@ -174,11 +174,8 @@ class TestReconnectLoop:
                 # After second connection, stop the bridge to exit the loop.
                 bridge._running = False
 
-
         def _fake_connect(url: str, **kw: Any) -> _FailOnce:
             return _FailOnce()
-
-
 
         # Patch at module level so bridge._run picks it up.
         __import__("websockets")

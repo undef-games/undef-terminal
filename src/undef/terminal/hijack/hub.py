@@ -91,7 +91,7 @@ class TermHub:
             return
         result = cb(worker_id, enabled, owner)
         if inspect.isawaitable(result):
-            task = asyncio.create_task(result)  # type: ignore[arg-type]
+            task: asyncio.Task[object] = asyncio.create_task(result)  # type: ignore[arg-type]
             task.add_done_callback(
                 lambda t: (
                     logger.warning("on_hijack_changed callback raised worker_id=%s error=%s", worker_id, t.exception())

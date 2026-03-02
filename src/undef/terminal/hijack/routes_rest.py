@@ -89,7 +89,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         request: HijackAcquireRequest | None = None,
     ) -> Any:
         if request is None:
-            request = HijackAcquireRequest()
+            request = HijackAcquireRequest()  # type: ignore[call-arg]
         await hub._cleanup_expired_hijack(worker_id)
 
         # No pre-flight worker check here — _send_worker is the authoritative
@@ -190,7 +190,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         request: HijackHeartbeatRequest | None = None,
     ) -> Any:
         if request is None:
-            request = HijackHeartbeatRequest()
+            request = HijackHeartbeatRequest()  # type: ignore[call-arg]
         hs = await hub._get_rest_session(worker_id, hijack_id)
         if hs is None:
             return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)
@@ -351,6 +351,19 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
     ) -> Any:
         hs = await hub._get_rest_session(worker_id, hijack_id)
         if hs is None:
+            return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)
+        # Re-validate: session may have expired (or been replaced) during any
+        # concurrent heartbeat / release / expiry cleanup since _get_rest_session
+        # returned (mirrors hijack_send re-validation).
+        async with hub._lock:
+            _st = hub._workers.get(worker_id)
+            _still_valid = (
+                _st is not None
+                and _st.hijack_session is not None
+                and _st.hijack_session.hijack_id == hijack_id
+                and _st.hijack_session.lease_expires_at > time.time()
+            )
+        if not _still_valid:
             return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)
         ok = await hub._send_worker(
             worker_id, {"type": "control", "action": "step", "owner": hs.owner, "lease_s": 0, "ts": time.time()}
