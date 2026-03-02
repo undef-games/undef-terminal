@@ -286,6 +286,13 @@ class TermHub:
                             st2.hijack_owner_expires_at = None
                             notify_hijack_off = not self._is_rest_session_active(st2)
             if notify_hijack_off:
+                # Re-check: a concurrent hijack_acquire may have written a new
+                # session between the owner-clear lock block above and _send_worker.
+                async with self._lock:
+                    _st3 = self._workers.get(worker_id)
+                    if _st3 is not None and self._is_hijacked(_st3):
+                        notify_hijack_off = False
+            if notify_hijack_off:
                 await self._send_worker(
                     worker_id,
                     {"type": "control", "action": "resume", "owner": "dead-socket", "lease_s": 0, "ts": time.time()},
@@ -349,6 +356,13 @@ class TermHub:
                             st2.hijack_owner = None
                             st2.hijack_owner_expires_at = None
                             notify_hijack_off = not self._is_rest_session_active(st2)
+            if notify_hijack_off:
+                # Re-check: a concurrent hijack_acquire may have written a new
+                # session between the owner-clear lock block above and _send_worker.
+                async with self._lock:
+                    _st3 = self._workers.get(worker_id)
+                    if _st3 is not None and self._is_hijacked(_st3):
+                        notify_hijack_off = False
             if notify_hijack_off:
                 await self._send_worker(
                     worker_id,

@@ -312,7 +312,15 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     # avoid a post-release TOCTOU on _is_rest_session_active.
                     released, rest_active = await hub._try_release_ws_hijack(worker_id, websocket)
                     if released:
-                        if not rest_active:
+                        _do_resume = not rest_active
+                        if _do_resume:
+                            # Re-check: a concurrent hijack_acquire may have written
+                            # a new session between _try_release_ws_hijack and here.
+                            async with hub._lock:
+                                _st = hub._workers.get(worker_id)
+                                if _st is not None and hub._is_hijacked(_st):
+                                    _do_resume = False
+                        if _do_resume:
                             await hub._send_worker(
                                 worker_id,
                                 {
@@ -324,7 +332,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                                 },
                             )
                         await hub._broadcast_hijack_state(worker_id)
-                        if not rest_active:
+                        if _do_resume:
                             hub._notify_hijack_changed(worker_id, enabled=False, owner=None)
                         await hub._append_event(worker_id, "hijack_released", {"owner": "dashboard_ws"})
 
