@@ -277,6 +277,10 @@ class TermHub:
                             st2.hijack_owner_expires_at = None
                             notify_hijack_off = not self._is_rest_session_active(st2)
             if notify_hijack_off:
+                await self._send_worker(
+                    worker_id,
+                    {"type": "control", "action": "resume", "owner": "dead-socket", "lease_s": 0, "ts": time.time()},
+                )
                 self._notify_hijack_changed(worker_id, enabled=False, owner=None)
 
     async def _broadcast_hijack_state(self, worker_id: str) -> None:
@@ -333,6 +337,10 @@ class TermHub:
                             st2.hijack_owner_expires_at = None
                             notify_hijack_off = not self._is_rest_session_active(st2)
             if notify_hijack_off:
+                await self._send_worker(
+                    worker_id,
+                    {"type": "control", "action": "resume", "owner": "dead-socket", "lease_s": 0, "ts": time.time()},
+                )
                 self._notify_hijack_changed(worker_id, enabled=False, owner=None)
 
     async def _send_worker(self, worker_id: str, msg: dict[str, Any]) -> bool:

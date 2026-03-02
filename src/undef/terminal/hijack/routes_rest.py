@@ -309,6 +309,11 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
             )
         if not _still_valid:
             return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)
+        # Narrow race: a concurrent hijack_release could fire between the lock
+        # release above and _send_worker below, unpausing the worker before these
+        # keystrokes are sent.  Holding the lock across a network send is worse
+        # (deadlock risk), so this sub-millisecond window is accepted.  The worker
+        # processes stray keystrokes as normal input — no lock-state corruption.
         ok = await hub._send_worker(worker_id, {"type": "input", "data": request.keys, "ts": time.time()})
         if not ok:
             return JSONResponse({"error": "No worker connected for this worker."}, status_code=409)
