@@ -251,4 +251,4 @@ async def _ws_to_ssh(ws: object, process: object) -> None:
         if isinstance(message, str):
             stdout.write(message)
         else:
-            stdout.write(message.decode("utf-8", errors="replace"))
+            stdout.write(message.decode("latin-1", errors="replace"))
