@@ -225,33 +225,40 @@ class TermBridge:
                 self._send_q.task_done()
 
     async def _recv_loop(self, ws: Any) -> None:
-        while self._running:
-            try:
-                raw = await ws.recv()
-            except Exception as exc:
-                logger.debug("_recv_loop recv error worker_id=%s: %s", self._worker_id, exc)
-                return
-            try:
-                msg = json.loads(raw)
-            except Exception:  # noqa: S112
-                continue
-            mtype = msg.get("type")
-            if mtype == "snapshot_req":
-                await self._send_snapshot(ws)
-            elif mtype == "control":
-                action = msg.get("action")
-                if action == "pause":
-                    await self._set_hijacked(True)
-                elif action == "resume":
-                    await self._set_hijacked(False)
-                elif action == "step":
-                    await self._request_step()
-            elif mtype == "input":
-                data = msg.get("data", "")
-                if data:
-                    await self._send_keys(data)
-            elif mtype == "resize":
-                await self._set_size(_safe_int(msg.get("cols"), 80), _safe_int(msg.get("rows"), 25))
+        try:
+            while self._running:
+                try:
+                    raw = await ws.recv()
+                except Exception as exc:
+                    logger.debug("_recv_loop recv error worker_id=%s: %s", self._worker_id, exc)
+                    return
+                try:
+                    msg = json.loads(raw)
+                except Exception:  # noqa: S112
+                    continue
+                mtype = msg.get("type")
+                if mtype == "snapshot_req":
+                    await self._send_snapshot(ws)
+                elif mtype == "control":
+                    action = msg.get("action")
+                    if action == "pause":
+                        await self._set_hijacked(True)
+                    elif action == "resume":
+                        await self._set_hijacked(False)
+                    elif action == "step":
+                        await self._request_step()
+                elif mtype == "input":
+                    data = msg.get("data", "")
+                    if data:
+                        await self._send_keys(data)
+                elif mtype == "resize":
+                    await self._set_size(_safe_int(msg.get("cols"), 80), _safe_int(msg.get("rows"), 25))
+        finally:
+            # Ensure the bot is never left permanently paused if the connection
+            # drops while a hijack was active.  The hub clears its own hijack
+            # state in ws_worker_term's finally block, but it cannot send a
+            # resume over a closed socket — so the bridge must self-clear here.
+            await self._set_hijacked(False)
 
     async def _send_snapshot(self, ws: Any) -> None:
         session = getattr(self._bot, "session", None)

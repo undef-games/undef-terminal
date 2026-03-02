@@ -140,7 +140,9 @@ class TestRecvLoop:
         ws = MockWS([json.dumps({"type": "control", "action": "pause"})])
         await bridge._recv_loop(ws)
 
-        assert bot.hijacked_calls == [True]
+        # pause sets hijacked=True; finally block always clears to False on exit
+        # so the bot is never left permanently paused after a disconnect.
+        assert bot.hijacked_calls == [True, False]
 
     async def test_recv_loop_control_resume(self) -> None:
         bot = MockBot()
@@ -150,7 +152,9 @@ class TestRecvLoop:
         ws = MockWS([json.dumps({"type": "control", "action": "resume"})])
         await bridge._recv_loop(ws)
 
-        assert bot.hijacked_calls == [False]
+        # resume sets hijacked=False; finally block also calls False (idempotent
+        # on the real HijackableMixin, recorded twice only in MockBot).
+        assert bot.hijacked_calls == [False, False]
 
     async def test_recv_loop_control_step(self) -> None:
         bot = MockBot()
@@ -220,7 +224,8 @@ class TestRecvLoop:
         )
         await bridge._recv_loop(ws)
 
-        assert bot.hijacked_calls == [True, False]
+        # pause → True, resume → False, finally → False (idempotent on real impl)
+        assert bot.hijacked_calls == [True, False, False]
         assert bot.step_calls == 1
 
 
