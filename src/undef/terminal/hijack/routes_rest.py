@@ -150,9 +150,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
                             "ts": now,
                         },
                     )
-                error_msg = (
-                    "No worker connected." if err == "no_worker" else "Worker is already hijacked."
-                )
+                error_msg = "No worker connected." if err == "no_worker" else "Worker is already hijacked."
                 return JSONResponse({"error": error_msg}, status_code=409)
             session_committed = True
             hub._notify_hijack_changed(worker_id, enabled=True, owner=request.owner)
@@ -343,7 +341,9 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         }
 
     @router.post("/worker/{worker_id}/hijack/{hijack_id}/step")
-    async def hijack_step(worker_id: str = Path(pattern=r"^[\w\-]+$"), hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$")) -> Any:
+    async def hijack_step(
+        worker_id: str = Path(pattern=r"^[\w\-]+$"), hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$")
+    ) -> Any:
         hs = await hub._get_rest_session(worker_id, hijack_id)
         if hs is None:
             return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)
@@ -363,7 +363,9 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         return {"ok": True, "worker_id": worker_id, "hijack_id": hijack_id, "lease_expires_at": fresh_expires}
 
     @router.post("/worker/{worker_id}/hijack/{hijack_id}/release")
-    async def hijack_release(worker_id: str = Path(pattern=r"^[\w\-]+$"), hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$")) -> Any:
+    async def hijack_release(
+        worker_id: str = Path(pattern=r"^[\w\-]+$"), hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$")
+    ) -> Any:
         hs = await hub._get_rest_session(worker_id, hijack_id)
         if hs is None:
             return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)

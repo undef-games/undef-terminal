@@ -28,7 +28,7 @@ except ImportError as _e:  # pragma: no cover
 
 import logging
 
-from undef.terminal.hijack.models import WorkerTermState, HijackSession, extract_prompt_id
+from undef.terminal.hijack.models import HijackSession, WorkerTermState, extract_prompt_id
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,9 @@ class TermHub:
                 )
             )
 
-    async def _append_event(self, worker_id: str, event_type: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def _append_event(
+        self, worker_id: str, event_type: str, data: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         payload = data or {}
         async with self._lock:
             st = self._workers.get(worker_id)
@@ -199,9 +201,9 @@ class TermHub:
             if snap is not None and snap.get("ts", 0) > req_ts:
                 return snap
             await asyncio.sleep(0.08)
-        async with self._lock:
-            st = self._workers.get(worker_id)
-            return st.last_snapshot if st is not None else None
+        # Timed out without a fresh snapshot — return None rather than a
+        # potentially-stale cached value that predates this request.
+        return None
 
     async def _wait_for_guard(
         self,
@@ -360,12 +362,7 @@ class TermHub:
             st = self._workers.get(worker_id)
             if st is None:
                 return
-            if (
-                st.worker_ws is None
-                and not st.browsers
-                and st.hijack_owner is None
-                and st.hijack_session is None
-            ):
+            if st.worker_ws is None and not st.browsers and st.hijack_owner is None and st.hijack_session is None:
                 del self._workers[worker_id]
                 logger.debug("pruned idle worker_id=%s", worker_id)
 

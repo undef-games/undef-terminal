@@ -21,7 +21,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from undef.terminal.hijack.hub import TermHub
-from undef.terminal.hijack.models import WorkerTermState, HijackSession
+from undef.terminal.hijack.models import HijackSession, WorkerTermState
 
 
 def make_app() -> tuple[FastAPI, TermHub]:

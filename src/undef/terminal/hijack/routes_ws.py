@@ -11,7 +11,6 @@ Registers:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 from typing import TYPE_CHECKING, Annotated, Any
@@ -74,7 +73,9 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                 if mtype == "term":
                     data = msg.get("data", "")
                     if data:
-                        await hub._broadcast(worker_id, {"type": "term", "data": data, "ts": msg.get("ts", time.time())})
+                        await hub._broadcast(
+                            worker_id, {"type": "term", "data": data, "ts": msg.get("ts", time.time())}
+                        )
                 elif mtype == "snapshot":
                     snapshot: dict[str, Any] = {
                         "type": "snapshot",
@@ -236,7 +237,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                                 hub._notify_hijack_changed(worker_id, enabled=False, owner=None)
                             await websocket.send_text(
                                 json.dumps(
-                                    {"type": "error", "message": "No worker connected for this worker."}, ensure_ascii=True
+                                    {"type": "error", "message": "No worker connected for this worker."},
+                                    ensure_ascii=True,
                                 )
                             )
                             await hub._broadcast_hijack_state(worker_id)
@@ -270,7 +272,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         if not ok:
                             await websocket.send_text(
                                 json.dumps(
-                                    {"type": "error", "message": "No worker connected for this worker."}, ensure_ascii=True
+                                    {"type": "error", "message": "No worker connected for this worker."},
+                                    ensure_ascii=True,
                                 )
                             )
                         else:
@@ -283,16 +286,17 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     # avoid a post-release TOCTOU on _is_rest_session_active.
                     released, rest_active = await hub._try_release_ws_hijack(worker_id, websocket)
                     if released:
-                        await hub._send_worker(
-                            worker_id,
-                            {
-                                "type": "control",
-                                "action": "resume",
-                                "owner": "dashboard",
-                                "lease_s": 0,
-                                "ts": time.time(),
-                            },
-                        )
+                        if not rest_active:
+                            await hub._send_worker(
+                                worker_id,
+                                {
+                                    "type": "control",
+                                    "action": "resume",
+                                    "owner": "dashboard",
+                                    "lease_s": 0,
+                                    "ts": time.time(),
+                                },
+                            )
                         await hub._broadcast_hijack_state(worker_id)
                         if not rest_active:
                             hub._notify_hijack_changed(worker_id, enabled=False, owner=None)
@@ -339,10 +343,11 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         st3.hijack_owner_expires_at = None
                         rest_still_active = hub._is_rest_session_active(st3)
             if was_owner:
-                await hub._send_worker(
-                    worker_id,
-                    {"type": "control", "action": "resume", "owner": "dashboard", "lease_s": 0, "ts": time.time()},
-                )
+                if not rest_still_active:
+                    await hub._send_worker(
+                        worker_id,
+                        {"type": "control", "action": "resume", "owner": "dashboard", "lease_s": 0, "ts": time.time()},
+                    )
                 await hub._broadcast_hijack_state(worker_id)
                 if not rest_still_active:
                     hub._notify_hijack_changed(worker_id, enabled=False, owner=None)

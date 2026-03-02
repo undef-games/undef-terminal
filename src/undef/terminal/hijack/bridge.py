@@ -35,6 +35,7 @@ def _safe_int(val: Any, default: int) -> int:
     except (ValueError, TypeError):
         return default
 
+
 logger = logging.getLogger(__name__)
 
 
