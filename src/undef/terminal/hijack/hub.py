@@ -369,6 +369,9 @@ class TermHub:
                     {"type": "control", "action": "resume", "owner": "dead-socket", "lease_s": 0, "ts": time.time()},
                 )
                 self._notify_hijack_changed(worker_id, enabled=False, owner=None)
+            # Push updated hijack_state to surviving browsers so they see
+            # the cleared ownership (mirrors the follow-up in _broadcast).
+            await self._broadcast_hijack_state(worker_id)
 
     async def _send_worker(self, worker_id: str, msg: dict[str, Any]) -> bool:
         # Capture ws under the lock: avoids both creating blank state for unknown

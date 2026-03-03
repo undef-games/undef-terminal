@@ -13,8 +13,8 @@ Architecture
 Run
 ---
     uv run python scripts/demo_server.py [--port PORT]
-    # or via uvicorn:
-    uvicorn scripts.demo_server:app --host 127.0.0.1 --port 8742
+    # or via uvicorn (set DEMO_BASE_URL to match the bound address):
+    DEMO_BASE_URL=http://127.0.0.1:8888 uvicorn scripts.demo_server:app --port 8888
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ import contextlib
 import importlib.resources
 import json
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from typing import Any
@@ -185,9 +186,10 @@ async def _lifespan(app: FastAPI):  # type: ignore[type-arg]
                 await worker_task
 
 
-# The worker needs the server's bound URL. We set this at startup via a
-# module-level variable written by the __main__ block or read from env.
-_runtime_base_url = "http://127.0.0.1:8742"
+# The worker needs the server's bound URL.  Written by __main__ block;
+# falls back to DEMO_BASE_URL env var for ``uvicorn`` invocations.
+_DEFAULT_PORT = 8742
+_runtime_base_url = os.environ.get("DEMO_BASE_URL", f"http://127.0.0.1:{_DEFAULT_PORT}")
 
 app = FastAPI(lifespan=_lifespan)
 
@@ -209,7 +211,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="undef-terminal demo server")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8742)
+    parser.add_argument("--port", type=int, default=_DEFAULT_PORT)
     args = parser.parse_args()
 
     _runtime_base_url = f"http://{args.host}:{args.port}"
