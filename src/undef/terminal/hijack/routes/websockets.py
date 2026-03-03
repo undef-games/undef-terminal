@@ -84,6 +84,16 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     logger.debug("ws_worker_bad_json worker_id=%s: %s", worker_id, exc)
                     continue
                 mtype = msg.get("type")
+                if mtype == "worker_hello":
+                    _hello_mode = msg.get("input_mode")
+                    if _hello_mode in ("hijack", "open"):
+                        async with hub._lock:
+                            _st_hello = hub._workers.get(worker_id)
+                            if _st_hello is not None:
+                                _st_hello.input_mode = _hello_mode
+                        await hub._broadcast_hijack_state(worker_id)
+                        logger.info("worker_hello worker_id=%s input_mode=%s", worker_id, _hello_mode)
+                    continue
                 if mtype == "term":
                     data = msg.get("data", "")
                     if data:
@@ -160,6 +170,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
             is_hijacked = hub._is_hijacked(st)
             hijacked_by_me = hub._is_dashboard_hijack_active(st) and st.hijack_owner is websocket
             worker_online = st.worker_ws is not None
+            input_mode = st.input_mode
             initial_snapshot = st.last_snapshot  # captured under lock to avoid stale read
 
         await websocket.send_text(
@@ -171,6 +182,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     "hijacked": is_hijacked,
                     "hijacked_by_me": hijacked_by_me,
                     "worker_online": worker_online,
+                    "input_mode": input_mode,
                 },
                 ensure_ascii=True,
             )
@@ -228,6 +240,18 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         await hub._broadcast_hijack_state(worker_id)
 
                 elif mtype == "hijack_request":
+                    # Reject in open mode — no exclusive ownership.
+                    async with hub._lock:
+                        _st_mode = hub._workers.get(worker_id)
+                        _is_open = _st_mode is not None and _st_mode.input_mode == "open"
+                    if _is_open:
+                        await websocket.send_text(
+                            json.dumps(
+                                {"type": "error", "message": "Hijack not available in open input mode."},
+                                ensure_ascii=True,
+                            )
+                        )
+                        continue
                     # Send pause to the worker *before* writing ownership — mirrors
                     # REST hijack_acquire so that concurrent acquires see the worker
                     # as free while the network send is in flight.
@@ -340,7 +364,21 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     pass  # keepalive — TCP ACK is sufficient, no response needed
 
                 elif mtype == "input":
-                    if await hub._touch_if_owner(worker_id, websocket) is not None:
+                    # In open mode any browser can send; in hijack mode only the owner.
+                    can_send = False
+                    async with hub._lock:
+                        _st_input = hub._workers.get(worker_id)
+                        if _st_input is not None:
+                            can_send = hub._can_send_input(_st_input, websocket)
+                            # Extend hijack lease if this browser is the owner
+                            if (
+                                hub._is_dashboard_hijack_active(_st_input)
+                                and _st_input.hijack_owner is websocket
+                            ):
+                                _st_input.hijack_owner_expires_at = (
+                                    time.time() + hub._dashboard_hijack_lease_s
+                                )
+                    if can_send:
                         data = msg_b.get("data", "")
                         if data:
                             ok = await hub._send_worker(worker_id, {"type": "input", "data": data, "ts": time.time()})
@@ -352,7 +390,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                                 )
                             else:
                                 await hub._append_event(
-                                    worker_id, "hijack_send", {"owner": "dashboard_ws", "keys": data[:120]}
+                                    worker_id, "input_send", {"owner": "dashboard_ws", "keys": data[:120]}
                                 )
 
         except WebSocketDisconnect:

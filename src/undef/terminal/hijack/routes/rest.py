@@ -65,6 +65,7 @@ from undef.terminal.hijack.models import (
     HijackAcquireRequest,
     HijackHeartbeatRequest,
     HijackSendRequest,
+    InputModeRequest,
     extract_prompt_id,
 )
 
@@ -410,3 +411,24 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         await hub._broadcast_hijack_state(worker_id)
         await hub._prune_if_idle(worker_id)
         return {"ok": True, "worker_id": worker_id, "hijack_id": hijack_id}
+
+    @router.post("/worker/{worker_id}/input_mode")
+    async def set_input_mode(
+        worker_id: str = Path(pattern=r"^[\w\-]+$"),
+        request: InputModeRequest = Body(...),  # noqa: B008
+    ) -> Any:
+        ok, err = await hub._set_input_mode(worker_id, request.input_mode)
+        if not ok:
+            status = 404 if err == "not_found" else 409
+            error_msg = "No worker registered." if err == "not_found" else "Cannot switch to open while hijack is active."
+            return JSONResponse({"error": error_msg}, status_code=status)
+        return {"ok": True, "input_mode": request.input_mode, "worker_id": worker_id}
+
+    @router.post("/worker/{worker_id}/disconnect_worker")
+    async def disconnect_worker(
+        worker_id: str = Path(pattern=r"^[\w\-]+$"),
+    ) -> Any:
+        ok = await hub._disconnect_worker(worker_id)
+        if not ok:
+            return JSONResponse({"error": "No worker connected."}, status_code=404)
+        return {"ok": True, "worker_id": worker_id}
