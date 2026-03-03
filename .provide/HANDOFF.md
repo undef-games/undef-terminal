@@ -1,93 +1,87 @@
 # undef-terminal: Handoff
 
 ## Current State
-609 tests passing (97% coverage). All quality tools clean (ruff, mypy, bandit).
+662 tests passing (99% coverage — 2373 stmts, 16 missed). All quality tools clean (ruff, mypy, bandit).
 
 ---
 
-## Completed This Session — TOCTOU Fixes, E2E Test Suite, Code Review
+## Completed This Session — Hypothesis Property-Based / Fuzz / Concurrency Tests
 
-### TOCTOU re-check fixes (hub.py, routes_ws.py, routes_rest.py)
-- All resume-sending sites now re-check `_is_hijacked()` under a second lock before sending `resume`, preventing phantom resumes when a concurrent `hijack_acquire` races the owner-clear.
-- Fixed in 5 sites: `_broadcast` dead-socket cleanup, `_broadcast_hijack_state` dead-socket cleanup, WS `hijack_release`, REST `hijack_release`, REST `hijack_step`.
-- `_broadcast_hijack_state` now re-broadcasts after clearing a dead owner (parity with `_broadcast`).
+### New file: `tests/test_hypothesis_hub.py` (10 tests)
 
-### hijack_step session re-validation (routes_rest.py)
-- Added lock block to verify session still valid before `_send_worker`, matching `hijack_send`.
+**Category 1: Stateful Testing** — `TermHubStateMachine` (RuleBasedStateMachine)
+- Models TermHub as a state machine with 8 rules: add_worker, add_browser, remove_browser, set_input_mode, acquire/release WS/REST hijack, disconnect_worker
+- 7 invariants checked after every step: valid input_mode, hijack_owner type, open-mode send permissions, hijack-mode exclusive send, mode-switch rejection during hijack, monotonic event seqs, idle worker pruning
 
-### Quality tool fixes
-- `ansi.py:302` — missing return in `repl()` inner function
-- `hub.py:94` — `task` type annotation
-- `routes_rest.py` — Pydantic false positive `# type: ignore[call-arg]`
-- `bridge.py` / `chaos.py` — bandit `# nosec` annotations alongside `# noqa`
+**Category 2: REST Fuzzing** (5 tests, ~100 examples each)
+- Fuzz acquire (owner + lease), send (keys 0-10K), input_mode (random strings), worker_id paths, heartbeat lease values
+- All via TestClient with real FastAPI routing + pydantic validation
 
-### Comprehensive e2e test suite
-- `tests/test_e2e_live_hub_ws.py` — 18 real WS integration tests (worker connect/disconnect, broadcast, browser hello, REST hijack cycle, WS hijack flow)
-- `tests/test_e2e_ssh_gateway.py` — 11 SSH gateway tests (real asyncssh server + WS echo, concurrent sessions, clean disconnect)
-- `tests/test_e2e_telnet_gateway.py` — 9 TelnetWsGateway tests (echo round-trip, multi-write, banner, large payload, concurrency, TelnetTransport integration)
-- `tests/test_zzz_playwright_hijack.py` — 19 Playwright UI tests (button states, hijack acquire/step/release, input send, heartbeat, two-browser isolation)
-- Renamed to `zzz_` to run after all async tests (Playwright's greenlet-based sync API leaves a running asyncio loop on the main thread, breaking subsequent pytest-asyncio tests)
+**Category 3: Concurrent Stress** (4 async tests)
+- Race acquire/release, concurrent mode switch, disconnect-during-hijack, event seq monotonicity under concurrency
 
-### Test infrastructure (conftest.py)
-- `live_hub` — async function-scoped fixture: real uvicorn TermHub task in test loop
-- `hijack_server` — sync session-scoped fixture: threaded uvicorn + `/test-page/{worker_id}` route
-- `WorkerController` — background-thread fake worker for Playwright test coordination
-
-### Other fixes
-- `hijack.html` — query param `?worker=` support (was passing `botId` → `workerId: undefined`)
-- `demo_server.py` — rewrite with real TermHub + lifespan worker; env var `DEMO_BASE_URL` for uvicorn invocations
-- `pyproject.toml` — `asyncio_default_fixture_loop_scope = "function"` for pytest-asyncio 1.3
-
-### Code review findings (fixed)
-- `_broadcast_hijack_state` missing follow-up broadcast after dead-socket owner clear (88% confidence) — fixed
-- `demo_server.py` hardcoded port 8742 for uvicorn CLI path (87%) — fixed with `DEMO_BASE_URL` env var
-- `free_port` fixture TOCTOU race (85%) — noted; new fixtures use safe `port=0` pattern; existing users left as-is
-
-### Coverage report
-- 97% overall (2281 stmts, 61 missed)
-- 100% on 19/29 modules
-- Lowest: hub.py 93%, bridge.py 94%, routes_ws.py 95%
+### Dependencies added
+- `hypothesis==6.151.9` + `sortedcontainers==2.4.0` installed in project venv
 
 ---
 
-## Previously Completed
+## Previous Session — Shared Input Mode + Subpackage Restructure
 
-### Post-sshwifty cleanup (07ccc97, 6656310)
-- JSDoc additions for `heartbeatMs` and `mobileKeys` config params
-- Ping guard test (`test_ping_is_silently_ignored`)
-- README.md written from scratch
+### Step 0: Restructured hijack into subpackages
+- `hijack/hub.py` → `hijack/hub/__init__.py` (413 LOC) + `hijack/hub/ownership.py` (200 LOC)
+- `hijack/routes.py` → `hijack/routes/__init__.py` (re-exports)
+- `hijack/routes_ws.py` → `hijack/routes/websockets.py`
+- `hijack/routes_rest.py` → `hijack/routes/rest.py`
+- All import paths preserved (`from undef.terminal.hijack.hub import TermHub` etc.)
+- Old files removed (would conflict with package directories)
 
-### Package restructure
-- `pyproject.toml`: `fastapi` moved to optional `websocket` extra; added `ssh`, `emulator`, `cli`, `all` extras
+### Step 1-2: input_mode field + core logic
+- `WorkerTermState.input_mode: str = "hijack"` — `"hijack"` (default) or `"open"`
+- `InputModeRequest` pydantic model with pattern validation
+- `TermHub._set_input_mode()` — under lock, rejects if active hijack when → open
+- `TermHub._disconnect_worker()` — programmatic worker WS disconnect
+- `TermHub._can_send_input()` — open mode = any browser; hijack mode = owner only
+- `_broadcast_hijack_state` and `_hijack_state_msg_for` now include `input_mode`
 
-### Core modules
-- `screen.py`, `emulator.py`, `io.py`, `session_logger.py`
-- `replay/raw.py`, `replay/viewer.py`
-- `transports/base.py`, `telnet.py`, `ssh.py`, `chaos.py`
-- `fastapi.py` — `mount_terminal_ui`, `WsTerminalProxy`, `TelnetWsGateway`, `create_ws_terminal_router`
-- `cli.py` — `undefterm proxy` and `undefterm listen`
+### Step 3: WS routes — worker_hello + open-mode input
+- Worker handler: `worker_hello` message type in main loop sets `input_mode`
+- Browser hello: now includes `input_mode` field
+- Browser input: uses `_can_send_input()` — any browser in open mode, owner only in hijack
+- `hijack_request`: rejected with error in open mode
 
-### Hijack infrastructure
-- `hijack/base.py` — `HijackBase` mixin
-- `hijack/models.py` — `HijackSession`, `BotTermState`, pydantic request models
-- `hijack/hub.py` — `TermHub` with `on_hijack_changed` callback
-- `hijack/routes_ws.py`, `hijack/routes_rest.py`
-- `hijack/bridge.py` — `TermBridge` with duck-typed `WorkerBot`/`WorkerSession` Protocol
+### Step 4: REST endpoints
+- `POST /worker/{id}/input_mode` — switch mode (404 no worker, 409 active hijack)
+- `POST /worker/{id}/disconnect_worker` — force-disconnect worker WS (404 no worker)
 
-### Frontend
-- `frontend/terminal.html`, `terminal.js`, `terminal.css`
-- `frontend/hijack.html`, `hijack.js`, `hijack.css`
-- Heartbeat (`heartbeatMs`), backoff reconnect, mobile key toolbar (`mobileKeys`), stale guards
+### Step 5: hijack.js — open-mode UI
+- Tracks `_inputMode` from hello, hijack_state, input_mode_changed messages
+- Sends input in open mode (keyboard, text field, mobile keys)
+- Hides Hijack/Step/Release buttons in open mode
+- Shows "Connected (shared)" status
+
+### Step 6: Tests (15 new)
+- `tests/test_hijack_shared.py` — worker_hello, open-mode input, hijack rejection, REST endpoints, broadcasts
+- Also fixed `_safe_int` import in `test_coverage_hub_routes.py` for new path
 
 ---
 
-## Remaining Work
-- Import migration in downstream consumers (explicitly deferred by user — do not suggest)
+## Backward Compatibility
+- Default `input_mode` is `"hijack"` — all existing behavior unchanged
+- `worker_hello` is optional — omitting it gets hijack mode
+- `hello` message gains additive `input_mode` field
+- All 637 original tests still pass
 
-## Key Architecture Decisions
-- `HijackBase` has zero optional deps
-- `TermHub` `on_hijack_changed` callback accepts sync or async
-- `BotTermState`/`HijackSession` are dataclasses; only FastAPI request bodies use pydantic
-- `TermBridge` duck-typed — no import of game classes
-- All resume-sending sites use TOCTOU-aware double-lock pattern
-- Playwright tests run last (zzz_ prefix) to avoid greenlet/asyncio loop conflict
+---
+
+## Architecture Notes
+- `worker_hello` is handled in the main message loop (not peeked) to avoid blocking
+- Open mode: no pause/resume control messages sent to worker
+- `_can_send_input` is checked under lock atomically with lease extension
+- `_disconnect_worker` closes WS outside lock, clears hijack state atomically
+
+---
+
+## Next Steps
+- [ ] uwarp integration: use TermHub open mode instead of custom TeeWriter/MergedReader
+- [ ] Consider: per-browser input filtering in open mode (e.g., role-based)
+- [ ] Coverage: remaining misses are reconnect-stale (ws:58-61,65-66), WS send fail (ws:286,323,386), TOCTOU (rest:312,368), task cancel (bridge:178)
