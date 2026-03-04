@@ -35,6 +35,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from undef.terminal.transports.base import ConnectionTransport
 
 # ---------------------------------------------------------------------------
 # Subcommand: proxy  (WS server → outbound telnet/SSH)
@@ -48,7 +54,6 @@ def _cmd_proxy(args: argparse.Namespace) -> None:
         from fastapi import FastAPI
 
         from undef.terminal.fastapi import WsTerminalProxy
-        from undef.terminal.transports.base import ConnectionTransport
     except ImportError as exc:
         print(  # noqa: T201
             f"error: missing dependency — {exc}\ninstall the cli extra: pip install 'undef-terminal[cli]'",
@@ -56,15 +61,16 @@ def _cmd_proxy(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
-    from collections.abc import Callable
-
     transport_factory: Callable[[], ConnectionTransport] | None = None
     if args.transport == "ssh":
         try:
             import importlib
 
             _ssh_mod = importlib.import_module("undef.terminal.transports.ssh")
-            transport_factory = _ssh_mod.SSHTransport  # type: ignore[assignment]
+            ssh_transport_cls = getattr(_ssh_mod, "SSHTransport", None)
+            if ssh_transport_cls is None:
+                raise AttributeError("SSHTransport")
+            transport_factory = cast("Callable[[], ConnectionTransport]", ssh_transport_cls)
         except (ImportError, AttributeError):
             print(  # noqa: T201
                 "error: SSH transport requires asyncssh: pip install 'undef-terminal[ssh]'",
@@ -74,7 +80,7 @@ def _cmd_proxy(args: argparse.Namespace) -> None:
     else:
         from undef.terminal.transports.telnet import TelnetTransport
 
-        transport_factory = TelnetTransport  # type: ignore[assignment]
+        transport_factory = cast("Callable[[], ConnectionTransport]", TelnetTransport)
 
     proxy = WsTerminalProxy(
         args.host,

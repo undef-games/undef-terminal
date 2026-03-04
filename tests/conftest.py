@@ -14,9 +14,8 @@ import json
 import socket
 import threading
 import time
-from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 import uvicorn
@@ -25,6 +24,9 @@ from fastapi.responses import HTMLResponse
 
 from undef.terminal.hijack.hub import TermHub
 from undef.terminal.server import create_server_app, default_server_config
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, Generator
 
 # ---------------------------------------------------------------------------
 # Utility

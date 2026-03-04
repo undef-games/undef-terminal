@@ -10,7 +10,7 @@ from __future__ import annotations
 import socketserver
 import threading
 import time
-from collections.abc import Generator
+from typing import TYPE_CHECKING
 
 import pytest
 import uvicorn
@@ -19,6 +19,9 @@ from playwright.sync_api import Page, expect
 
 from undef.terminal.fastapi import WsTerminalProxy, mount_terminal_ui
 from undef.terminal.transports.telnet_server import _build_telnet_handshake
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 
 class _ThreadedEchoServer(socketserver.ThreadingTCPServer):

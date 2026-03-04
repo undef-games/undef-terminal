@@ -65,13 +65,13 @@ try:
 except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required for WebSocket support: pip install 'undef-terminal[websocket]'") from _e
 
-from undef.terminal.transports.base import ConnectionTransport
 from undef.terminal.transports.websocket import WebSocketStreamReader, WebSocketStreamWriter
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
     from undef.terminal.protocols import TerminalReader, TerminalWriter
+    from undef.terminal.transports.base import ConnectionTransport
 
 # ---------------------------------------------------------------------------
 # Type alias

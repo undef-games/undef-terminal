@@ -224,9 +224,7 @@ class TestRestInputMode:
                 assert resp.status_code == 200
 
                 # Browser should receive input_mode_changed + hijack_state
-                msgs = []
-                for _ in range(2):
-                    msgs.append(browser.receive_json())
+                msgs = [browser.receive_json() for _ in range(2)]
                 types = [m["type"] for m in msgs]
                 assert "input_mode_changed" in types
                 mode_msg = next(m for m in msgs if m["type"] == "input_mode_changed")

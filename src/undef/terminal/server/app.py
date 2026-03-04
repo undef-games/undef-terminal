@@ -10,19 +10,23 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import importlib.resources
-from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, WebSocket
 from starlette.staticfiles import StaticFiles
 
 from undef.terminal.hijack.hub import TermHub
 from undef.terminal.server.auth import resolve_ws_principal
-from undef.terminal.server.models import ServerConfig
 from undef.terminal.server.policy import SessionPolicyResolver
 from undef.terminal.server.registry import SessionRegistry
 from undef.terminal.server.routes.api import create_api_router
 from undef.terminal.server.routes.pages import create_page_router
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from undef.terminal.server.models import ServerConfig
 
 
 def create_server_app(config: ServerConfig) -> FastAPI:

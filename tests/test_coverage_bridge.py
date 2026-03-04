@@ -116,7 +116,7 @@ class TestRecvLoopCleanReturn:
         recv_call_count = 0
 
         class FakeWS:
-            async def recv(self_ws):
+            async def recv(self):
                 nonlocal recv_call_count
                 recv_call_count += 1
                 if recv_call_count == 1:
@@ -127,17 +127,17 @@ class TestRecvLoopCleanReturn:
 
                 raise ConnectionClosedOK(Close(1000, ""), Close(1000, ""))
 
-            async def send(self_ws, data):
+            async def send(self, data):
                 pass
 
         class FakeConnect:
-            def __init__(self_c, *a, **kw):
+            def __init__(self, *a, **kw):
                 pass
 
-            async def __aenter__(self_c):
+            async def __aenter__(self):
                 return FakeWS()
 
-            async def __aexit__(self_c, *a):
+            async def __aexit__(self, *a):
                 pass
 
         bot = MagicMock()

@@ -80,8 +80,7 @@ class DemoSessionConnector(SessionConnector):
             "",
             "\x1b[1mTranscript\x1b[0m",
         ]
-        for entry in self._transcript[-10:]:
-            lines.append(f"{entry.speaker:>7}: {entry.text}")
+        lines.extend(f"{entry.speaker:>7}: {entry.text}" for entry in self._transcript[-10:])
         lines.append("")
         lines.append(self._prompt())
         return "\n".join(lines[-_ROWS:])

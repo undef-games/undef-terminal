@@ -46,7 +46,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def _require_websockets():
+def _require_websockets() -> None:
     try:
         import websockets  # noqa: F401
     except ImportError as exc:
@@ -205,7 +205,7 @@ class SshWsGateway:
         else:
             host_keys = [asyncssh.generate_private_key("ssh-ed25519")]
 
-        async def _process_handler(process: asyncssh.SSHServerProcess) -> None:  # pragma: no cover
+        async def _process_handler(process: asyncssh.SSHServerProcess[bytes]) -> None:  # pragma: no cover
             try:
                 import websockets
 

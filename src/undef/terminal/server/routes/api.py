@@ -7,17 +7,19 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from undef.terminal.server.models import model_dump
-from undef.terminal.server.registry import SessionRegistry
+
+if TYPE_CHECKING:
+    from undef.terminal.server.registry import SessionRegistry
 
 
 def _registry(request: Request) -> SessionRegistry:
-    return request.app.state.uterm_registry
+    return cast("SessionRegistry", request.app.state.uterm_registry)
 
 
 def create_api_router() -> APIRouter:

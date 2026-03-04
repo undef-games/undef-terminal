@@ -188,8 +188,7 @@ def _render_screen(session: DemoSessionState) -> str:
         lines.append(f"\x1b[33m{session.pending_banner}\x1b[0m")
     lines.append("")
     lines.append("\x1b[1mTranscript\x1b[0m")
-    for entry in session.transcript[-10:]:
-        lines.append(f"{entry.speaker:>7}: {entry.text}")
+    lines.extend(f"{entry.speaker:>7}: {entry.text}" for entry in session.transcript[-10:])
     lines.append("")
     lines.append(_prompt_line(session))
     visible = lines[-_SCREEN_ROWS:]

@@ -41,7 +41,7 @@ ConnectionHandler = Callable[
 class SSHStreamReader:
     """Adapts an asyncssh process stdin to the ``asyncio.StreamReader`` interface."""
 
-    def __init__(self, process: asyncssh.SSHServerProcess) -> None:
+    def __init__(self, process: asyncssh.SSHServerProcess[bytes]) -> None:
         self.process = process
 
     async def read(self, n: int = -1) -> bytes:
@@ -52,13 +52,15 @@ class SSHStreamReader:
             return b""
         if isinstance(data, str):
             return data.encode("latin-1", errors="replace")
-        return data
+        if isinstance(data, (bytes, bytearray)):
+            return bytes(data)
+        return b""
 
 
 class SSHStreamWriter:
     """Adapts an asyncssh process stdout to the ``asyncio.StreamWriter`` interface."""
 
-    def __init__(self, process: asyncssh.SSHServerProcess) -> None:
+    def __init__(self, process: asyncssh.SSHServerProcess[bytes]) -> None:
         self.process = process
         self._closed = False
 
@@ -217,7 +219,7 @@ async def start_ssh_server(
     key_dir = host_key_path if host_key_path is not None else Path.cwd()
     host_key = _get_or_create_host_key(key_dir)
 
-    async def _process_factory(process: asyncssh.SSHServerProcess) -> None:  # pragma: no cover
+    async def _process_factory(process: asyncssh.SSHServerProcess[bytes]) -> None:  # pragma: no cover
         reader = SSHStreamReader(process)
         writer = SSHStreamWriter(process)
         await handler(reader, writer)

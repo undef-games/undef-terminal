@@ -10,13 +10,16 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import Iterable
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from undef.terminal.hijack.hub import TermHub
 from undef.terminal.server.models import RecordingConfig, SessionDefinition, SessionRuntimeStatus
 from undef.terminal.server.runtime import HostedSessionRuntime
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from pathlib import Path
+
+    from undef.terminal.hijack.hub import TermHub
 
 
 class SessionRegistry:

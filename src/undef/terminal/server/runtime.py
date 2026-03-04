@@ -12,12 +12,14 @@ import contextlib
 import json
 import logging
 import time
-from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from undef.terminal.server.connectors import SessionConnector, build_connector
 from undef.terminal.server.models import RecordingConfig, SessionDefinition, SessionLifecycle, SessionRuntimeStatus
 from undef.terminal.session_logger import SessionLogger
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

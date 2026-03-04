@@ -12,9 +12,7 @@ import json
 import socket
 import threading
 import time
-from collections.abc import Generator
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import asyncssh
 import httpx
@@ -24,6 +22,10 @@ import websockets
 
 from undef.terminal.server import create_server_app, default_server_config
 from undef.terminal.transports.ssh import start_ssh_server
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+    from pathlib import Path
 
 
 def _ws_url(base_url: str, path: str) -> str:

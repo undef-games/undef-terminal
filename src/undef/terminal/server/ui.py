@@ -8,8 +8,11 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
 from html import escape
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 def _shell(

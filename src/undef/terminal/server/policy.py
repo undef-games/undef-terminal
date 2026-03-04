@@ -8,9 +8,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from undef.terminal.server.auth import Principal
-from undef.terminal.server.models import AuthConfig, SessionDefinition
+if TYPE_CHECKING:
+    from undef.terminal.server.auth import Principal
+    from undef.terminal.server.models import AuthConfig, SessionDefinition
 
 
 @dataclass(slots=True)

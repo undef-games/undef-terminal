@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -15,6 +15,9 @@ from starlette.websockets import WebSocketDisconnect
 
 from undef.terminal.hijack.hub import TermHub
 from undef.terminal.hijack.models import VALID_ROLES
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 
 def _make_app(
