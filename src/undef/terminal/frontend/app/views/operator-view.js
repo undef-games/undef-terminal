@@ -1,5 +1,13 @@
 import { clearRuntime, loadOperatorWorkspaceState, requestAnalysis, switchSessionMode } from "../state.js";
 import { mountHijackWidget } from "../widgets/hijack-widget-host.js";
+function escapeHtml(value) {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
 async function applyMode(sessionId, mode, status, meta) {
     const state = await switchSessionMode(sessionId, mode);
     status.className = "status-chip ok";
@@ -12,18 +20,20 @@ async function applyMode(sessionId, mode, status, meta) {
 export async function renderOperator(root, bootstrap) {
     if (!bootstrap.session_id)
         throw new Error("operator bootstrap missing session_id");
+    const safeTitle = escapeHtml(bootstrap.title);
+    const safeAppPath = escapeHtml(bootstrap.app_path);
     root.innerHTML = `
     <div class="layout">
       <section class="card stack">
         <div class="small">Operator Console</div>
-        <h1>${bootstrap.title}</h1>
+        <h1>${safeTitle}</h1>
         <div class="toolbar">
           <button class="btn" id="btn-refresh">Refresh</button>
           <button class="btn" id="btn-open">Shared Mode</button>
           <button class="btn" id="btn-hijack">Exclusive Mode</button>
           <button class="btn" id="btn-clear">Clear</button>
           <button class="btn" id="btn-analyze">Analyze</button>
-          <a class="btn" id="btn-replay" href="${bootstrap.app_path}/replay/${encodeURIComponent(bootstrap.session_id)}">Replay</a>
+          <a class="btn" id="btn-replay" href="${safeAppPath}/replay/${encodeURIComponent(bootstrap.session_id)}">Replay</a>
         </div>
         <div id="operator-status" class="status-chip info">Loading operator workspace…</div>
         <pre class="small" id="meta"></pre>

@@ -31,6 +31,13 @@ def _session_num(session_id: str) -> int:
     return total or 1
 
 
+async def _cancel_and_wait(tasks: set[asyncio.Task[object]]) -> None:
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 class HostedSessionRuntime:
     """Long-lived worker runtime for one named hosted session."""
 
@@ -197,8 +204,7 @@ class HostedSessionRuntime:
                         done, pending = await asyncio.wait(
                             {recv_task, poll_task}, timeout=0.5, return_when=asyncio.FIRST_COMPLETED
                         )
-                        for task in pending:
-                            task.cancel()
+                        await _cancel_and_wait(cast("set[asyncio.Task[object]]", pending))
                         if not done:
                             continue
                         if poll_task in done:

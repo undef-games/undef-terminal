@@ -2,6 +2,15 @@ import { clearRuntime, loadOperatorWorkspaceState, requestAnalysis, switchSessio
 import { mountHijackWidget } from "../widgets/hijack-widget-host.js";
 import type { AppBootstrap, SessionMode } from "../types.js";
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 async function applyMode(sessionId: string, mode: SessionMode, status: HTMLElement, meta: HTMLElement): Promise<void> {
   const state = await switchSessionMode(sessionId, mode);
   status.className = "status-chip ok";
@@ -18,18 +27,20 @@ async function applyMode(sessionId: string, mode: SessionMode, status: HTMLEleme
 
 export async function renderOperator(root: HTMLElement, bootstrap: AppBootstrap): Promise<void> {
   if (!bootstrap.session_id) throw new Error("operator bootstrap missing session_id");
+  const safeTitle = escapeHtml(bootstrap.title);
+  const safeAppPath = escapeHtml(bootstrap.app_path);
   root.innerHTML = `
     <div class="layout">
       <section class="card stack">
         <div class="small">Operator Console</div>
-        <h1>${bootstrap.title}</h1>
+        <h1>${safeTitle}</h1>
         <div class="toolbar">
           <button class="btn" id="btn-refresh">Refresh</button>
           <button class="btn" id="btn-open">Shared Mode</button>
           <button class="btn" id="btn-hijack">Exclusive Mode</button>
           <button class="btn" id="btn-clear">Clear</button>
           <button class="btn" id="btn-analyze">Analyze</button>
-          <a class="btn" id="btn-replay" href="${bootstrap.app_path}/replay/${encodeURIComponent(bootstrap.session_id)}">Replay</a>
+          <a class="btn" id="btn-replay" href="${safeAppPath}/replay/${encodeURIComponent(bootstrap.session_id)}">Replay</a>
         </div>
         <div id="operator-status" class="status-chip info">Loading operator workspace…</div>
         <pre class="small" id="meta"></pre>

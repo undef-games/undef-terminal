@@ -79,11 +79,11 @@ def session_page_html(title: str, assets_path: str, session_id: str, *, operator
     return _shell(title, assets_path, body, scripts=("server-session-page.js",))
 
 
-def replay_page_html(title: str, assets_path: str, session_id: str) -> str:
+def replay_page_html(title: str, assets_path: str, session_id: str, *, app_path: str) -> str:
     bootstrap = {
         "page_kind": "replay",
         "title": title,
-        "app_path": "/app",
+        "app_path": app_path,
         "assets_path": assets_path,
         "session_id": session_id,
         "surface": "operator",

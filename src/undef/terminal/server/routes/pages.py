@@ -63,7 +63,7 @@ def create_page_router() -> APIRouter:
             raise HTTPException(status_code=404, detail=f"unknown session: {session_id}")
         cfg = request.app.state.uterm_config
         principal = resolve_http_principal(request, cfg.auth)
-        html = replay_page_html(session.display_name, cfg.ui.assets_path, session_id)
+        html = replay_page_html(session.display_name, cfg.ui.assets_path, session_id, app_path=cfg.ui.app_path)
         response = HTMLResponse(html)
         response.set_cookie(cfg.auth.principal_cookie, principal.name)
         response.set_cookie(cfg.auth.surface_cookie, "operator")

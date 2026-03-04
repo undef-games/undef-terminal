@@ -23,7 +23,8 @@ class SessionPolicyResolver:
 
     def role_for(self, principal: Principal, session: SessionDefinition) -> str:
         requested = principal.requested_role
-        if requested in {"viewer", "operator", "admin"}:
+        # Only trust caller-provided role hints in permissive local modes.
+        if self.auth.mode in {"none", "dev"} and requested in {"viewer", "operator", "admin"}:
             return requested
         if self.auth.mode not in {"none", "dev"} and principal.name == "anonymous":
             return "viewer"
