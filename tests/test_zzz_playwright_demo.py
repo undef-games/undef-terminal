@@ -48,9 +48,10 @@ class TestDemoPageSingleBrowser:
         page.get_by_role("button", name="Send").click()
 
         state = _demo_state(demo_server)
-        transcript = state["transcript"]
+        transcript = state.get("transcript", [])
         assert isinstance(transcript, list)
-        assert any("hello from playwright" in str(entry["text"]) for entry in transcript)
+        from typing import cast
+        assert any("hello from playwright" in str(cast("dict", entry).get("text", "")) for entry in transcript if isinstance(entry, dict))
 
         page.get_by_role("button", name="Analyze").click()
         expect(page.locator("[id$='-analysistext']")).to_contain_text("interactive demo analysis", timeout=5000)
@@ -132,10 +133,11 @@ class TestDemoPageTwoBrowsers:
             page2.get_by_role("button", name="Send").click()
 
             state = _demo_state(demo_server)
-            transcript = state["transcript"]
+            transcript = state.get("transcript", [])
             assert isinstance(transcript, list)
-            assert any("from first browser" in str(entry["text"]) for entry in transcript)
-            assert any("from second browser" in str(entry["text"]) for entry in transcript)
+            from typing import cast
+            assert any("from first browser" in str(cast("dict", entry).get("text", "")) for entry in transcript if isinstance(entry, dict))
+            assert any("from second browser" in str(cast("dict", entry).get("text", "")) for entry in transcript if isinstance(entry, dict))
         finally:
             page2.close()
             ctx2.close()

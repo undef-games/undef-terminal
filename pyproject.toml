@@ -136,3 +136,9 @@ python-version = "3.11"
 [tool.codespell]
 skip = ".git,*.pyc,__pycache__,.venv,node_modules,uv.lock,*.mmd"
 ignore-words-list = "ore,opps,wont,strat,nd,rade,ans"
+
+[tool.uv.workspace]
+members = [
+    ".",
+    "packages/undef-terminal-cloudflare",
+]
