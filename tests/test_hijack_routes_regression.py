@@ -326,7 +326,7 @@ async def test_acquire_succeeds_when_worker_connects_after_cleanup() -> None:
     async def _fake_send(bot_id: str, msg: dict) -> bool:
         return True
 
-    async def _fake_acquire(bot_id: str, **kw):  # type: ignore[override]
+    async def _fake_acquire(bot_id: str, **kw):
         return True, None
 
     with (
