@@ -50,7 +50,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
     )
 
     @asynccontextmanager
-    async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
         async def _delayed_boot() -> None:
             await asyncio.sleep(0.15)
             await registry.start_auto_start_sessions()

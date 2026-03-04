@@ -139,12 +139,14 @@ class TerminalSSHServer(asyncssh.SSHServer):
         logger.info("ssh connection made addr=%s", addr)
 
     def connection_lost(self, exc: Exception | None) -> None:
+        _ = exc
         if self._peer_ip and self._peer_ip in self._ip_connections:
             self._ip_connections[self._peer_ip] -= 1
             if self._ip_connections[self._peer_ip] <= 0:
                 del self._ip_connections[self._peer_ip]
 
     def begin_auth(self, username: str) -> bool:
+        _ = username
         return True
 
     def password_auth_supported(self) -> bool:

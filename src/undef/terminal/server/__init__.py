@@ -10,4 +10,4 @@ from __future__ import annotations
 from undef.terminal.server.app import create_server_app
 from undef.terminal.server.config import config_from_mapping, default_server_config, load_server_config
 
-__all__ = ["create_server_app", "load_server_config", "default_server_config", "config_from_mapping"]
+__all__ = ["config_from_mapping", "create_server_app", "default_server_config", "load_server_config"]

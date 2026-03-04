@@ -19,7 +19,7 @@ class TokenBucket:
             of burst capacity).
     """
 
-    __slots__ = ("_rate", "_burst", "_tokens", "_last_refill")
+    __slots__ = ("_burst", "_last_refill", "_rate", "_tokens")
 
     def __init__(self, rate_per_sec: float, burst: float | None = None) -> None:
         self._rate = float(rate_per_sec)

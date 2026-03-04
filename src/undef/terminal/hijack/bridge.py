@@ -242,7 +242,7 @@ class TermBridge:
                     return
                 try:
                     msg = json.loads(raw)
-                except Exception:  # noqa: S112  # nosec B112
+                except Exception:  # nosec B112
                     continue
                 mtype = msg.get("type")
                 if mtype == "snapshot_req":

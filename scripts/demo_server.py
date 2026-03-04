@@ -522,7 +522,7 @@ def _start_default_session_workers(base_url: str) -> list[asyncio.Task[None]]:
 
 
 @asynccontextmanager
-async def _lifespan(app: FastAPI):
+async def _lifespan(_app: FastAPI):
     """Start the built-in demo session worker after uvicorn is ready."""
     worker_tasks: list[asyncio.Task[None]] = []
     try:

@@ -92,12 +92,14 @@ select = [
     "RET",
     "RSE",
     "TID",
+    "ARG",
+    "RUF",
 ]
 ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]
-"tests/**/*.py" = ["E402", "B905"]
+"__init__.py" = ["F401", "RUF022"]
+"tests/**/*.py" = ["E402", "B905", "ARG", "RUF003", "RUF012", "RUF015", "RUF043", "RUF059"]
 
 [tool.coverage.run]
 source = ["undef"]
@@ -124,9 +126,6 @@ ignore_missing_imports = false
 namespace_packages = true
 explicit_package_bases = true
 mypy_path = ["src"]
-
-[tool.ty.rules]
-unused-type-ignore-comment = "ignore"
 
 [tool.ty.environment]
 python-version = "3.11"

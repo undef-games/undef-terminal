@@ -12,8 +12,8 @@ from undef.terminal.transports.chaos import ChaosTransport
 from undef.terminal.transports.telnet import TelnetClient, TelnetTransport, start_telnet_server
 
 __all__ = [
-    "ConnectionTransport",
     "ChaosTransport",
+    "ConnectionTransport",
     "TelnetClient",
     "TelnetTransport",
     "start_telnet_server",

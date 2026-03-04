@@ -55,7 +55,7 @@ def _cmd_proxy(args: argparse.Namespace) -> None:
 
         from undef.terminal.fastapi import WsTerminalProxy
     except ImportError as exc:
-        print(  # noqa: T201
+        print(
             f"error: missing dependency — {exc}\ninstall the cli extra: pip install 'undef-terminal[cli]'",
             file=sys.stderr,
         )
@@ -72,7 +72,7 @@ def _cmd_proxy(args: argparse.Namespace) -> None:
                 raise AttributeError("SSHTransport")
             transport_factory = cast("Callable[[], ConnectionTransport]", ssh_transport_cls)
         except (ImportError, AttributeError):
-            print(  # noqa: T201
+            print(
                 "error: SSH transport requires asyncssh: pip install 'undef-terminal[ssh]'",
                 file=sys.stderr,
             )
@@ -91,7 +91,7 @@ def _cmd_proxy(args: argparse.Namespace) -> None:
     app = FastAPI(title="undefterm proxy", docs_url=None, redoc_url=None)
     app.include_router(proxy.create_router(args.path))
 
-    print(  # noqa: T201
+    print(
         f"undefterm proxy  {args.transport}://{args.host}:{args.bbs_port}  →  ws://{args.bind}:{args.port}{args.path}"
     )
 
@@ -108,7 +108,7 @@ def _cmd_listen(args: argparse.Namespace) -> None:
     try:
         from undef.terminal.gateway import SshWsGateway, TelnetWsGateway
     except ImportError as exc:  # pragma: no cover
-        print(  # noqa: T201
+        print(
             f"error: missing dependency — {exc}\ninstall the cli extra: pip install 'undef-terminal[cli]'",
             file=sys.stderr,
         )
@@ -118,7 +118,7 @@ def _cmd_listen(args: argparse.Namespace) -> None:
     ssh_port: int = args.ssh_port
 
     if telnet_port == 0 and ssh_port == 0:
-        print("error: at least one of --port or --ssh-port must be non-zero", file=sys.stderr)  # noqa: T201
+        print("error: at least one of --port or --ssh-port must be non-zero", file=sys.stderr)
         sys.exit(1)
 
     asyncio.run(  # pragma: no cover
@@ -141,19 +141,19 @@ async def _run_listen(
         gw = TelnetWsGateway(ws_url)
         srv = await gw.start(bind, telnet_port)
         servers.append(srv)
-        print(f"undefterm listen  telnet://{bind}:{telnet_port}  →  {ws_url}")  # noqa: T201
+        print(f"undefterm listen  telnet://{bind}:{telnet_port}  →  {ws_url}")
 
     if ssh_port:
         try:
             gw_ssh = SshWsGateway(ws_url, server_key=server_key)
             srv_ssh = await gw_ssh.start(bind, ssh_port)
             servers.append(srv_ssh)
-            print(f"undefterm listen  ssh://{bind}:{ssh_port}     →  {ws_url}")  # noqa: T201
+            print(f"undefterm listen  ssh://{bind}:{ssh_port}     →  {ws_url}")
         except ImportError as exc:
-            print(f"warning: SSH gateway disabled — {exc}", file=sys.stderr)  # noqa: T201
+            print(f"warning: SSH gateway disabled — {exc}", file=sys.stderr)
 
     if not servers:
-        print("error: no servers started", file=sys.stderr)  # noqa: T201
+        print("error: no servers started", file=sys.stderr)
         return
 
     try:
@@ -197,7 +197,7 @@ def _build_parser() -> argparse.ArgumentParser:
     proxy_p.add_argument(
         "--bind",
         metavar="ADDR",
-        default="0.0.0.0",  # noqa: S104  # nosec B104
+        default="0.0.0.0",  # nosec B104
         help="bind address (default: 0.0.0.0)",
     )
     proxy_p.add_argument(
@@ -241,7 +241,7 @@ def _build_parser() -> argparse.ArgumentParser:
     listen_p.add_argument(
         "--bind",
         metavar="ADDR",
-        default="0.0.0.0",  # noqa: S104  # nosec B104
+        default="0.0.0.0",  # nosec B104
         help="bind address (default: 0.0.0.0)",
     )
     listen_p.add_argument(

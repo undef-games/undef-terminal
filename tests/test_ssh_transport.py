@@ -13,7 +13,7 @@ import pytest
 
 pytest.importorskip("asyncssh", reason="asyncssh not installed; skip SSH transport tests")
 
-from undef.terminal.transports.ssh import SSHStreamReader, SSHStreamWriter  # noqa: E402
+from undef.terminal.transports.ssh import SSHStreamReader, SSHStreamWriter
 
 
 class MockStdin:

@@ -57,7 +57,7 @@ async def _make_ssh_server(
         def password_auth_supported(self) -> bool:
             return True
 
-        def validate_password(self, username: str, password: str) -> bool:  # noqa: ARG002
+        def validate_password(self, username: str, password: str) -> bool:
             return True  # accept any credentials
 
     host_key = asyncssh.generate_private_key("ssh-ed25519")

@@ -75,15 +75,15 @@ _SERVER_EXPORTS: frozenset[str] = frozenset({"create_server_app", "load_server_c
 
 def __getattr__(name: str) -> object:
     if name in _FASTAPI_EXPORTS:
-        import undef.terminal.fastapi as _fastapi_mod  # noqa: PLC0415
+        import undef.terminal.fastapi as _fastapi_mod
 
         return getattr(_fastapi_mod, name)
     if name in _GATEWAY_EXPORTS:
-        import undef.terminal.gateway as _gateway_mod  # noqa: PLC0415
+        import undef.terminal.gateway as _gateway_mod
 
         return getattr(_gateway_mod, name)
     if name in _SERVER_EXPORTS:
-        import undef.terminal.server as _server_mod  # noqa: PLC0415
+        import undef.terminal.server as _server_mod
 
         return getattr(_server_mod, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

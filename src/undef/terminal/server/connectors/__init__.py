@@ -14,10 +14,10 @@ from undef.terminal.server.connectors.demo import DemoSessionConnector
 from undef.terminal.server.connectors.telnet import TelnetSessionConnector
 
 __all__ = [
-    "SessionConnector",
-    "build_connector",
     "DemoSessionConnector",
+    "SessionConnector",
     "TelnetSessionConnector",
+    "build_connector",
 ]
 
 

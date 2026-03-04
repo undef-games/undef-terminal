@@ -117,7 +117,7 @@ class TelnetWsGateway:
         _require_websockets()
         self._ws_url = ws_url
 
-    async def start(self, host: str = "0.0.0.0", port: int = 2112) -> asyncio.AbstractServer:  # noqa: S104  # nosec B104
+    async def start(self, host: str = "0.0.0.0", port: int = 2112) -> asyncio.AbstractServer:  # nosec B104
         """Start the TCP listener and return the server object.
 
         Args:
@@ -180,7 +180,7 @@ class SshWsGateway:
         self._ws_url = ws_url
         self._server_key = server_key
 
-    async def start(self, host: str = "0.0.0.0", port: int = 2222) -> object:  # noqa: S104  # nosec B104
+    async def start(self, host: str = "0.0.0.0", port: int = 2222) -> object:  # nosec B104
         """Start the SSH server and return the server object.
 
         Args:
