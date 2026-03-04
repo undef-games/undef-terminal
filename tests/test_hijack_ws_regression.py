@@ -212,7 +212,7 @@ def test_hijack_request_send_fail_no_notify_no_owner() -> None:
             async def _fail_pause(bot_id: str, msg: dict) -> bool:
                 if msg.get("action") == "pause":
                     return False
-                return await orig_send(bot_id, msg)  # type: ignore[arg-type]
+                return await orig_send(bot_id, msg)
 
             with patch.object(hub, "_send_worker", side_effect=_fail_pause):
                 browser.send_json({"type": "hijack_request"})
@@ -417,7 +417,7 @@ def test_hijack_request_send_fail_no_notify_when_rest_session_active() -> None:
             async def _fail_pause(bot_id: str, msg: dict) -> bool:
                 if msg.get("action") == "pause":
                     return False
-                return await orig_send(bot_id, msg)  # type: ignore[arg-type]
+                return await orig_send(bot_id, msg)
 
             with patch.object(hub, "_send_worker", side_effect=_fail_pause):
                 browser.send_json({"type": "hijack_request"})
