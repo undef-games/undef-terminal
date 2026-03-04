@@ -37,12 +37,15 @@ class HijackSession:
     last_heartbeat: float
 
 
+VALID_ROLES = frozenset({"viewer", "operator", "admin"})
+
+
 @dataclass
 class WorkerTermState:
     """Per-worker connection state held by :class:`~undef.terminal.hijack.hub.TermHub`."""
 
     worker_ws: WebSocket | None = None
-    browsers: set[WebSocket] = field(default_factory=set)
+    browsers: dict[WebSocket, str] = field(default_factory=dict)  # ws → role
     hijack_owner: WebSocket | None = None  # dashboard WS that holds the lease
     hijack_owner_expires_at: float | None = None
     hijack_session: HijackSession | None = None  # REST lease

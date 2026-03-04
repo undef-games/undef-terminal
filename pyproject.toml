@@ -24,6 +24,7 @@ all       = ["fastapi>=0.110", "asyncssh>=2.14", "pyte>=0.8", "uvicorn>=0.24", "
 
 [project.scripts]
 undefterm = "undef.terminal.cli:main"
+undefterm-server = "undef.terminal.server.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

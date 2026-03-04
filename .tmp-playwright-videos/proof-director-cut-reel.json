@@ -1,0 +1,46 @@
+{
+  "video": "/Users/tim/code/gh/undef-games/undef-terminal/.tmp-playwright-videos/proof-director-cut-reel.mp4",
+  "total_seconds": 19.03,
+  "scenarios": [
+    {
+      "label": "Demo: hijack + analysis",
+      "start_seconds": 0.0,
+      "duration_seconds": 1.83
+    },
+    {
+      "label": "Demo: command flow",
+      "start_seconds": 2.63,
+      "duration_seconds": 1.67
+    },
+    {
+      "label": "Two-browser: exclusive handoff",
+      "start_seconds": 5.1,
+      "duration_seconds": 1.63
+    },
+    {
+      "label": "Two-browser: shared input",
+      "start_seconds": 7.53,
+      "duration_seconds": 1.8
+    },
+    {
+      "label": "Operator + replay",
+      "start_seconds": 10.13,
+      "duration_seconds": 1.87
+    },
+    {
+      "label": "Terminal: ws+telnet roundtrip",
+      "start_seconds": 12.8,
+      "duration_seconds": 1.17
+    },
+    {
+      "label": "Terminal: settings persistence",
+      "start_seconds": 14.77,
+      "duration_seconds": 1.33
+    },
+    {
+      "label": "Terminal: reconnect",
+      "start_seconds": 16.9,
+      "duration_seconds": 2.13
+    }
+  ]
+}

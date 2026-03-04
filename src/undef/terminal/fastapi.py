@@ -221,7 +221,10 @@ class WsTerminalProxy:
     ) -> None:
         """Read from browser WebSocket and forward to remote transport."""
         while transport.is_connected():
-            data = await reader.read(256)
+            # WebSocketStreamReader.read(n) blocks until it has collected *n*
+            # bytes or the socket closes. Terminal input is latency-sensitive,
+            # so read one byte at a time here instead of buffering for 256.
+            data = await reader.read(1)
             if not data:
                 break
             await transport.send(data)
