@@ -207,6 +207,7 @@ def reference_server() -> Generator[str, None, None]:
 
     base_url = f"http://127.0.0.1:{port}"
     config = default_server_config()
+    config.auth.mode = "dev"
     config.server.host = "127.0.0.1"
     config.server.port = port
     config.server.public_base_url = base_url

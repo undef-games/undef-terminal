@@ -7,8 +7,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+
+from undef.terminal.server.authorization import AuthorizationService
 
 if TYPE_CHECKING:
     from undef.terminal.server.auth import Principal
@@ -20,20 +22,9 @@ class SessionPolicyResolver:
     """Map principals to browser roles for a given session definition."""
 
     auth: AuthConfig
+    authz: AuthorizationService = field(default_factory=AuthorizationService)
 
     def role_for(self, principal: Principal, session: SessionDefinition) -> str:
-        requested = principal.requested_role
-        # Only trust caller-provided role hints in permissive local modes.
-        if self.auth.mode in {"none", "dev"} and requested in {"viewer", "operator", "admin"}:
-            return requested
-        if self.auth.mode not in {"none", "dev"} and principal.name == "anonymous":
-            return "viewer"
-        if principal.surface == "operator":
+        if self.auth.mode in {"none", "dev"} and not principal.roles:
             return "admin"
-        if principal.surface == "user":
-            return "operator" if session.input_mode == "open" else "viewer"
-        if self.auth.mode in {"none", "dev"}:
-            return "admin"
-        if session.visibility == "operator":
-            return "viewer"
-        return "viewer"
+        return self.authz.resolve_browser_role(principal, session)

@@ -32,6 +32,7 @@ repos:
           - websockets>=16.0
           - asyncssh>=2.22.0
           - pyte>=0.8.2
+          - pyjwt>=2.9
         pass_filenames: false
         always_run: true
         types: [python]
@@ -49,6 +50,7 @@ repos:
           - websockets>=16.0
           - asyncssh>=2.22.0
           - pyte>=0.8.2
+          - pyjwt>=2.9
         pass_filenames: false
         always_run: true
         types: [python]

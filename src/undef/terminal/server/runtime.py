@@ -41,10 +41,18 @@ async def _cancel_and_wait(tasks: set[asyncio.Task[object]]) -> None:
 class HostedSessionRuntime:
     """Long-lived worker runtime for one named hosted session."""
 
-    def __init__(self, definition: SessionDefinition, *, public_base_url: str, recording: RecordingConfig) -> None:
+    def __init__(
+        self,
+        definition: SessionDefinition,
+        *,
+        public_base_url: str,
+        recording: RecordingConfig,
+        worker_bearer_token: str | None = None,
+    ) -> None:
         self.definition = definition
         self._public_base_url = public_base_url.rstrip("/")
         self._recording_cfg = recording
+        self._worker_bearer_token = worker_bearer_token
         self._connector: SessionConnector | None = None
         self._task: asyncio.Task[None] | None = None
         self._queue: asyncio.Queue[dict[str, Any]] | None = None
@@ -174,6 +182,68 @@ class HostedSessionRuntime:
         if self._logger is not None:
             await self._logger.log_event(event, payload)
 
+    async def _bridge_session(self, ws: Any) -> None:
+        connector = self._connector
+        if connector is None:
+            raise RuntimeError("connector unavailable")
+        self._state = "running"
+        self._connected = True
+        await self._enqueue_messages(await connector.set_mode(self.definition.input_mode))
+        await self._enqueue_messages([await connector.get_snapshot()])
+        await self._log_event("runtime_started", {"session_id": self.definition.session_id})
+
+        while not self._stop.is_set():
+            if self._queue is not None and not self._queue.empty():
+                outbound = await self._queue.get()
+                await ws.send(json.dumps(outbound))
+                if outbound.get("type") == "snapshot":
+                    await self._log_snapshot(outbound)
+                continue
+            recv_task = asyncio.create_task(ws.recv())
+            poll_task = asyncio.create_task(connector.poll_messages())
+            done, pending = await asyncio.wait({recv_task, poll_task}, timeout=0.5, return_when=asyncio.FIRST_COMPLETED)
+            await _cancel_and_wait(cast("set[asyncio.Task[object]]", pending))
+            if not done:
+                continue
+            if poll_task in done:
+                for outbound in poll_task.result():
+                    await ws.send(json.dumps(outbound))
+                    if outbound.get("type") == "snapshot":
+                        await self._log_snapshot(outbound)
+                with contextlib.suppress(asyncio.CancelledError):
+                    await recv_task
+                continue
+
+            raw = recv_task.result()
+            with contextlib.suppress(asyncio.CancelledError):
+                await poll_task
+            try:
+                message = json.loads(raw)
+            except Exception:
+                continue
+            mtype = message.get("type")
+            responses: list[dict[str, Any]] = []
+            if mtype == "snapshot_req":
+                responses = [await connector.get_snapshot()]
+            elif mtype == "analyze_req":
+                responses = [
+                    {
+                        "type": "analysis",
+                        "formatted": await connector.get_analysis(),
+                        "ts": time.time(),
+                    }
+                ]
+            elif mtype == "control":
+                responses = await connector.handle_control(str(message.get("action", "")))
+            elif mtype == "input":
+                payload = str(message.get("data", ""))
+                await self._log_send(payload)
+                responses = await connector.handle_input(payload)
+            for outbound in responses:
+                await ws.send(json.dumps(outbound))
+                if outbound.get("type") == "snapshot":
+                    await self._log_snapshot(outbound)
+
     async def _run(self) -> None:
         import websockets
 
@@ -183,68 +253,17 @@ class HostedSessionRuntime:
             try:
                 self._connector = await self._start_connector()
                 worker_url = self._ws_url() + f"/ws/worker/{self.definition.session_id}/term"
+                if self._worker_bearer_token:
+                    async with websockets.connect(
+                        worker_url,
+                        additional_headers={"Authorization": f"Bearer {self._worker_bearer_token}"},
+                    ) as ws:
+                        attempt = 0
+                        await self._bridge_session(ws)
+                    continue
                 async with websockets.connect(worker_url) as ws:
-                    self._state = "running"
-                    self._connected = True
                     attempt = 0
-                    await self._enqueue_messages(await self._connector.set_mode(self.definition.input_mode))
-                    if self._connector is not None:
-                        await self._enqueue_messages([await self._connector.get_snapshot()])
-                    await self._log_event("runtime_started", {"session_id": self.definition.session_id})
-
-                    while not self._stop.is_set():
-                        if self._queue is not None and not self._queue.empty():
-                            outbound = await self._queue.get()
-                            await ws.send(json.dumps(outbound))
-                            if outbound.get("type") == "snapshot":
-                                await self._log_snapshot(outbound)
-                            continue
-                        recv_task = asyncio.create_task(ws.recv())
-                        poll_task = asyncio.create_task(self._connector.poll_messages())
-                        done, pending = await asyncio.wait(
-                            {recv_task, poll_task}, timeout=0.5, return_when=asyncio.FIRST_COMPLETED
-                        )
-                        await _cancel_and_wait(cast("set[asyncio.Task[object]]", pending))
-                        if not done:
-                            continue
-                        if poll_task in done:
-                            for outbound in poll_task.result():
-                                await ws.send(json.dumps(outbound))
-                                if outbound.get("type") == "snapshot":
-                                    await self._log_snapshot(outbound)
-                            with contextlib.suppress(asyncio.CancelledError):
-                                await recv_task
-                            continue
-
-                        raw = recv_task.result()
-                        with contextlib.suppress(asyncio.CancelledError):
-                            await poll_task
-                        try:
-                            message = json.loads(raw)
-                        except Exception:
-                            continue
-                        mtype = message.get("type")
-                        responses: list[dict[str, Any]] = []
-                        if mtype == "snapshot_req":
-                            responses = [await self._connector.get_snapshot()]
-                        elif mtype == "analyze_req":
-                            responses = [
-                                {
-                                    "type": "analysis",
-                                    "formatted": await self._connector.get_analysis(),
-                                    "ts": time.time(),
-                                }
-                            ]
-                        elif mtype == "control":
-                            responses = await self._connector.handle_control(str(message.get("action", "")))
-                        elif mtype == "input":
-                            payload = str(message.get("data", ""))
-                            await self._log_send(payload)
-                            responses = await self._connector.handle_input(payload)
-                        for outbound in responses:
-                            await ws.send(json.dumps(outbound))
-                            if outbound.get("type") == "snapshot":
-                                await self._log_snapshot(outbound)
+                    await self._bridge_session(ws)
             except asyncio.CancelledError:
                 break
             except Exception as exc:

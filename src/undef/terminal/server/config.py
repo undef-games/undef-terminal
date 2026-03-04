@@ -31,6 +31,7 @@ def _clean_path(value: str, fallback: str) -> str:
 def default_server_config() -> ServerConfig:
     """Return a runnable default config with one auto-start demo session."""
     return ServerConfig(
+        auth=AuthConfig(mode="dev"),
         sessions=[
             SessionDefinition(
                 session_id="demo-session",
@@ -40,7 +41,7 @@ def default_server_config() -> ServerConfig:
                 auto_start=True,
                 tags=["demo", "reference"],
             )
-        ]
+        ],
     )
 
 
@@ -78,6 +79,20 @@ def config_from_mapping(data: dict[str, Any]) -> ServerConfig:
         role_header=str(auth_data.get("role_header", base.auth.role_header)),
         principal_cookie=str(auth_data.get("principal_cookie", base.auth.principal_cookie)),
         surface_cookie=str(auth_data.get("surface_cookie", base.auth.surface_cookie)),
+        token_cookie=str(auth_data.get("token_cookie", base.auth.token_cookie)),
+        jwt_issuer=str(auth_data.get("jwt_issuer", base.auth.jwt_issuer)),
+        jwt_audience=str(auth_data.get("jwt_audience", base.auth.jwt_audience)),
+        jwt_jwks_url=(None if auth_data.get("jwt_jwks_url") is None else str(auth_data.get("jwt_jwks_url"))),
+        jwt_public_key_pem=(
+            None if auth_data.get("jwt_public_key_pem") is None else str(auth_data.get("jwt_public_key_pem"))
+        ),
+        jwt_algorithms=[str(v) for v in auth_data.get("jwt_algorithms", base.auth.jwt_algorithms)],
+        clock_skew_seconds=int(auth_data.get("clock_skew_seconds", base.auth.clock_skew_seconds)),
+        jwt_roles_claim=str(auth_data.get("jwt_roles_claim", base.auth.jwt_roles_claim)),
+        jwt_scopes_claim=str(auth_data.get("jwt_scopes_claim", base.auth.jwt_scopes_claim)),
+        worker_bearer_token=(
+            None if auth_data.get("worker_bearer_token") is None else str(auth_data.get("worker_bearer_token"))
+        ),
     )
     ui = UiConfig(
         app_path=_clean_path(str(ui_data.get("app_path", base.ui.app_path)), base.ui.app_path),

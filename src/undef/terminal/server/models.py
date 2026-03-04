@@ -18,11 +18,21 @@ SessionLifecycle = Literal["stopped", "starting", "running", "error"]
 class AuthConfig:
     """Authentication and principal-bridging settings for the server app."""
 
-    mode: str = "dev"
+    mode: str = "jwt"
     principal_header: str = "x-uterm-principal"
     role_header: str = "x-uterm-role"
     principal_cookie: str = "uterm_principal"
     surface_cookie: str = "uterm_surface"
+    token_cookie: str = "uterm_token"  # noqa: S105
+    jwt_issuer: str = "undef-terminal"
+    jwt_audience: str = "undef-terminal-server"
+    jwt_jwks_url: str | None = None
+    jwt_public_key_pem: str | None = None
+    jwt_algorithms: list[str] = field(default_factory=lambda: ["HS256"])
+    clock_skew_seconds: int = 15
+    jwt_roles_claim: str = "roles"
+    jwt_scopes_claim: str = "scope"
+    worker_bearer_token: str | None = None
 
 
 @dataclass(slots=True)

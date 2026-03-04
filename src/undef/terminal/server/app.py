@@ -19,6 +19,7 @@ from starlette.staticfiles import StaticFiles
 
 from undef.terminal.hijack.hub import TermHub
 from undef.terminal.server.auth import resolve_http_principal, resolve_ws_principal
+from undef.terminal.server.authorization import AuthorizationService
 from undef.terminal.server.policy import SessionPolicyResolver
 from undef.terminal.server.registry import SessionRegistry
 from undef.terminal.server.routes.api import create_api_router
@@ -32,26 +33,31 @@ if TYPE_CHECKING:
 
 def create_server_app(config: ServerConfig) -> FastAPI:
     """Create the standalone reference server application."""
-    policy = SessionPolicyResolver(config.auth)
+    authz = AuthorizationService()
+    policy = SessionPolicyResolver(config.auth, authz=authz)
     registry: SessionRegistry | None = None
 
     async def _require_authenticated(connection: HTTPConnection) -> None:
-        if config.auth.mode in {"none", "dev"}:
-            return
         if connection.scope.get("type") == "websocket":
             principal = resolve_ws_principal(connection, config.auth)
-            if principal.name == "anonymous":
+            connection.state.uterm_principal = principal
+            if config.auth.mode not in {"none", "dev"} and principal.subject_id == "anonymous":
                 raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="authentication required")
             return
         principal = resolve_http_principal(connection, config.auth)
-        if principal.name == "anonymous":
+        connection.state.uterm_principal = principal
+        if config.auth.mode not in {"none", "dev"} and principal.subject_id == "anonymous":
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="authentication required")
 
     async def _resolve_browser_role(ws: WebSocket, worker_id: str) -> str:
-        principal = resolve_ws_principal(ws, config.auth)
+        principal = getattr(ws.state, "uterm_principal", None)
+        if principal is None:
+            principal = resolve_ws_principal(ws, config.auth)
         session = await registry.get_definition(worker_id) if registry is not None else None
         if session is None:
             return "admin" if config.auth.mode in {"none", "dev"} else "viewer"
+        if not authz.can_read_session(principal, session):
+            raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="insufficient privileges")
         return policy.role_for(principal, session)
 
     hub = TermHub(resolve_browser_role=_resolve_browser_role)
@@ -60,6 +66,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
         hub=hub,
         public_base_url=config.server.public_base_url,
         recording=config.recording,
+        worker_bearer_token=config.auth.worker_bearer_token,
     )
 
     @asynccontextmanager
@@ -80,6 +87,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
     app = FastAPI(title=config.server.title, lifespan=_lifespan)
     app.state.uterm_config = config
     app.state.uterm_policy = policy
+    app.state.uterm_authz = authz
     app.state.uterm_hub = hub
     app.state.uterm_registry = registry
 

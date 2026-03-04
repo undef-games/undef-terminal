@@ -32,10 +32,12 @@ class SessionRegistry:
         hub: TermHub,
         public_base_url: str,
         recording: RecordingConfig,
+        worker_bearer_token: str | None = None,
     ) -> None:
         self._hub = hub
         self._recording = recording
         self._public_base_url = public_base_url
+        self._worker_bearer_token = worker_bearer_token
         self._lock = asyncio.Lock()
         self._sessions: dict[str, SessionDefinition] = {session.session_id: session for session in sessions}
         self._runtimes: dict[str, HostedSessionRuntime] = {}
@@ -43,7 +45,12 @@ class SessionRegistry:
     def _runtime_for(self, session: SessionDefinition) -> HostedSessionRuntime:
         runtime = self._runtimes.get(session.session_id)
         if runtime is None:
-            runtime = HostedSessionRuntime(session, public_base_url=self._public_base_url, recording=self._recording)
+            runtime = HostedSessionRuntime(
+                session,
+                public_base_url=self._public_base_url,
+                recording=self._recording,
+                worker_bearer_token=self._worker_bearer_token,
+            )
             self._runtimes[session.session_id] = runtime
         return runtime
 

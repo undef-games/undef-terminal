@@ -19,6 +19,7 @@ def test_default_server_config_has_demo_session() -> None:
     config = default_server_config()
 
     assert config.server.public_base_url == "http://127.0.0.1:8780"
+    assert config.auth.mode == "dev"
     assert len(config.sessions) == 1
     assert config.sessions[0].session_id == "demo-session"
     assert config.sessions[0].connector_type == "demo"
@@ -56,10 +57,10 @@ def test_config_from_mapping_parses_sessions_and_paths() -> None:
 
 
 def test_policy_fails_closed_for_anonymous_in_non_dev_mode() -> None:
-    policy = SessionPolicyResolver(AuthConfig(mode="header"))
+    policy = SessionPolicyResolver(AuthConfig(mode="jwt", jwt_public_key_pem="x", jwt_algorithms=["HS256"]))
     session = SessionDefinition(session_id="s1", display_name="Session", connector_type="demo")
 
-    role = policy.role_for(Principal(name="anonymous", surface="operator"), session)
+    role = policy.role_for(Principal(subject_id="anonymous", roles=frozenset({"viewer"})), session)
 
     assert role == "viewer"
 
