@@ -197,7 +197,7 @@ class WsTerminalProxy:
         from undef.terminal.transports.telnet import TelnetTransport
 
         factory: Callable[[], ConnectionTransport] = self._transport_factory or cast(
-            Callable[[], ConnectionTransport], TelnetTransport
+            "Callable[[], ConnectionTransport]", TelnetTransport
         )
         transport = factory()
         await transport.connect(self._host, self._port)

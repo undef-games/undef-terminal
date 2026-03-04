@@ -3,13 +3,24 @@ repos:
     rev: v0.15.2
     hooks:
       - id: ruff
-        args: [--fix, --unsafe-fixes]
+        args: [--fix]
       - id: ruff-format
+
+  - repo: https://github.com/fsfe/reuse-tool
+    rev: v6.2.0
+    hooks:
+      - id: reuse
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        additional_dependencies: ["tomli"]
 
   - repo: local
     hooks:
       - id: mypy
-        name: mypy
+        name: mypy strict
         entry: mypy src/
         language: system
         pass_filenames: false

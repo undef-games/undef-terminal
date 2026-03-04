@@ -99,7 +99,7 @@ class HostedSessionRuntime:
     async def set_mode(self, mode: str) -> None:
         if mode not in {"hijack", "open"}:
             raise ValueError(f"invalid mode: {mode}")
-        typed_mode = cast(Literal["hijack", "open"], mode)
+        typed_mode = cast("Literal['hijack', 'open']", mode)
         self.definition.input_mode = typed_mode
         if self._connector is None:
             return

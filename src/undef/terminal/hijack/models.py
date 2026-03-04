@@ -9,16 +9,13 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 try:
     from fastapi import WebSocket  # noqa: TC002
     from pydantic import BaseModel, Field
 except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required for hijack hub/routes: pip install 'undef-terminal[websocket]'") from _e
-
-if TYPE_CHECKING:
-    pass
 
 
 # ---------------------------------------------------------------------------
