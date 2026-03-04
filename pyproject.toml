@@ -142,3 +142,7 @@ members = [
     ".",
     "packages/undef-terminal-cloudflare",
 ]
+
+[tool.uv.sources]
+undef-terminal = { workspace = true }
+undef-terminal-cloudflare = { workspace = true }

@@ -232,13 +232,9 @@ class TestSSHPerInstanceIsolation:
         factory_a = _make_ssh_server_factory(ip_a, max_connections_per_ip=5)
         factory_b = _make_ssh_server_factory(ip_b, max_connections_per_ip=5)
 
-        # Pyright correctly points out factory requires arguments since TerminalSSHServer does.
-        # But `_make_ssh_server_factory` defines `_BoundServer` that takes NO arguments and calls `super().__init__(ip_connections, max_connections)`.
-        # Pyright infers the type of `factory_a` from the return type hint of `_make_ssh_server_factory` which is `type[TerminalSSHServer]`.
-        # So we have to cast `factory_a` and `factory_b` to a type that doesn't expect arguments.
         if TYPE_CHECKING:
             from collections.abc import Callable
-            from typing import Any, cast
+            from typing import Any
 
             factory_a_call = cast("Callable[[], Any]", factory_a)
             factory_b_call = cast("Callable[[], Any]", factory_b)
@@ -274,7 +270,7 @@ class TestSSHPerInstanceIsolation:
 
         if TYPE_CHECKING:
             from collections.abc import Callable
-            from typing import Any, cast
+            from typing import Any
 
             factory_a_call = cast("Callable[[], Any]", factory_a)
             factory_b_call = cast("Callable[[], Any]", factory_b)
