@@ -28,7 +28,7 @@ from undef.terminal.hijack.models import VALID_ROLES, WorkerTermState, extract_p
 from undef.terminal.hijack.ratelimit import TokenBucket
 
 if TYPE_CHECKING:
-    from undef.terminal.hijack.hub import TermHub
+    from undef.terminal.hijack.hub import BrowserRoleResolutionError, TermHub
 else:
     from undef.terminal.hijack.hub import BrowserRoleResolutionError
 

@@ -47,26 +47,26 @@ class SessionRegistry:
     async def _force_release_hijack(self, session_id: str) -> bool:
         owner = "server-mode-switch"
         had_hijack = False
-        async with self._hub._lock:  # type: ignore[attr-defined]
-            st = self._hub._workers.get(session_id)  # type: ignore[attr-defined]
+        async with self._hub._lock:
+            st = self._hub._workers.get(session_id)
             if st is None:
                 return False
             if st.hijack_session is not None:
                 owner = st.hijack_session.owner
                 st.hijack_session = None
                 had_hijack = True
-            if self._hub._is_dashboard_hijack_active(st):  # type: ignore[attr-defined]
+            if self._hub._is_dashboard_hijack_active(st):
                 st.hijack_owner = None
                 st.hijack_owner_expires_at = None
                 had_hijack = True
         if not had_hijack:
             return False
-        await self._hub._send_worker(  # type: ignore[attr-defined]
+        await self._hub._send_worker(
             session_id,
             {"type": "control", "action": "resume", "owner": owner, "lease_s": 0, "ts": time.time()},
         )
-        self._hub._notify_hijack_changed(session_id, enabled=False, owner=None)  # type: ignore[attr-defined]
-        await self._hub._broadcast_hijack_state(session_id)  # type: ignore[attr-defined]
+        self._hub._notify_hijack_changed(session_id, enabled=False, owner=None)
+        await self._hub._broadcast_hijack_state(session_id)
         return True
 
     async def start_auto_start_sessions(self) -> None:
@@ -198,13 +198,13 @@ class SessionRegistry:
         return await self._runtime_for(session).analyze()
 
     async def last_snapshot(self, session_id: str) -> dict[str, Any] | None:
-        async with self._hub._lock:  # type: ignore[attr-defined]
-            st = self._hub._workers.get(session_id)  # type: ignore[attr-defined]
+        async with self._hub._lock:
+            st = self._hub._workers.get(session_id)
             return None if st is None else st.last_snapshot
 
     async def events(self, session_id: str, limit: int = 100) -> list[dict[str, Any]]:
-        async with self._hub._lock:  # type: ignore[attr-defined]
-            st = self._hub._workers.get(session_id)  # type: ignore[attr-defined]
+        async with self._hub._lock:
+            st = self._hub._workers.get(session_id)
             if st is None:
                 return []
             return list(st.events)[-max(1, min(limit, 500)) :]

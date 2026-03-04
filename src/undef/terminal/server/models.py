@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 
 SessionLifecycle = Literal["stopped", "starting", "running", "error"]
 
@@ -97,6 +97,11 @@ class ServerConfig:
     sessions: list[SessionDefinition] = field(default_factory=list)
 
 
-def model_dump(obj: object) -> dict[str, Any]:
+ServerModel: TypeAlias = (
+    AuthConfig | UiConfig | RecordingConfig | ServerBindConfig | SessionDefinition | SessionRuntimeStatus | ServerConfig
+)
+
+
+def model_dump(obj: ServerModel) -> dict[str, Any]:
     """Serialize a dataclass model to a plain dict."""
     return asdict(obj)

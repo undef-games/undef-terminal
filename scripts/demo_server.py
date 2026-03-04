@@ -30,7 +30,7 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from threading import RLock
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException
@@ -523,7 +523,7 @@ def _start_default_session_workers(base_url: str) -> list[asyncio.Task[None]]:
 
 
 @asynccontextmanager
-async def _lifespan(app: FastAPI):  # type: ignore[type-arg]
+async def _lifespan(app: FastAPI):
     """Start the built-in demo session worker after uvicorn is ready."""
     worker_tasks: list[asyncio.Task[None]] = []
     try:
@@ -556,7 +556,7 @@ async def get_demo_session(worker_id: str) -> dict[str, Any]:
 
 
 @app.post("/demo/session/{worker_id}/mode")
-async def set_demo_session_mode(worker_id: str, payload: dict[str, str] = Body(...)) -> dict[str, Any]:
+async def set_demo_session_mode(worker_id: str, payload: Annotated[dict[str, str], Body(...)]) -> dict[str, Any]:
     """Example-only endpoint for switching the demo session input mode."""
     mode = payload.get("input_mode", "").strip().lower()
     if mode not in {"hijack", "open"}:

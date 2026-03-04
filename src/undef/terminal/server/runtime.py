@@ -13,10 +13,10 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from undef.terminal.server.connectors import SessionConnector, build_connector
-from undef.terminal.server.models import RecordingConfig, SessionDefinition, SessionRuntimeStatus
+from undef.terminal.server.models import RecordingConfig, SessionDefinition, SessionLifecycle, SessionRuntimeStatus
 from undef.terminal.session_logger import SessionLogger
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ class HostedSessionRuntime:
         self._queue: asyncio.Queue[dict[str, Any]] | None = None
         self._stop = asyncio.Event()
         self._connected = False
-        self._state = "stopped"
+        self._state: SessionLifecycle = "stopped"
         self._last_error: str | None = None
         self._logger: SessionLogger | None = None
         self._recording_path: Path | None = None
@@ -61,7 +61,7 @@ class HostedSessionRuntime:
             session_id=self.definition.session_id,
             display_name=self.definition.display_name,
             connector_type=self.definition.connector_type,
-            lifecycle_state=self._state,  # type: ignore[arg-type]
+            lifecycle_state=self._state,
             input_mode=self.definition.input_mode,
             connected=self._connected,
             auto_start=self.definition.auto_start,
@@ -97,10 +97,13 @@ class HostedSessionRuntime:
         await self.start()
 
     async def set_mode(self, mode: str) -> None:
-        self.definition.input_mode = mode  # type: ignore[assignment]
+        if mode not in {"hijack", "open"}:
+            raise ValueError(f"invalid mode: {mode}")
+        typed_mode = cast(Literal["hijack", "open"], mode)
+        self.definition.input_mode = typed_mode
         if self._connector is None:
             return
-        await self._enqueue_messages(await self._connector.set_mode(mode))
+        await self._enqueue_messages(await self._connector.set_mode(typed_mode))
 
     async def clear(self) -> None:
         if self._connector is None:

@@ -10,9 +10,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import importlib.resources
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from starlette.staticfiles import StaticFiles
 
 from undef.terminal.hijack.hub import TermHub
@@ -29,7 +30,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
     policy = SessionPolicyResolver(config.auth)
     registry: SessionRegistry | None = None
 
-    async def _resolve_browser_role(ws, worker_id: str) -> str:  # type: ignore[no-untyped-def]
+    async def _resolve_browser_role(ws: WebSocket, worker_id: str) -> str:
         principal = resolve_ws_principal(ws, config.auth)
         session = await registry.get_definition(worker_id) if registry is not None else None
         if session is None:
@@ -45,7 +46,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
     )
 
     @asynccontextmanager
-    async def _lifespan(app: FastAPI):  # type: ignore[type-arg]
+    async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         async def _delayed_boot() -> None:
             await asyncio.sleep(0.15)
             await registry.start_auto_start_sessions()

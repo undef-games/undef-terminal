@@ -7,15 +7,16 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from undef.terminal.server.models import model_dump
+from undef.terminal.server.registry import SessionRegistry
 
 
-def _registry(request: Request):  # type: ignore[no-untyped-def]
+def _registry(request: Request) -> SessionRegistry:
     return request.app.state.uterm_registry
 
 
@@ -32,7 +33,7 @@ def create_api_router() -> APIRouter:
         return [model_dump(session) for session in sessions]
 
     @router.post("/sessions")
-    async def create_session(request: Request, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    async def create_session(request: Request, payload: Annotated[dict[str, Any], Body(...)]) -> dict[str, Any]:
         try:
             session = await _registry(request).create_session(payload)
         except ValueError as exc:
@@ -48,7 +49,9 @@ def create_api_router() -> APIRouter:
         return model_dump(session)
 
     @router.patch("/sessions/{session_id}")
-    async def patch_session(request: Request, session_id: str, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    async def patch_session(
+        request: Request, session_id: str, payload: Annotated[dict[str, Any], Body(...)]
+    ) -> dict[str, Any]:
         try:
             session = await _registry(request).update_session(session_id, payload)
         except KeyError as exc:
@@ -88,7 +91,9 @@ def create_api_router() -> APIRouter:
         return model_dump(session)
 
     @router.post("/sessions/{session_id}/mode")
-    async def set_mode(request: Request, session_id: str, payload: dict[str, str] = Body(...)) -> dict[str, Any]:
+    async def set_mode(
+        request: Request, session_id: str, payload: Annotated[dict[str, str], Body(...)]
+    ) -> dict[str, Any]:
         mode = str(payload.get("input_mode", "")).strip()
         if mode not in {"open", "hijack"}:
             raise HTTPException(status_code=400, detail="input_mode must be 'open' or 'hijack'")

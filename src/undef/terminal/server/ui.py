@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from html import escape
 
 
@@ -33,7 +34,7 @@ def _shell(
     )
 
 
-def _bootstrap_tag(payload: dict[str, object]) -> str:
+def _bootstrap_tag(payload: Mapping[str, object]) -> str:
     blob = json.dumps(payload).replace("</", "<\\/")
     return f"<script type='application/json' id='app-bootstrap'>{blob}</script>"
 

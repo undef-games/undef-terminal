@@ -121,16 +121,16 @@ class TermHub(_HijackOwnershipMixin):
         if resolver is None:
             return role
         try:
-            result = resolver(ws, worker_id)
-            if inspect.isawaitable(result):
-                result = await result
+            resolved_role = resolver(ws, worker_id)
+            if inspect.isawaitable(resolved_role):
+                resolved_role = await resolved_role
         except Exception as exc:
             logger.warning("resolve_browser_role_failed worker_id=%s error=%s", worker_id, exc)
             raise BrowserRoleResolutionError(worker_id) from exc
-        if result in {"viewer", "operator", "admin"}:
-            return result
-        if result is not None:
-            logger.warning("resolve_browser_role_invalid worker_id=%s role=%r", worker_id, result)
+        if isinstance(resolved_role, str) and resolved_role in {"viewer", "operator", "admin"}:
+            return resolved_role
+        if resolved_role is not None:
+            logger.warning("resolve_browser_role_invalid worker_id=%s role=%r", worker_id, resolved_role)
         return role
 
     async def _append_event(
