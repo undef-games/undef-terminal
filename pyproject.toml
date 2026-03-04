@@ -92,14 +92,15 @@ select = [
     "RET",
     "RSE",
     "TID",
+    "S",
     "ARG",
     "RUF",
 ]
-ignore = ["E501"]
+ignore = ["E501", "S104", "S112", "S311"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "RUF022"]
-"tests/**/*.py" = ["E402", "B905", "ARG", "RUF003", "RUF012", "RUF015", "RUF043", "RUF059"]
+"tests/**/*.py" = ["E402", "B905", "S101", "S110", "ARG", "RUF003", "RUF012", "RUF015", "RUF043", "RUF059"]
 
 [tool.coverage.run]
 source = ["undef"]
