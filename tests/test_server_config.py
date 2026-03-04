@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from undef.terminal.server.app import create_server_app
 from undef.terminal.server.auth import Principal
 from undef.terminal.server.config import config_from_mapping, default_server_config, load_server_config
 from undef.terminal.server.models import AuthConfig, SessionDefinition
@@ -85,3 +88,13 @@ def test_load_server_config_resolves_relative_recording_path(tmp_path: Path) -> 
     config = load_server_config(cfg_path)
 
     assert config.recording.directory == (tmp_path / "logs").resolve()
+
+
+def test_jwt_mode_requires_worker_token() -> None:
+    config = default_server_config()
+    config.auth = AuthConfig(
+        mode="jwt", jwt_public_key_pem="x" * 64, jwt_algorithms=["HS256"], worker_bearer_token=None
+    )
+
+    with pytest.raises(ValueError, match="worker_bearer_token"):
+        create_server_app(config)

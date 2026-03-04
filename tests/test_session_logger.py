@@ -171,7 +171,9 @@ class TestSessionLoggerNonBlockingFlush:
         loop = asyncio.get_running_loop()
         original_run = loop.run_in_executor
 
-        async def _spy_executor(executor: object, fn: object, *args: object) -> object:
+        from typing import Any
+
+        async def _spy_executor(executor: Any, fn: Any, *args: Any) -> Any:
             executor_calls.append(fn)
             return await original_run(executor, fn, *args)
 
@@ -288,7 +290,9 @@ class TestSessionLoggerCloseViaExecutor:
         loop = asyncio.get_running_loop()
         original_run = loop.run_in_executor
 
-        async def _spy(executor: object, fn: object, *args: object) -> object:
+        from typing import Any
+
+        async def _spy(executor: Any, fn: Any, *args: Any) -> Any:
             executor_callables.append(fn)
             return await original_run(executor, fn, *args)
 

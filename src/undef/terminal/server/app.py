@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import importlib.resources
+import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -30,9 +31,24 @@ if TYPE_CHECKING:
 
     from undef.terminal.server.models import ServerConfig
 
+logger = logging.getLogger(__name__)
+
+
+def _validate_auth_config(config: ServerConfig) -> None:
+    mode = str(config.auth.mode).strip().lower()
+    if mode != "jwt":
+        return
+    if not config.auth.worker_bearer_token:
+        raise ValueError("auth.worker_bearer_token is required when auth.mode='jwt'")
+    if not config.auth.jwt_algorithms:
+        raise ValueError("auth.jwt_algorithms must not be empty when auth.mode='jwt'")
+    if not config.auth.jwt_public_key_pem and not config.auth.jwt_jwks_url:
+        raise ValueError("configure auth.jwt_public_key_pem or auth.jwt_jwks_url when auth.mode='jwt'")
+
 
 def create_server_app(config: ServerConfig) -> FastAPI:
     """Create the standalone reference server application."""
+    _validate_auth_config(config)
     authz = AuthorizationService()
     policy = SessionPolicyResolver(config.auth, authz=authz)
     registry: SessionRegistry | None = None
@@ -42,11 +58,13 @@ def create_server_app(config: ServerConfig) -> FastAPI:
             principal = resolve_ws_principal(connection, config.auth)
             connection.state.uterm_principal = principal
             if config.auth.mode not in {"none", "dev"} and principal.subject_id == "anonymous":
+                logger.info("authn_denied surface=websocket")
                 raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="authentication required")
             return
         principal = resolve_http_principal(connection, config.auth)
         connection.state.uterm_principal = principal
         if config.auth.mode not in {"none", "dev"} and principal.subject_id == "anonymous":
+            logger.info("authn_denied surface=http")
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="authentication required")
 
     async def _resolve_browser_role(ws: WebSocket, worker_id: str) -> str:

@@ -184,6 +184,53 @@ Key endpoints:
 
 The example TOML config in [scripts/undefterm-server.example.toml](/Users/tim/code/gh/undef-games/undef-terminal/scripts/undefterm-server.example.toml)
 shows the intended reference-implementation structure for server config.
+For production JWT deployments, start from
+[scripts/undefterm-server.jwt.example.toml](/Users/tim/code/gh/undef-games/undef-terminal/scripts/undefterm-server.jwt.example.toml).
+
+### Auth Runtime Posture
+
+- `default_server_config()` is intentionally local-friendly and uses `auth.mode = "dev"`.
+- Production should run `auth.mode = "jwt"` with:
+  - `jwt_issuer`, `jwt_audience`
+  - `jwt_public_key_pem` or `jwt_jwks_url`
+  - `jwt_algorithms` (for example `["RS256"]`)
+  - `worker_bearer_token` for hosted runtime worker WebSocket authentication
+
+When `auth.mode = "jwt"`, the server fails fast at startup unless:
+- `worker_bearer_token` is set
+- `jwt_algorithms` is non-empty
+- at least one key source is configured (`jwt_public_key_pem` or `jwt_jwks_url`)
+
+### JWT Deployment Runbook
+
+1. Configure JWT trust:
+   - set `jwt_issuer`, `jwt_audience`, `jwt_algorithms`
+   - prefer `jwt_jwks_url` for key rotation without restarts
+2. Configure runtime worker auth:
+   - mint a dedicated service JWT (admin role) for `worker_bearer_token`
+   - scope/TTL this token to server runtime usage only
+3. Set session ownership/visibility:
+   - use `owner` + `visibility` to enforce role + ownership constraints
+4. Validate startup:
+   - `undefterm-server --config scripts/undefterm-server.jwt.example.toml`
+   - run smoke tests against `/api/health`, `/api/sessions`, and browser WS connect
+
+### Key Rotation
+
+- `jwt_jwks_url` mode: rotate signing keys at the IdP, publish new JWKs, then retire old keys after token TTL.
+- `jwt_public_key_pem` mode: deploy new config and restart server(s) in rolling fashion.
+- Rotate `worker_bearer_token` independently from user-facing tokens; keep overlap window short.
+
+### Failure Behavior
+
+- Missing/invalid/expired JWT:
+  - HTTP routes: `401`
+  - WebSocket routes: close with policy violation (`1008`)
+- Authenticated but unauthorized action:
+  - HTTP routes: `403`
+  - Browser WS hijack attempts: explicit error event; no privilege escalation
+- Invalid JWT runtime config:
+  - app startup raises `ValueError` (fail-fast)
 
 For `connector_type = "ssh"`, the session entry can use these auth fields:
 

@@ -46,7 +46,26 @@ def _jwt_headers(
 
 
 def _jwt_config() -> AuthConfig:
-    return AuthConfig(mode="jwt", jwt_public_key_pem=_TEST_SIGNING_KEY, jwt_algorithms=["HS256"])
+    now = int(time.time())
+    worker_token = jwt.encode(
+        {
+            "sub": "runtime-worker",
+            "roles": ["admin"],
+            "iss": "undef-terminal",
+            "aud": "undef-terminal-server",
+            "iat": now,
+            "nbf": now,
+            "exp": now + 600,
+        },
+        key=_TEST_SIGNING_KEY,
+        algorithm="HS256",
+    )
+    return AuthConfig(
+        mode="jwt",
+        jwt_public_key_pem=_TEST_SIGNING_KEY,
+        jwt_algorithms=["HS256"],
+        worker_bearer_token=worker_token,
+    )
 
 
 def test_policy_uses_trusted_roles_only() -> None:
