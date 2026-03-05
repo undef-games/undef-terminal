@@ -24,5 +24,7 @@ These SLO targets are the release baseline for hosted terminal control-plane dep
 - Run load/churn with `scripts/load_profile.py`.
 - Run restart-failure injection with `scripts/failure_injection.py`.
 - Run snapshot/input WS latency probe with `scripts/latency_probe.py`.
+- Note: `scripts/latency_probe.py` measures REST-hijack command/send and snapshot-fetch timings;
+  use it as a comparative release-over-release signal, not a direct substitute for browser WS snapshot-delivery SLOs.
 - Record results per release candidate in `artifacts/rc-baseline/`.
 - Do not promote RCs that miss p95 or p99 targets without a written exception.

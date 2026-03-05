@@ -52,6 +52,7 @@ Required before release:
   - Use `scripts/load_profile.py` for reproducible connect/hello latency measurement.
   - Latest local baseline: `artifacts/soak/local-load-profile-20260305-113438.txt`.
   - WS snapshot/input latency probe: `scripts/latency_probe.py` (run on staging candidate build).
+  - Latest local latency probe: `artifacts/soak/local-latency-probe-20260305-122728.txt`.
 - Failure-injection scenarios:
   - worker disconnect/restart
   - upstream WS flap

@@ -11,6 +11,11 @@
   - rounds: `20`
   - reconnect latency: `mean=1.44ms`, `p95=2.18ms`, `p99=2.84ms`
 
+- `local-latency-probe-20260305-122728.txt`
+  - rounds: `40`
+  - command send latency: `mean=1.84ms`, `p95=2.05ms`, `p99=2.20ms`
+  - snapshot fetch latency: `mean=1277.31ms`, `p95=1281.78ms`, `p99=1281.89ms`
+
 Generated with:
 
 ```bash
@@ -32,8 +37,8 @@ uv run python scripts/failure_injection.py \
 
 ```bash
 uv run python scripts/latency_probe.py \
-  --base-url http://127.0.0.1:18769 \
+  --base-url http://127.0.0.1:18774 \
   --worker-id demo-session \
   --rounds 40 \
-  --timeout-s 5.0
+  --timeout-s 10.0
 ```

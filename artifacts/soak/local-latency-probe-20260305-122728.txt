@@ -1,0 +1,2 @@
+command_send_latency: count=40 mean=1.84ms p95=2.05ms p99=2.20ms
+snapshot_fetch_latency: count=40 mean=1277.31ms p95=1281.78ms p99=1281.89ms
