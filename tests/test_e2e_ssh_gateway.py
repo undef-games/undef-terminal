@@ -16,7 +16,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from typing import Any
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+from typing import Any, cast
 
 import asyncssh
 import websockets
@@ -24,12 +28,7 @@ import websockets.server
 
 from undef.terminal.gateway import _ssh_to_ws, _ws_to_ssh
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
-
-from typing import Any, cast
 async def _start_ws_echo_server(banner: str = "") -> tuple[Any, int]:
     """Start a localhost WS server that echoes every message (optionally with a banner)."""
 
@@ -128,7 +127,7 @@ class TestSshToWsPumpUnit:
         class _MockProcess:
             stdin = _MockStdin()
 
-        await _ssh_to_ws(cast(Any, _MockProcess()), cast(Any, _MockWs()))
+        await _ssh_to_ws(cast("Any", _MockProcess()), cast("Any", _MockWs()))
         assert sent == ["hello ssh"]
 
     async def test_bytes_data_decoded_latin1(self) -> None:
@@ -147,7 +146,7 @@ class TestSshToWsPumpUnit:
         class _MockProcess:
             stdin = _MockStdin()
 
-        await _ssh_to_ws(cast(Any, _MockProcess()), cast(Any, _MockWs()))
+        await _ssh_to_ws(cast("Any", _MockProcess()), cast("Any", _MockWs()))
         assert sent == [b"\xc0\xc1".decode("latin-1", errors="replace")]
 
     async def test_read_exception_exits_cleanly(self) -> None:
@@ -162,7 +161,7 @@ class TestSshToWsPumpUnit:
         class _MockProcess:
             stdin = _MockStdin()
 
-        await _ssh_to_ws(cast(Any, _MockProcess()), cast(Any, _MockWs()))
+        await _ssh_to_ws(cast("Any", _MockProcess()), cast("Any", _MockWs()))
         # Must return without raising
 
 
@@ -182,7 +181,7 @@ class TestWsToSshPumpUnit:
         async def _gen() -> Any:
             yield "from ws"
 
-        await _ws_to_ssh(_gen(), cast(Any, _MockProcess()))
+        await _ws_to_ssh(_gen(), cast("Any", _MockProcess()))
         assert "from ws" in written
 
     async def test_bytes_message_decoded_latin1(self) -> None:
@@ -198,7 +197,7 @@ class TestWsToSshPumpUnit:
         async def _gen() -> Any:
             yield b"\xff\xfe"
 
-        await _ws_to_ssh(_gen(), cast(Any, _MockProcess()))
+        await _ws_to_ssh(_gen(), cast("Any", _MockProcess()))
         assert b"\xff\xfe".decode("latin-1", errors="replace") in written
 
 
@@ -304,8 +303,9 @@ class TestSshWsGatewayRealConnections:
 
 class TestSshWsGatewayStart:
     async def test_start_ephemeral_host_key(self) -> None:
-        from undef.terminal.gateway import SshWsGateway
         import asyncssh
+
+        from undef.terminal.gateway import SshWsGateway
 
         gw = SshWsGateway("wss://unreachable.invalid/ws")
         srv = await gw.start("127.0.0.1", 0)
@@ -317,8 +317,9 @@ class TestSshWsGatewayStart:
             await srv.wait_closed()
 
     async def test_start_with_file_key(self, tmp_path: Any) -> None:
-        from undef.terminal.gateway import SshWsGateway
         import asyncssh
+
+        from undef.terminal.gateway import SshWsGateway
 
         key = asyncssh.generate_private_key("ssh-ed25519")
         key_path = tmp_path / "host_key.pem"

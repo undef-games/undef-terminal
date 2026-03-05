@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import inspect
 import json
+import logging
 import secrets
 import time
 from typing import Any
@@ -26,6 +27,8 @@ except Exception:
     from cf_types import DurableObject, Response
     from config import CloudflareConfig
     from state.store import LeaseRecord, SqliteStateStore
+
+logger = logging.getLogger(__name__)
 
 
 class SessionRuntime(DurableObject):
@@ -55,8 +58,8 @@ class SessionRuntime(DurableObject):
         if callable(name):
             try:
                 return str(name())
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("failed to derive worker_id from durable object name: %s", exc)
         # Fallback: ctx.id.name() unavailable (hex-ID addressed DO, not name-addressed).
         # In production all DOs are addressed via idFromName(worker_id), so this should
         # never occur. If it does, multiple unnamed instances would collide on the same
@@ -103,7 +106,7 @@ class SessionRuntime(DurableObject):
     # ------------------------------------------------------------------
 
     def _extract_token(self, request: object) -> str | None:
-        """Extract a Bearer token from Authorization header or token/access_token query param."""
+        """Extract a token from Authorization header and optional query params."""
         try:
             auth_header = str(request.headers.get("Authorization") or "")  # type: ignore[attr-defined]
         except Exception:
@@ -112,13 +115,15 @@ class SessionRuntime(DurableObject):
             token = auth_header[7:].strip()
             if token:
                 return token
+        if not self.config.jwt.allow_query_token:
+            return None
         try:
             qs = parse_qs(urlparse(str(request.url)).query)  # type: ignore[attr-defined]
             candidates = qs.get("token", []) + qs.get("access_token", [])
             if candidates:
                 return candidates[0] or None
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("failed to parse query token: %s", exc)
         return None
 
     def _resolve_principal(self, request: object) -> tuple[Any, Response | None]:
@@ -216,8 +221,8 @@ class SessionRuntime(DurableObject):
                 parts = attachment.split(":", 1)
                 if len(parts) == 2 and parts[1] in {"admin", "operator", "viewer"}:
                     return parts[1]
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("failed to deserialize browser role attachment: %s", exc)
         # Instance-attribute fallback (set when serializeAttachment raises).
         role = getattr(ws, "_ut_browser_role", None)
         if isinstance(role, str) and role in {"admin", "operator", "viewer"}:
@@ -299,6 +304,12 @@ class SessionRuntime(DurableObject):
                     "can_hijack": browser_role == "admin",
                     "input_mode": "hijack",
                     "role": browser_role,
+                    "hijack_control": "rest",
+                    "hijack_step_supported": True,
+                    "capabilities": {
+                        "hijack_control": "rest",
+                        "hijack_step_supported": True,
+                    },
                     "ts": time.time(),
                 },
             )

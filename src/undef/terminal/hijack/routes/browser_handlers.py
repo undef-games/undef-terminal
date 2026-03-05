@@ -12,18 +12,16 @@ lease, False = it does not).
 from __future__ import annotations
 
 import json
+import logging
 import time
 from typing import TYPE_CHECKING, Any
 
-try:
-    from fastapi import WebSocket
-except ImportError as _e:  # pragma: no cover
-    raise ImportError("fastapi is required for hijack routes: pip install 'undef-terminal[websocket]'") from _e
-
-import logging
-
 if TYPE_CHECKING:
+    from fastapi import WebSocket
+
     from undef.terminal.hijack.hub import TermHub
+else:
+    WebSocket = Any
 
 logger = logging.getLogger(__name__)
 

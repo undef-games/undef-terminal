@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import Awaitable, Callable
 from typing import Any
 
 
@@ -39,7 +38,7 @@ class UpstreamWsBridge:
         if ws is not None:
             await ws.close()
 
-    async def run(self, on_message: Callable[[dict[str, Any]], Awaitable[None]]) -> None:
+    async def run(self, on_message: Any) -> None:
         try:
             import websockets
         except Exception as exc:  # pragma: no cover

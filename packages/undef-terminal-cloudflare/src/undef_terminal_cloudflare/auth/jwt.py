@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import jwt
 from jwt import InvalidTokenError
 
-try:
+if TYPE_CHECKING:
     from undef_terminal_cloudflare.config import JwtConfig
-except Exception:
-    from config import JwtConfig
+else:
+    JwtConfig = Any
 
 
 class JwtValidationError(ValueError):
@@ -48,7 +48,11 @@ def decode_jwt(token: str, config: JwtConfig) -> Principal:
     except Exception as exc:
         raise JwtValidationError(f"failed to resolve signing key: {exc}") from exc
 
-    options = {"verify_aud": bool(config.audience), "verify_iss": bool(config.issuer)}
+    options = {
+        "verify_aud": bool(config.audience),
+        "verify_iss": bool(config.issuer),
+        "require": ["sub", "exp", "iat", "nbf"],
+    }
     try:
         claims: dict[str, Any] = jwt.decode(
             token,
@@ -57,6 +61,7 @@ def decode_jwt(token: str, config: JwtConfig) -> Principal:
             issuer=config.issuer,
             audience=config.audience,
             options=options,
+            leeway=max(0, int(config.clock_skew_seconds)),
         )
     except InvalidTokenError as exc:
         raise JwtValidationError(str(exc)) from exc

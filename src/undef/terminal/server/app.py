@@ -34,6 +34,27 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _validate_frontend_assets() -> None:
+    required = (
+        "hijack.html",
+        "hijack.js",
+        "hijack.css",
+        "app/boot.js",
+        "app/router.js",
+        "app/state.js",
+        "app/api.js",
+        "app/views/dashboard-view.js",
+        "app/views/operator-view.js",
+        "app/views/replay-view.js",
+        "app/views/session-view.js",
+    )
+    frontend_root = importlib.resources.files("undef.terminal") / "frontend"
+    missing = [name for name in required if not (frontend_root / name).is_file()]
+    if missing:
+        joined = ", ".join(missing)
+        raise RuntimeError(f"missing required frontend assets: {joined}")
+
+
 def _validate_auth_config(config: ServerConfig) -> None:
     mode = str(config.auth.mode).strip().lower()
     if mode in {"none", "dev"}:
@@ -52,6 +73,7 @@ def _validate_auth_config(config: ServerConfig) -> None:
 def create_server_app(config: ServerConfig) -> FastAPI:
     """Create the standalone reference server application."""
     _validate_auth_config(config)
+    _validate_frontend_assets()
     authz = AuthorizationService()
     policy = SessionPolicyResolver(config.auth, authz=authz)
     registry: SessionRegistry | None = None

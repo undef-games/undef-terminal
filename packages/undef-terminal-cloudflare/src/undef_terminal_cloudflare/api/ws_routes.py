@@ -6,11 +6,10 @@ The main FastAPI package (TermHub) supports the full protocol: open input mode,
 viewer/operator/admin roles, browser-WS hijack negotiation, prompt guards, and
 per-browser rate limiting.
 
-This CF package is a subset: hijack is REST-only (acquire/heartbeat/release/send),
-there are no roles, no open-input mode, and no prompt guards.  hijack.js connects
-to both backends using the same wire format; features that rely on WS-level hijack
-frames (hijack_request, hijack_release, hijack_step) are silently unsupported here
-— callers should use the REST hijack API instead.
+This CF package is a subset: hijack control is REST-only
+(`acquire`/`heartbeat`/`release`/`step`/`send`) and advertised via the WS
+`hello.capabilities` handshake (`hijack_control="rest"`). WS-level hijack
+frames are rejected with `use_rest_hijack_api`.
 """
 
 from __future__ import annotations

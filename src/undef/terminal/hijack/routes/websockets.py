@@ -221,6 +221,12 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     "worker_online": worker_online,
                     "input_mode": input_mode,
                     "role": role,
+                    "hijack_control": "ws",
+                    "hijack_step_supported": True,
+                    "capabilities": {
+                        "hijack_control": "ws",
+                        "hijack_step_supported": True,
+                    },
                 },
                 ensure_ascii=True,
             )

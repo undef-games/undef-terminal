@@ -139,7 +139,7 @@ class DemoSessionConnector(SessionConnector):
                 )
                 return [self._snapshot()]
             if command == "/clear":
-                self._transcript = []
+                self._transcript = deque(maxlen=10)
                 self._banner = "Transcript cleared."
                 return [self._snapshot()]
             if command == "/mode":
