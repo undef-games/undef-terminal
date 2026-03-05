@@ -137,6 +137,20 @@ class TestReferenceServerApp:
             assert hello["worker_online"] is True
             assert hello["input_mode"] == "open"
 
+    async def test_metrics_include_ws_disconnect_and_hijack_counters(self, live_reference_server: str) -> None:
+        await self._wait_for_connected(live_reference_server, "demo-session")
+        async with httpx.AsyncClient(base_url=live_reference_server) as http:
+            before = (await http.get("/api/metrics")).json()["metrics"]
+            base_disconnect = int(before.get("ws_disconnect_browser_total", 0))
+            assert "hijack_conflicts_total" in before
+            assert "hijack_lease_expiries_total" in before
+        async with websockets.connect(_ws_url(live_reference_server, "/ws/browser/demo-session/term")) as browser:
+            assert await _drain_until(browser, "hello", timeout=5.0) is not None
+        await asyncio.sleep(0.15)
+        async with httpx.AsyncClient(base_url=live_reference_server) as http:
+            after = (await http.get("/api/metrics")).json()["metrics"]
+            assert int(after.get("ws_disconnect_browser_total", 0)) >= base_disconnect + 1
+
     async def test_mode_changes_and_create_session_flow(self, live_reference_server: str) -> None:
         async with httpx.AsyncClient(base_url=live_reference_server) as http:
             created = await http.post(

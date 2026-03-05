@@ -102,6 +102,8 @@ async def handle_browser_message(
         # Worker is paused — now atomically check-and-set ownership.
         acquired, err = await hub._try_acquire_ws_hijack(worker_id, ws)
         if not acquired:
+            if err == "already_hijacked":
+                hub._metric("hijack_conflicts_total")
             # Compensating resume. Skip for "already_hijacked": sending resume
             # would unpause the legitimate owner's session.
             if err != "already_hijacked":
@@ -116,6 +118,7 @@ async def handle_browser_message(
             await ws.send_text(json.dumps(await hub._hijack_state_msg_for(worker_id, ws), ensure_ascii=True))
             return owned_hijack
         await hub._broadcast_hijack_state(worker_id)
+        hub._metric("hijack_acquires_total")
         hub._notify_hijack_changed(worker_id, enabled=True, owner="dashboard")
         await hub._append_event(worker_id, "hijack_acquired", {"owner": "dashboard_ws"})
         return True  # owned_hijack = True
@@ -131,6 +134,7 @@ async def handle_browser_message(
                     json.dumps({"type": "error", "message": "No worker connected for this worker."}, ensure_ascii=True)
                 )
             else:
+                hub._metric("hijack_steps_total")
                 await hub._append_event(worker_id, "hijack_step", {"owner": "dashboard_ws"})
 
     elif mtype == "hijack_release":
@@ -156,6 +160,7 @@ async def handle_browser_message(
             await hub._broadcast_hijack_state(worker_id)
             if _do_resume:
                 hub._notify_hijack_changed(worker_id, enabled=False, owner=None)
+            hub._metric("hijack_releases_total")
             await hub._append_event(worker_id, "hijack_released", {"owner": "dashboard_ws"})
             return False  # owned_hijack = False
 

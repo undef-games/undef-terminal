@@ -171,6 +171,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     st3.hijack_owner = None
                     st3.hijack_owner_expires_at = None
             if should_broadcast_disconnect:
+                hub._metric("ws_disconnect_total")
+                hub._metric("ws_disconnect_worker_total")
                 logger.info("term_worker_disconnected worker_id=%s", worker_id)
                 _broadcast_task = asyncio.create_task(
                     hub._broadcast(
@@ -263,6 +265,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         except Exception as exc:  # pragma: no cover
             logger.warning("term_browser_ws_error worker_id=%s error=%s", worker_id, exc)
         finally:
+            hub._metric("ws_disconnect_total")
+            hub._metric("ws_disconnect_browser_total")
             cleanup_task.cancel()
             with suppress(asyncio.CancelledError):
                 await cleanup_task

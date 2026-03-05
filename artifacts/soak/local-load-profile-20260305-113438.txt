@@ -1,0 +1,9 @@
+probes=400 ok=400 failed=0
+connect_ms:
+  mean=11.76
+  p95=21.55
+  p99=25.65
+hello_ms:
+  mean=1.60
+  p95=2.65
+  p99=3.68

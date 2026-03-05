@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 # Callback: (worker_id, is_hijacked, owner_or_None)
 HijackStateCallback = Callable[[str, bool, str | None], Awaitable[None] | None]
 BrowserRoleResolver = Callable[[WebSocket, str], str | None | Awaitable[str | None]]
+MetricCallback = Callable[[str, int], None]
 
 
 class BrowserRoleResolutionError(RuntimeError):
@@ -57,6 +58,7 @@ class TermHub(_HijackOwnershipMixin):
     def __init__(
         self,
         on_hijack_changed: HijackStateCallback | None = None,
+        on_metric: MetricCallback | None = None,
         dashboard_hijack_lease_s: int = 45,
         *,
         resolve_browser_role: BrowserRoleResolver | None = None,
@@ -67,11 +69,21 @@ class TermHub(_HijackOwnershipMixin):
         self._lock = asyncio.Lock()
         self._workers: dict[str, WorkerTermState] = {}
         self._on_hijack_changed = on_hijack_changed
+        self._on_metric = on_metric
         self._resolve_browser_role = resolve_browser_role
         self._dashboard_hijack_lease_s = max(1, min(int(dashboard_hijack_lease_s), 600))
         self.max_ws_message_bytes = max(1024, int(max_ws_message_bytes))
         self.max_input_chars = max(100, int(max_input_chars))
         self.browser_rate_limit_per_sec = float(browser_rate_limit_per_sec)
+
+    def _metric(self, name: str, value: int = 1) -> None:
+        callback = self._on_metric
+        if callback is None:
+            return
+        try:
+            callback(name, int(value))
+        except Exception as exc:  # pragma: no cover - defensive only
+            logger.debug("metric_callback_failed metric=%s error=%s", name, exc)
 
     @staticmethod
     def _clamp_lease(lease_s: int) -> int:

@@ -74,6 +74,9 @@ class _HijackOwnershipMixin:
         if not rest_expired and not dashboard_expired:
             return False
 
+        if rest_expired or dashboard_expired:
+            self._metric("hijack_lease_expiries_total")  # type: ignore[attr-defined]
+
         if should_resume:
             # Re-check under lock: a concurrent hijack_acquire may have written a
             # new session between the first lock release and _send_worker.

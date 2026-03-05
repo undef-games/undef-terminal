@@ -90,6 +90,14 @@ def create_server_app(config: ServerConfig) -> FastAPI:
         "http_requests_error_total": 0,
         "auth_failures_http_total": 0,
         "auth_failures_ws_total": 0,
+        "ws_disconnect_total": 0,
+        "ws_disconnect_worker_total": 0,
+        "ws_disconnect_browser_total": 0,
+        "hijack_conflicts_total": 0,
+        "hijack_lease_expiries_total": 0,
+        "hijack_acquires_total": 0,
+        "hijack_releases_total": 0,
+        "hijack_steps_total": 0,
     }
 
     def _inc_metric(name: str, value: int = 1) -> None:
@@ -122,7 +130,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
             raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="insufficient privileges")
         return policy.role_for(principal, session)
 
-    hub = TermHub(resolve_browser_role=_resolve_browser_role)
+    hub = TermHub(resolve_browser_role=_resolve_browser_role, on_metric=_inc_metric)
     registry = SessionRegistry(
         config.sessions,
         hub=hub,

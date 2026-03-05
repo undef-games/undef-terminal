@@ -20,6 +20,12 @@ This runbook is for incident triage of the hosted terminal server.
    - `GET /api/health`
 2. Pull request counters:
    - `GET /api/metrics`
+   - Focus counters:
+     - `hijack_conflicts_total`
+     - `hijack_lease_expiries_total`
+     - `ws_disconnect_total`
+     - `ws_disconnect_worker_total`
+     - `ws_disconnect_browser_total`
 3. Correlate failing calls with request IDs:
    - use `x-request-id` response header from failed requests
    - filter logs with `request_id=<id>`
