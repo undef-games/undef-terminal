@@ -46,6 +46,12 @@ This runbook is for incident triage of the hosted terminal server.
 3. Restart only impacted sessions before considering full service restart.
 4. If regression is tied to latest RC, execute rollback drill procedure.
 
+### Reconnect instability
+
+1. Run `scripts/failure_injection.py` against staging.
+2. Compare reconnect p95/p99 against SLO targets.
+3. If p99 exceeds target, pause promotion and triage connector lifecycle regressions.
+
 ## Rollback trigger
 
 Execute rollback when either condition is true:

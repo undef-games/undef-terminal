@@ -22,5 +22,6 @@ These SLO targets are the release baseline for hosted terminal control-plane dep
 ## Measurement
 
 - Run load/churn with `scripts/load_profile.py`.
+- Run restart-failure injection with `scripts/failure_injection.py`.
 - Record results per release candidate in `artifacts/rc-baseline/`.
 - Do not promote RCs that miss p95 or p99 targets without a written exception.

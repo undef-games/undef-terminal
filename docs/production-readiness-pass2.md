@@ -55,6 +55,8 @@ Required before release:
   - worker disconnect/restart
   - upstream WS flap
   - latency spikes
+  - Restart churn harness: `scripts/failure_injection.py`.
+  - Latest local restart-churn baseline: `artifacts/soak/local-failure-injection-20260305-115436.txt`.
 - Publish SLOs:
   - snapshot latency p95/p99
   - command round-trip p95/p99

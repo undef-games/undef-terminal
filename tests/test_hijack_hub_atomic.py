@@ -237,6 +237,33 @@ async def test_try_release_ws_hijack_returns_rest_active_when_rest_session_prese
     assert rest_active is True  # REST session still active after dashboard WS released
 
 
+async def test_cleanup_expired_hijack_increments_metric_counter() -> None:
+    """Expired REST/dashboard leases increment hijack_lease_expiries_total."""
+    seen: dict[str, int] = {}
+
+    def _metric(name: str, value: int) -> None:
+        seen[name] = seen.get(name, 0) + int(value)
+
+    hub = TermHub(on_metric=_metric)
+    ws = AsyncMock()
+    async with hub._lock:
+        st = hub._workers.setdefault("bot1", WorkerTermState())
+        st.worker_ws = ws
+        st.hijack_owner = ws
+        st.hijack_owner_expires_at = time.time() - 1
+        st.hijack_session = HijackSession(
+            hijack_id="expired-1",
+            owner="owner-a",
+            acquired_at=time.time() - 100,
+            lease_expires_at=time.time() - 1,
+            last_heartbeat=time.time() - 50,
+        )
+
+    changed = await hub._cleanup_expired_hijack("bot1")
+    assert changed is True
+    assert seen.get("hijack_lease_expiries_total", 0) >= 1
+
+
 # ---------------------------------------------------------------------------
 # Round-9 regression: _broadcast snapshots browsers under lock
 # ---------------------------------------------------------------------------
