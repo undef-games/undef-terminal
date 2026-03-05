@@ -34,7 +34,8 @@ from undef.terminal.transports.telnet import TelnetTransport
 # ---------------------------------------------------------------------------
 
 
-async def _start_ws_echo_server(*, banner: str = "") -> tuple[websockets.server.WebSocketServer, int]:
+from typing import Any
+async def _start_ws_echo_server(*, banner: str = "") -> tuple[Any, int]:
     """Spin up a minimal WS echo server; returns (server, port)."""
 
     async def _handler(ws: Any) -> None:
@@ -52,6 +53,9 @@ async def _make_gateway(ws_port: int) -> tuple[asyncio.AbstractServer, int]:
     """Create a TelnetWsGateway bound to an ephemeral port; returns (server, port)."""
     gw = TelnetWsGateway(f"ws://127.0.0.1:{ws_port}")
     tcp_srv = await gw.start("127.0.0.1", 0)
+    from asyncio import Server
+    assert isinstance(tcp_srv, Server)
+    assert tcp_srv.sockets is not None
     tcp_port = tcp_srv.sockets[0].getsockname()[1]
     return tcp_srv, tcp_port
 

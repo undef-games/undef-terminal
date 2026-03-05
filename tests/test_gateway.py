@@ -72,7 +72,7 @@ class TestWsToTcp:
 
         from asyncio import StreamWriter
         from typing import cast
-        await _ws_to_tcp(_async_iter(["world"]), cast("StreamWriter", MockWriter()))
+        await _ws_to_tcp(_async_iter(["world"]), cast(StreamWriter, MockWriter()))
         assert written == [b"world"]
         assert drained
 
@@ -88,7 +88,7 @@ class TestWsToTcp:
 
         from asyncio import StreamWriter
         from typing import cast
-        await _ws_to_tcp(_async_iter([b"\xff\xfe"]), cast("StreamWriter", MockWriter()))
+        await _ws_to_tcp(_async_iter([b"\xff\xfe"]), cast(StreamWriter, MockWriter()))
         assert written == [b"\xff\xfe"]
 
 
@@ -232,7 +232,7 @@ class TestPipeWs:
             from asyncio import StreamWriter
             from typing import cast
             await asyncio.wait_for(
-                _pipe_ws(reader, cast("StreamWriter", MockWriter()), f"ws://127.0.0.1:{ws_port}"),
+                _pipe_ws(reader, cast(StreamWriter, MockWriter()), f"ws://127.0.0.1:{ws_port}"),
                 timeout=3.0,
             )
         finally:

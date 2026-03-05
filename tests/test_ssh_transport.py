@@ -36,9 +36,7 @@ class MockStdout:
 
 
 from typing import TYPE_CHECKING, cast
-
-if TYPE_CHECKING:
-    import asyncssh
+import asyncssh
 
 class MockProcess:
     def __init__(self, stdin_data: bytes | str = b"") -> None:
@@ -62,13 +60,13 @@ class MockProcess:
 class TestSSHStreamReader:
     async def test_read_bytes(self) -> None:
         proc = MockProcess(stdin_data=b"hello")
-        reader = SSHStreamReader(cast("asyncssh.SSHServerProcess[bytes]", proc))
+        reader = SSHStreamReader(cast(asyncssh.SSHServerProcess[bytes], proc))
         data = await reader.read(5)
         assert data == b"hello"
 
     async def test_read_str_encodes_latin1(self) -> None:
         proc = MockProcess(stdin_data="hello")
-        reader = SSHStreamReader(cast("asyncssh.SSHServerProcess[bytes]", proc))
+        reader = SSHStreamReader(cast(asyncssh.SSHServerProcess[bytes], proc))
         data = await reader.read(5)
         assert data == b"hello"
 
@@ -78,7 +76,7 @@ class TestSSHStreamReader:
         proc = MockProcess()
         proc.stdin = MagicMock()
         proc.stdin.read = AsyncMock(side_effect=asyncssh.Error(1, "test", "en"))
-        reader = SSHStreamReader(cast("asyncssh.SSHServerProcess[bytes]", proc))
+        reader = SSHStreamReader(cast(asyncssh.SSHServerProcess[bytes], proc))
         data = await reader.read(5)
         assert data == b""
 
@@ -86,37 +84,37 @@ class TestSSHStreamReader:
 class TestSSHStreamWriter:
     def test_write_passes_bytes(self) -> None:
         proc = MockProcess()
-        writer = SSHStreamWriter(cast("asyncssh.SSHServerProcess[bytes]", proc))
+        writer = SSHStreamWriter(cast(asyncssh.SSHServerProcess[bytes], proc))
         writer.write(b"test data")
         assert bytes(proc.stdout.written) == b"test data"
 
     def test_write_after_close_is_noop(self) -> None:
         proc = MockProcess()
-        writer = SSHStreamWriter(cast("asyncssh.SSHServerProcess[bytes]", proc))
+        writer = SSHStreamWriter(cast(asyncssh.SSHServerProcess[bytes], proc))
         writer.close()
         writer.write(b"ignored")
         assert bytes(proc.stdout.written) == b""
 
     async def test_drain_flushes(self) -> None:
         proc = MockProcess()
-        writer = SSHStreamWriter(cast("asyncssh.SSHServerProcess[bytes]", proc))
+        writer = SSHStreamWriter(cast(asyncssh.SSHServerProcess[bytes], proc))
         writer.write(b"data")
         await writer.drain()  # should not raise
 
     def test_get_extra_info_peername(self) -> None:
         proc = MockProcess()
-        writer = SSHStreamWriter(cast("asyncssh.SSHServerProcess[bytes]", proc))
+        writer = SSHStreamWriter(cast(asyncssh.SSHServerProcess[bytes], proc))
         peer = writer.get_extra_info("peername")
         assert peer == ("127.0.0.1", 12345)
 
     def test_get_extra_info_unknown(self) -> None:
         proc = MockProcess()
-        writer = SSHStreamWriter(cast("asyncssh.SSHServerProcess[bytes]", proc))
+        writer = SSHStreamWriter(cast(asyncssh.SSHServerProcess[bytes], proc))
         assert writer.get_extra_info("unknown", "default") == "default"
 
     def test_close_exits_process(self) -> None:
         proc = MockProcess()
-        writer = SSHStreamWriter(cast("asyncssh.SSHServerProcess[bytes]", proc))
+        writer = SSHStreamWriter(cast(asyncssh.SSHServerProcess[bytes], proc))
         writer.close()
         assert proc._exited
 
@@ -126,27 +124,27 @@ class TestSSHStreamWriterEdgeCases:
         proc = MockProcess()
         proc.stdout = MagicMock()
         proc.stdout.write = MagicMock(side_effect=OSError("broken pipe"))
-        writer = SSHStreamWriter(cast("asyncssh.SSHServerProcess[bytes]", proc))
+        writer = SSHStreamWriter(cast(asyncssh.SSHServerProcess[bytes], proc))
         writer.write(b"data")
         assert writer._closed  # error → close called
 
     async def test_drain_when_closed_noop(self) -> None:
         proc = MockProcess()
-        writer = SSHStreamWriter(cast("asyncssh.SSHServerProcess[bytes]", proc))
+        writer = SSHStreamWriter(cast(asyncssh.SSHServerProcess[bytes], proc))
         writer._closed = True
         await writer.drain()  # should not raise or call stdout.drain
 
     async def test_drain_with_os_error_calls_close(self) -> None:
         proc = MockProcess()
         proc.stdout.drain = AsyncMock(side_effect=OSError("broken"))  # type: ignore[assignment]
-        writer = SSHStreamWriter(cast("asyncssh.SSHServerProcess[bytes]", proc))
+        writer = SSHStreamWriter(cast(asyncssh.SSHServerProcess[bytes], proc))
         await writer.drain()
         assert writer._closed
 
     def test_get_extra_info_no_peername(self) -> None:
         proc = MockProcess()
         proc.get_extra_info = MagicMock(return_value=None)  # type: ignore[assignment]
-        writer = SSHStreamWriter(cast("asyncssh.SSHServerProcess[bytes]", proc))
+        writer = SSHStreamWriter(cast(asyncssh.SSHServerProcess[bytes], proc))
         result = writer.get_extra_info("peername")
         assert result is None
 
@@ -234,8 +232,8 @@ class TestSSHPerInstanceIsolation:
         if TYPE_CHECKING:
             from collections.abc import Callable
             from typing import Any
-            factory_a_call = cast("Callable[[], Any]", factory_a)
-            factory_b_call = cast("Callable[[], Any]", factory_b)
+            factory_a_call = cast(Callable[[], Any], factory_a)
+            factory_b_call = cast(Callable[[], Any], factory_b)
         else:
             factory_a_call = factory_a
             factory_b_call = factory_b
@@ -269,8 +267,8 @@ class TestSSHPerInstanceIsolation:
         if TYPE_CHECKING:
             from collections.abc import Callable
             from typing import Any
-            factory_a_call = cast("Callable[[], Any]", factory_a)
-            factory_b_call = cast("Callable[[], Any]", factory_b)
+            factory_a_call = cast(Callable[[], Any], factory_a)
+            factory_b_call = cast(Callable[[], Any], factory_b)
         else:
             factory_a_call = factory_a
             factory_b_call = factory_b
