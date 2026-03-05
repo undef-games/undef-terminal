@@ -29,3 +29,11 @@ uv run python scripts/failure_injection.py \
   --rounds 20 \
   --timeout-s 10.0
 ```
+
+```bash
+uv run python scripts/latency_probe.py \
+  --base-url http://127.0.0.1:18769 \
+  --worker-id demo-session \
+  --rounds 40 \
+  --timeout-s 5.0
+```
