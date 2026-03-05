@@ -250,9 +250,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     logger.warning("ws_browser_rate_limited worker_id=%s", worker_id)
                     continue
 
-                owned_hijack = await handle_browser_message(
-                    hub, websocket, worker_id, role, msg_b, owned_hijack
-                )
+                owned_hijack = await handle_browser_message(hub, websocket, worker_id, role, msg_b, owned_hijack)
 
         except WebSocketDisconnect:
             pass

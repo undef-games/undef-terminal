@@ -85,9 +85,7 @@ async def handle_browser_message(
             _is_open = _st_mode is not None and _st_mode.input_mode == "open"
         if _is_open:
             await ws.send_text(
-                json.dumps(
-                    {"type": "error", "message": "Hijack not available in open input mode."}, ensure_ascii=True
-                )
+                json.dumps({"type": "error", "message": "Hijack not available in open input mode."}, ensure_ascii=True)
             )
             return owned_hijack
         # Send pause to the worker *before* writing ownership — mirrors REST
@@ -114,9 +112,7 @@ async def handle_browser_message(
                     {"type": "control", "action": "resume", "owner": "dashboard", "lease_s": 0, "ts": time.time()},
                 )
             msg_text = (
-                "No worker connected for this worker."
-                if err == "no_worker"
-                else "Already hijacked by another client."
+                "No worker connected for this worker." if err == "no_worker" else "Already hijacked by another client."
             )
             await ws.send_text(json.dumps({"type": "error", "message": msg_text}, ensure_ascii=True))
             await ws.send_text(json.dumps(await hub._hijack_state_msg_for(worker_id, ws), ensure_ascii=True))

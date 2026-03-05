@@ -258,6 +258,7 @@ class SessionRegistry:
             return entries
         # No offset: collect last `limit` entries efficiently with a fixed-size buffer.
         from collections import deque as _deque
+
         tail: _deque[dict[str, Any]] = _deque(maxlen=normalized_limit)
         with path.open(encoding="utf-8") as fh:
             for line in fh:

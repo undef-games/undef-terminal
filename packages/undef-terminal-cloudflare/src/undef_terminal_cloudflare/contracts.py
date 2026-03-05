@@ -86,8 +86,16 @@ def parse_frame(raw: str, *, limits: MessageLimits | None = None) -> Frame:
         lease_expires_at = value.get("lease_expires_at")
         normalized["lease_expires_at"] = float(lease_expires_at) if lease_expires_at is not None else None
     elif frame_type in {
-        "snapshot_req", "error", "worker_connected", "worker_disconnected",
-        "heartbeat", "ping", "hijack_request", "hijack_release", "hijack_step", "hello",
+        "snapshot_req",
+        "error",
+        "worker_connected",
+        "worker_disconnected",
+        "heartbeat",
+        "ping",
+        "hijack_request",
+        "hijack_release",
+        "hijack_step",
+        "hello",
     }:
         pass
     else:

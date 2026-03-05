@@ -55,11 +55,7 @@ def create_api_router() -> APIRouter:
         principal = _principal(request)
         authz = _authz(request)
         pairs = await _registry(request).list_sessions_with_definitions()
-        return [
-            model_dump(status)
-            for status, definition in pairs
-            if authz.can_read_session(principal, definition)
-        ]
+        return [model_dump(status) for status, definition in pairs if authz.can_read_session(principal, definition)]
 
     @router.post("/sessions")
     async def create_session(request: Request, payload: Annotated[dict[str, Any], Body(...)]) -> dict[str, Any]:

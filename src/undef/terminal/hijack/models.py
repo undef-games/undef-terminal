@@ -19,6 +19,7 @@ def _safe_int(val: Any, default: int) -> int:
     except (ValueError, TypeError):
         return default
 
+
 try:
     from fastapi import WebSocket  # noqa: TC002
     from pydantic import BaseModel, Field

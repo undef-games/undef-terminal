@@ -28,7 +28,6 @@ import logging
 import time
 from typing import Any, Protocol, runtime_checkable
 
-
 from undef.terminal.hijack.models import _safe_int
 
 logger = logging.getLogger(__name__)

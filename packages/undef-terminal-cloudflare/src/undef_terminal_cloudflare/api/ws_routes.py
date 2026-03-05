@@ -12,6 +12,7 @@ to both backends using the same wire format; features that rely on WS-level hija
 frames (hijack_request, hijack_release, hijack_step) are silently unsupported here
 — callers should use the REST hijack API instead.
 """
+
 from __future__ import annotations
 
 try:

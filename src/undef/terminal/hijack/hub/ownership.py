@@ -10,10 +10,9 @@ Extracted from ``hub.py`` to keep file sizes under 500 LOC.
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import TYPE_CHECKING
-
-import logging
 
 from undef.terminal.hijack.models import HijackSession
 
