@@ -24,7 +24,7 @@ async def handle_socket_message(runtime: object, ws: object, raw: str, *, is_wor
         if frame_type == "snapshot":
             runtime.last_snapshot = {"type": "snapshot", "screen": frame.get("screen", ""), "ts": frame.get("ts")}
             runtime.store.save_snapshot(runtime.worker_id, runtime.last_snapshot)
-        await runtime.broadcast_to_browsers(frame)
+        await runtime.broadcast_worker_frame(frame)
         return
 
     if frame.get("type") == "input":
@@ -32,7 +32,7 @@ async def handle_socket_message(runtime: object, ws: object, raw: str, *, is_wor
         if active is None:
             await runtime.send_ws(ws, {"type": "error", "message": "not_hijacked"})
             return
-        if runtime.browser_hijack_owner.get(ws) != active.hijack_id:
+        if runtime.browser_hijack_owner.get(runtime._ws_key(ws)) != active.hijack_id:
             await runtime.send_ws(ws, {"type": "error", "message": "not_owner"})
             return
         await runtime.push_worker_input(str(frame.get("data", "")))

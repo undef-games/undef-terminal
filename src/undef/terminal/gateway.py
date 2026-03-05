@@ -195,6 +195,10 @@ class SshWsGateway:
 
         ws_url = self._ws_url
 
+        class _NoAuthServer(asyncssh.SSHServer):
+            def begin_auth(self, username: str) -> bool:  # noqa: ARG002
+                return False
+
         if self._server_key:
             key_path = Path(self._server_key)
             if not key_path.exists():
@@ -223,7 +227,7 @@ class SshWsGateway:
                     process.exit(0)
 
         return await asyncssh.create_server(
-            asyncssh.SSHServer,
+            _NoAuthServer,
             host,
             port,
             server_host_keys=host_keys,

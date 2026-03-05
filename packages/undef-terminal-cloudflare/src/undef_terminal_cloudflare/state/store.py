@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import time
 from dataclasses import dataclass
@@ -28,9 +29,9 @@ class SqliteStateStore:
         if not params:
             return self._exec(sql)
         try:
-            return self._exec(sql, params)
-        except Exception:
             return self._exec(sql, *params)
+        except Exception:
+            return self._exec(sql, params)
 
     def migrate(self) -> None:
         self._run(
@@ -73,14 +74,14 @@ class SqliteStateStore:
         if not rows:
             return None
         row = rows[0]
-        snapshot_raw = self._get(row, 4)
+        snapshot_raw = self._row_value(row, "last_snapshot_json", 4)
         return {
-            "worker_id": self._get(row, 0),
-            "hijack_id": self._get(row, 1),
-            "owner": self._get(row, 2),
-            "lease_expires_at": self._get(row, 3),
+            "worker_id": self._row_value(row, "worker_id", 0),
+            "hijack_id": self._row_value(row, "hijack_id", 1),
+            "owner": self._row_value(row, "owner", 2),
+            "lease_expires_at": self._row_value(row, "lease_expires_at", 3),
             "last_snapshot": json.loads(snapshot_raw) if snapshot_raw else None,
-            "event_seq": int(self._get(row, 5) or 0),
+            "event_seq": int(self._row_value(row, "event_seq", 5) or 0),
         }
 
     def save_lease(self, record: LeaseRecord) -> None:
@@ -160,10 +161,24 @@ class SqliteStateStore:
         return {"seq": seq, "ts": ts, "type": event_type, "data": payload}
 
     def current_event_seq(self, worker_id: str) -> int:
-        rows = self._rows(self._run("SELECT event_seq FROM session_state WHERE worker_id = ?", worker_id))
+        rows = self._rows(
+            self._run(
+                """
+                SELECT COALESCE(MAX(seq), 0) AS seq
+                FROM session_events
+                WHERE worker_id = ?
+                """,
+                worker_id,
+            )
+        )
         if not rows:
             return 0
-        return int(self._get(rows[0], 0) or 0)
+        row = rows[0]
+        if isinstance(row, dict):
+            return int(row.get("seq") or 0)
+        if hasattr(row, "keys") and hasattr(row, "__getitem__"):
+            return int(row["seq"] if "seq" in row else self._get(row, 0) or 0)
+        return int(self._get(row, 0) or 0)
 
     def list_events_since(self, worker_id: str, seq: int, limit: int = 100) -> list[dict[str, Any]]:
         rows = self._rows(
@@ -180,17 +195,36 @@ class SqliteStateStore:
                 int(limit),
             )
         )
-        out: list[dict[str, Any]] = []
-        for row in rows:
-            out.append(
-                {
-                    "seq": int(self._get(row, 0) or 0),
-                    "ts": float(self._get(row, 1) or 0.0),
-                    "type": str(self._get(row, 2) or ""),
-                    "data": json.loads(str(self._get(row, 3) or "{}")),
-                }
-            )
-        return out
+        return [
+            {
+                "seq": int(self._row_value(row, "seq", 0) or 0),
+                "ts": float(self._row_value(row, "ts", 1) or 0.0),
+                "type": str(self._row_value(row, "event_type", 2) or ""),
+                "data": json.loads(str(self._row_value(row, "payload_json", 3) or "{}")),
+            }
+            for row in rows
+        ]
+
+    @classmethod
+    def _row_value(cls, row: Any, key: str, idx: int) -> Any:
+        if isinstance(row, dict):
+            return row.get(key)
+        if hasattr(row, "get"):
+            with contextlib.suppress(Exception):
+                value = row.get(key)
+                if value is not None:
+                    return value
+        if hasattr(row, key):
+            with contextlib.suppress(Exception):
+                return getattr(row, key)
+        if hasattr(row, "to_py"):
+            try:
+                py_row = row.to_py()
+            except Exception:
+                py_row = None
+            if py_row is not None:
+                return cls._row_value(py_row, key, idx)
+        return cls._get(row, idx)
 
     @staticmethod
     def _rows(result: Any) -> list[Any]:
@@ -212,4 +246,11 @@ class SqliteStateStore:
         if hasattr(row, "keys") and hasattr(row, "__getitem__"):
             keys = list(row.keys())
             return row[keys[idx]]
+        if hasattr(row, "to_py"):
+            try:
+                py_row = row.to_py()
+            except Exception:
+                py_row = None
+            if py_row is not None:
+                return SqliteStateStore._get(py_row, idx)
         return row[idx]

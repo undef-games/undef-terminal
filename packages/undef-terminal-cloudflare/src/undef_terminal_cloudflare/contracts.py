@@ -8,6 +8,7 @@ from typing import Any, Literal, TypedDict
 FrameType = Literal[
     "snapshot_req",
     "snapshot",
+    "term",
     "input",
     "control",
     "hijack_state",
@@ -64,6 +65,8 @@ def parse_frame(raw: str, *, limits: MessageLimits | None = None) -> Frame:
         normalized["data"] = data
     elif frame_type == "snapshot":
         normalized["screen"] = str(value.get("screen", ""))
+    elif frame_type == "term":
+        normalized["data"] = str(value.get("data", ""))
     elif frame_type == "control":
         normalized["action"] = str(value.get("action", ""))
         normalized["owner"] = str(value.get("owner", "")) if value.get("owner") is not None else None
