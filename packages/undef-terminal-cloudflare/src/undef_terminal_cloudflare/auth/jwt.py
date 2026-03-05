@@ -22,17 +22,37 @@ class Principal:
     roles: tuple[str, ...]
 
 
+def _resolve_signing_key(token: str, config: JwtConfig) -> Any:
+    """Return the signing key to use for *token* based on *config*.
+
+    Supports both static PEM keys and JWKS URLs (key rotation / RS256 / ES256).
+    """
+    if config.jwks_url:
+        client = jwt.PyJWKClient(config.jwks_url)
+        return client.get_signing_key_from_jwt(token).key
+    if config.public_key_pem:
+        return config.public_key_pem
+    raise JwtValidationError("jwt_public_key_pem or jwt_jwks_url must be configured in jwt mode")
+
+
 def decode_jwt(token: str, config: JwtConfig) -> Principal:
     if config.mode in {"none", "dev"}:
         return Principal(subject_id="dev", roles=("admin",))
-    if not config.public_key_pem:
+    if not config.public_key_pem and not config.jwks_url:
         raise JwtValidationError("missing jwt public key")
+
+    try:
+        key = _resolve_signing_key(token, config)
+    except JwtValidationError:
+        raise
+    except Exception as exc:
+        raise JwtValidationError(f"failed to resolve signing key: {exc}") from exc
 
     options = {"verify_aud": bool(config.audience), "verify_iss": bool(config.issuer)}
     try:
         claims: dict[str, Any] = jwt.decode(
             token,
-            config.public_key_pem,
+            key,
             algorithms=list(config.algorithms),
             issuer=config.issuer,
             audience=config.audience,

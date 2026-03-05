@@ -36,10 +36,13 @@ logger = logging.getLogger(__name__)
 
 def _validate_auth_config(config: ServerConfig) -> None:
     mode = str(config.auth.mode).strip().lower()
+    if mode in {"none", "dev"}:
+        return
+    # All authenticated modes (jwt, header, …) require a worker bearer token.
+    if not config.auth.worker_bearer_token:
+        raise ValueError(f"auth.worker_bearer_token is required when auth.mode='{mode}'")
     if mode != "jwt":
         return
-    if not config.auth.worker_bearer_token:
-        raise ValueError("auth.worker_bearer_token is required when auth.mode='jwt'")
     if not config.auth.jwt_algorithms:
         raise ValueError("auth.jwt_algorithms must not be empty when auth.mode='jwt'")
     if not config.auth.jwt_public_key_pem and not config.auth.jwt_jwks_url:
@@ -90,10 +93,19 @@ def create_server_app(config: ServerConfig) -> FastAPI:
     @asynccontextmanager
     async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
         async def _delayed_boot() -> None:
+            # Yield to the event loop so FastAPI finishes its own startup tasks
+            # (route registration, middleware init) before we connect sessions.
             await asyncio.sleep(0.15)
             await registry.start_auto_start_sessions()
 
         boot_task = asyncio.create_task(_delayed_boot())
+        boot_task.add_done_callback(
+            lambda t: (
+                logger.error("auto_start_sessions_failed error=%s", t.exception())
+                if not t.cancelled() and t.exception() is not None
+                else None
+            )
+        )
         try:
             yield
         finally:

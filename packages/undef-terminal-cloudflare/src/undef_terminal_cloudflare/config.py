@@ -11,6 +11,7 @@ class JwtConfig:
     audience: str | None = None
     algorithms: tuple[str, ...] = ("RS256",)
     public_key_pem: str | None = None
+    jwks_url: str | None = None
 
 
 @dataclass(slots=True)
@@ -69,6 +70,7 @@ class CloudflareConfig:
             audience=_get("JWT_AUDIENCE") or None,
             algorithms=algorithms or ("RS256",),
             public_key_pem=_get("JWT_PUBLIC_KEY_PEM") or None,
+            jwks_url=_get("JWT_JWKS_URL") or None,
         )
         return cls(
             environment=_get("ENVIRONMENT", "development"),

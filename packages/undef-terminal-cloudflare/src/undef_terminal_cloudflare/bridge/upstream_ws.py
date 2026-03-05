@@ -8,7 +8,14 @@ from typing import Any
 
 
 class UpstreamWsBridge:
-    """WebSocket connector with reconnect/backoff behavior for v1 upstream mode."""
+    """WebSocket connector with reconnect/backoff behavior for v1 upstream mode.
+
+    .. note::
+        Not yet wired to the Durable Object routing layer (``entry.py`` / ``session_runtime.py``).
+        ``UpstreamConfig`` is parsed from env vars but the bridge is not instantiated.
+        This class is kept here as the intended integration point for proxying the DO
+        to an external worker WS endpoint.
+    """
 
     def __init__(
         self,
@@ -72,5 +79,8 @@ class UpstreamWsBridge:
         ws = self._ws
         if ws is None:
             return False
-        await ws.send(json.dumps(payload, ensure_ascii=True))
-        return True
+        try:
+            await ws.send(json.dumps(payload, ensure_ascii=True))
+            return True
+        except Exception:
+            return False

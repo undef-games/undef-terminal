@@ -29,12 +29,7 @@ import time
 from typing import Any, Protocol, runtime_checkable
 
 
-def _safe_int(val: Any, default: int) -> int:
-    try:
-        return int(default if val is None else val)
-    except (ValueError, TypeError):
-        return default
-
+from undef.terminal.hijack.models import _safe_int
 
 logger = logging.getLogger(__name__)
 
