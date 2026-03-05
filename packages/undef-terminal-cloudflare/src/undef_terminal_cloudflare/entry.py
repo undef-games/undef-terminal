@@ -6,11 +6,15 @@ from urllib.parse import urlparse
 try:
     from undef_terminal_cloudflare.cf_types import WorkerEntrypoint, json_response
     from undef_terminal_cloudflare.config import CloudflareConfig
+    from undef_terminal_cloudflare.do.session_runtime import SessionRuntime
     from undef_terminal_cloudflare.ui.assets import serve_asset
 except Exception:
     from cf_types import WorkerEntrypoint, json_response
     from config import CloudflareConfig
+    from do.session_runtime import SessionRuntime
     from ui.assets import serve_asset
+
+__all__ = ["Default", "SessionRuntime", "UndefTerminalCloudflareWorker"]
 
 _WORKER_ROUTE_PATTERNS = (
     re.compile(r"^/ws/browser/(?P<worker_id>[a-zA-Z0-9_-]{1,64})/term$"),
