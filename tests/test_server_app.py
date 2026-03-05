@@ -90,6 +90,11 @@ class TestReferenceServerApp:
             health = await http.get("/api/health")
             assert health.status_code == 200
             assert health.json()["ok"] is True
+            assert health.headers.get("x-request-id")
+
+            metrics = await http.get("/api/metrics")
+            assert metrics.status_code == 200
+            assert metrics.json()["metrics"]["http_requests_total"] >= 1
 
             sessions = await http.get("/api/sessions")
             assert sessions.status_code == 200

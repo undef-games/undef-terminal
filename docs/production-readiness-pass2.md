@@ -49,6 +49,7 @@ Implemented:
 
 Required before release:
 - Load profile for concurrent browser sockets, reconnect churn, and snapshot throughput.
+  - Use `scripts/load_profile.py` for reproducible connect/hello latency measurement.
 - Failure-injection scenarios:
   - worker disconnect/restart
   - upstream WS flap
@@ -62,8 +63,10 @@ Required before release:
 
 Required before release:
 - Structured logs with correlation IDs: request/session/worker/hijack.
+  - Implemented for HTTP via `x-request-id` middleware logging and `/api/metrics`.
 - Metrics: auth failures, hijack conflicts, lease expiries, disconnect reasons, reconnect counters.
 - Alert thresholds and on-call runbook with concrete triage queries.
+  - See `docs/operations/runbook.md`.
 
 ## Gate 6 (P2): Supply Chain and Release Governance
 
@@ -72,3 +75,4 @@ Required before release:
 - SBOM generation for release artifacts.
 - Artifact signing and provenance metadata.
 - Staging rollback drill with documented result.
+  - Governance automation entrypoint: `scripts/release_governance_check.sh`.

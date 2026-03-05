@@ -50,6 +50,13 @@ def create_api_router() -> APIRouter:
     async def health() -> dict[str, object]:
         return {"ok": True, "service": "undefterm-server"}
 
+    @router.get("/metrics")
+    async def metrics(request: Request) -> dict[str, object]:
+        payload = getattr(request.app.state, "uterm_metrics", {})
+        if not isinstance(payload, dict):
+            payload = {}
+        return {"metrics": payload}
+
     @router.get("/sessions")
     async def list_sessions(request: Request) -> list[dict[str, Any]]:
         principal = _principal(request)

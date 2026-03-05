@@ -11,6 +11,8 @@ import asyncio
 import contextlib
 import importlib.resources
 import logging
+import time
+import uuid
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -28,6 +30,10 @@ from undef.terminal.server.routes.pages import create_page_router
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    from starlette.middleware.base import RequestResponseEndpoint
+    from starlette.requests import Request
+    from starlette.responses import Response
 
     from undef.terminal.server.models import ServerConfig
 
@@ -77,18 +83,31 @@ def create_server_app(config: ServerConfig) -> FastAPI:
     authz = AuthorizationService()
     policy = SessionPolicyResolver(config.auth, authz=authz)
     registry: SessionRegistry | None = None
+    metrics: dict[str, int] = {
+        "http_requests_total": 0,
+        "http_requests_4xx_total": 0,
+        "http_requests_5xx_total": 0,
+        "http_requests_error_total": 0,
+        "auth_failures_http_total": 0,
+        "auth_failures_ws_total": 0,
+    }
+
+    def _inc_metric(name: str, value: int = 1) -> None:
+        metrics[name] = metrics.get(name, 0) + value
 
     async def _require_authenticated(connection: HTTPConnection) -> None:
         if connection.scope.get("type") == "websocket":
             principal = resolve_ws_principal(connection, config.auth)
             connection.state.uterm_principal = principal
             if config.auth.mode not in {"none", "dev"} and principal.subject_id == "anonymous":
+                _inc_metric("auth_failures_ws_total")
                 logger.info("authn_denied surface=websocket")
                 raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="authentication required")
             return
         principal = resolve_http_principal(connection, config.auth)
         connection.state.uterm_principal = principal
         if config.auth.mode not in {"none", "dev"} and principal.subject_id == "anonymous":
+            _inc_metric("auth_failures_http_total")
             logger.info("authn_denied surface=http")
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="authentication required")
 
@@ -142,6 +161,40 @@ def create_server_app(config: ServerConfig) -> FastAPI:
     app.state.uterm_authz = authz
     app.state.uterm_hub = hub
     app.state.uterm_registry = registry
+    app.state.uterm_metrics = metrics
+
+    @app.middleware("http")
+    async def _request_logging_middleware(request: Request, call_next: RequestResponseEndpoint) -> Response:
+        request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        request.state.uterm_request_id = request_id
+        start = time.perf_counter()
+        _inc_metric("http_requests_total")
+        try:
+            response = await call_next(request)
+        except Exception:
+            _inc_metric("http_requests_error_total")
+            logger.exception(
+                "http_request_failed request_id=%s method=%s path=%s",
+                request_id,
+                request.method,
+                request.url.path,
+            )
+            raise
+        duration_ms = (time.perf_counter() - start) * 1000.0
+        if response.status_code >= 500:
+            _inc_metric("http_requests_5xx_total")
+        elif response.status_code >= 400:
+            _inc_metric("http_requests_4xx_total")
+        response.headers["x-request-id"] = request_id
+        logger.info(
+            "http_request request_id=%s method=%s path=%s status=%d duration_ms=%.2f",
+            request_id,
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+        )
+        return response
 
     app.include_router(hub.create_router(), dependencies=[Depends(_require_authenticated)])
     app.include_router(create_api_router(), dependencies=[Depends(_require_authenticated)])
