@@ -266,6 +266,7 @@ class TestReferenceServerApp:
                             "port": free_port,
                             "username": "tester",
                             "password": "secret",
+                            "insecure_no_host_check": True,
                         },
                     },
                 )
@@ -325,6 +326,7 @@ class TestReferenceServerApp:
                             "port": free_port,
                             "username": "tester",
                             "client_key_path": str(key_path),
+                            "insecure_no_host_check": True,
                         },
                     },
                 )
@@ -382,6 +384,7 @@ class TestReferenceServerApp:
                             "port": free_port,
                             "username": "tester",
                             "client_key_data": key_data.decode("utf-8"),
+                            "insecure_no_host_check": True,
                         },
                     },
                 )

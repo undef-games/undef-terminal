@@ -102,10 +102,13 @@ def config_from_mapping(data: dict[str, Any]) -> ServerConfig:
         xterm_cdn=str(ui_data.get("xterm_cdn", base.ui.xterm_cdn)),
         fonts_cdn=str(ui_data.get("fonts_cdn", base.ui.fonts_cdn)),
     )
+    max_bytes = int(recording_data.get("max_bytes", base.recording.max_bytes))
+    if max_bytes < 0:
+        raise ValueError(f"recording.max_bytes must be >= 0 (0 = unlimited), got: {max_bytes}")
     recording = RecordingConfig(
         enabled_by_default=bool(recording_data.get("enabled_by_default", base.recording.enabled_by_default)),
         directory=Path(recording_data.get("directory", base.recording.directory)),
-        max_bytes=int(recording_data.get("max_bytes", base.recording.max_bytes)),
+        max_bytes=max_bytes,
     )
 
     sessions: list[SessionDefinition] = []

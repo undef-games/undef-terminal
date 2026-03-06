@@ -59,6 +59,12 @@ class SshSessionConnector(SessionConnector):
         self._client_keys = client_keys
         self._known_hosts = None if config.get("known_hosts") is None else str(config.get("known_hosts"))
         if self._known_hosts is None:
+            if not config.get("insecure_no_host_check"):
+                raise ValueError(
+                    f"ssh_connector requires known_hosts for session {session_id!r} connecting to {self._host}; "
+                    "set connector_config.known_hosts to a known_hosts file path, "
+                    "or set insecure_no_host_check=true to disable host key verification"
+                )
             logger.warning(
                 "ssh_connector_no_known_hosts session_id=%s host=%s — "
                 "host key verification is disabled; set known_hosts in connector_config to enable it",

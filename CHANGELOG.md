@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Permanent-failure detection** — `HostedSessionRuntime` now distinguishes
+  `ValueError` (e.g. unsupported `connector_type`, missing SSH `known_hosts`) as a
+  permanent configuration error; the retry loop stops immediately and sets
+  `lifecycle_state = "error"` instead of retrying every 5 seconds forever.
+
+### Security
+
+- **XSS fix in `session_page_html`** — `assets_path` inside the `<script>` tag for
+  `hijack.js` was the only unescaped dynamic value in `ui.py`; it is now passed through
+  `html.escape()` like every other path reference in that file.
+- **JWKS cache thread safety** — `_JWKS_CLIENT_CACHE` is now guarded by a
+  `threading.Lock` so concurrent `asyncio.to_thread` JWT validations cannot race on
+  the shared dict.
+- **SSH `known_hosts` default-deny** — `SshSessionConnector` now raises `ValueError`
+  when `known_hosts` is not configured, preventing silent MITM exposure. Set
+  `insecure_no_host_check = true` in `connector_config` to opt in to the old
+  warning-only behaviour.
+
+### Fixed
+
+- **`RecordingConfig.max_bytes` rejects negative values** — `config_from_mapping` now
+  raises `ValueError` when `recording.max_bytes < 0` instead of silently treating it
+  as unlimited.
+
+### Tests
+
+- **Third-review regression suite** — 11 new tests added to
+  `tests/test_server_security_regressions.py` covering: `session_id` path-pattern 422,
+  query-param bound 422, health 503 without registry, `PATCH` 422 on invalid
+  `input_mode`, idempotent `DELETE`, `"none"` algorithm rejection, page-route 403 for
+  private sessions, negative `max_bytes` config rejection, JWT without optional
+  `iat`/`nbf` claims, recording-download path-containment 404, and SSH connector
+  `known_hosts` enforcement.
+
+### Added (continued — prior release)
+
 - **CDN configurability** — `xterm_cdn` and `fonts_cdn` fields on `UiConfig` allow operators to
   point the server UI at a self-hosted CDN or omit CDN links entirely for air-gapped deployments.
 - **Recording byte cap** — `RecordingConfig.max_bytes` (default 0 = unlimited) caps the on-disk

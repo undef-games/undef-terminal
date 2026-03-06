@@ -256,6 +256,19 @@ class HostedSessionRuntime:
                     attempt = 0
             except asyncio.CancelledError:
                 break
+            except ValueError as exc:
+                # Permanent configuration error (e.g. unsupported connector_type,
+                # missing known_hosts) — retrying will never succeed.
+                self._state = "error"
+                self._connected = False
+                self._last_error = str(exc)
+                logger.error(
+                    "hosted_session_runtime_permanent_failure session_id=%s error=%s",
+                    self.definition.session_id,
+                    exc,
+                )
+                await self._log_event("runtime_error", {"error": str(exc), "permanent": True})
+                break
             except Exception as exc:
                 self._state = "error"
                 self._connected = False
