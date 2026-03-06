@@ -13,6 +13,7 @@ from fastapi import APIRouter, Body, HTTPException, Path, Query, Request, Respon
 from fastapi.responses import FileResponse, PlainTextResponse
 
 from undef.terminal.server.models import model_dump
+from undef.terminal.server.registry import SessionValidationError
 
 # Validated session_id path parameter — rejects path-unsafe characters.
 _SessionId = Annotated[str, Path(pattern=r"^[\w\-]+$")]
@@ -97,6 +98,8 @@ def create_api_router() -> APIRouter:
             mutable_payload["owner"] = principal.subject_id
         try:
             session = await _registry(request).create_session(mutable_payload)
+        except SessionValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return model_dump(session)
@@ -132,6 +135,8 @@ def create_api_router() -> APIRouter:
             raise HTTPException(status_code=403, detail="insufficient privileges")
         try:
             session = await _registry(request).update_session(session_id, payload)
+        except SessionValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         except KeyError:
             raise _sid_not_found(session_id) from None
         return model_dump(session)
@@ -274,7 +279,7 @@ def create_api_router() -> APIRouter:
         session_id: _SessionId,
         limit: Annotated[int, Query(ge=1, le=500)] = 200,
         offset: Annotated[int | None, Query(ge=0)] = None,
-        event: str | None = None,
+        event: Annotated[str | None, Query(max_length=100)] = None,
     ) -> list[dict[str, Any]]:
         principal = _principal(request)
         authz = _authz(request)

@@ -238,8 +238,7 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
             async with self._lock:
                 st = self._workers.get(worker_id)
                 last_snapshot = st.last_snapshot if st is not None else None
-            if await asyncio.to_thread(
-                self.snapshot_matches,
+            if self.snapshot_matches(
                 last_snapshot,
                 expect_prompt_id=expect_prompt_id,
                 expect_regex=regex_obj,

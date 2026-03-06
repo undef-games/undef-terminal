@@ -77,6 +77,8 @@ def _validate_auth_config(config: ServerConfig) -> None:
         return
     if not config.auth.jwt_algorithms:
         raise ValueError("auth.jwt_algorithms must not be empty when auth.mode='jwt'")
+    if any(a.strip().lower() == "none" for a in config.auth.jwt_algorithms):
+        raise ValueError("'none' is not permitted in auth.jwt_algorithms")
     if not config.auth.jwt_public_key_pem and not config.auth.jwt_jwks_url:
         raise ValueError("configure auth.jwt_public_key_pem or auth.jwt_jwks_url when auth.mode='jwt'")
 
@@ -124,14 +126,22 @@ def create_server_app(config: ServerConfig) -> FastAPI:
                 )
                 return
         if connection.scope.get("type") == "websocket":
-            principal = resolve_ws_principal(connection, config.auth)
+            # JWT mode: JWKS key fetch may make a blocking HTTP call; offload to
+            # a thread pool to avoid stalling the event loop.
+            if config.auth.mode == "jwt":
+                principal = await asyncio.to_thread(resolve_ws_principal, connection, config.auth)
+            else:
+                principal = resolve_ws_principal(connection, config.auth)
             connection.state.uterm_principal = principal
             if config.auth.mode not in {"none", "dev"} and principal.subject_id == "anonymous":
                 _inc_metric("auth_failures_ws_total")
                 logger.info("authn_denied surface=websocket")
                 raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="authentication required")
             return
-        principal = resolve_http_principal(connection, config.auth)
+        if config.auth.mode == "jwt":
+            principal = await asyncio.to_thread(resolve_http_principal, connection, config.auth)
+        else:
+            principal = resolve_http_principal(connection, config.auth)
         connection.state.uterm_principal = principal
         if config.auth.mode not in {"none", "dev"} and principal.subject_id == "anonymous":
             _inc_metric("auth_failures_http_total")

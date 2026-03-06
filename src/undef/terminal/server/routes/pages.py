@@ -7,11 +7,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Path, Request
 from fastapi.responses import HTMLResponse
 
 from undef.terminal.server.auth import resolve_http_principal
 from undef.terminal.server.ui import operator_dashboard_html, replay_page_html, session_page_html
+
+_SessionId = Annotated[str, Path(pattern=r"^[\w\-]+$")]
 
 
 def _is_secure_request(request: Request) -> bool:
@@ -53,13 +57,16 @@ def create_page_router() -> APIRouter:
         return response
 
     @router.get("/session/{session_id}", response_class=HTMLResponse)
-    async def session_view(request: Request, session_id: str) -> HTMLResponse:
+    async def session_view(request: Request, session_id: _SessionId) -> HTMLResponse:
         session = await request.app.state.uterm_registry.get_definition(session_id)
         if session is None:
             raise HTTPException(status_code=404, detail=f"unknown session: {session_id}")
         cfg = request.app.state.uterm_config
         secure = _is_secure_request(request)
         principal = resolve_http_principal(request, cfg.auth)
+        authz = request.app.state.uterm_authz
+        if not authz.can_read_session(principal, session):
+            raise HTTPException(status_code=403, detail="insufficient privileges")
         html = session_page_html(
             session.display_name,
             cfg.ui.assets_path,
@@ -75,13 +82,16 @@ def create_page_router() -> APIRouter:
         return response
 
     @router.get("/operator/{session_id}", response_class=HTMLResponse)
-    async def operator_session(request: Request, session_id: str) -> HTMLResponse:
+    async def operator_session(request: Request, session_id: _SessionId) -> HTMLResponse:
         session = await request.app.state.uterm_registry.get_definition(session_id)
         if session is None:
             raise HTTPException(status_code=404, detail=f"unknown session: {session_id}")
         cfg = request.app.state.uterm_config
         secure = _is_secure_request(request)
         principal = resolve_http_principal(request, cfg.auth)
+        authz = request.app.state.uterm_authz
+        if not authz.can_read_session(principal, session):
+            raise HTTPException(status_code=403, detail="insufficient privileges")
         html = session_page_html(
             session.display_name,
             cfg.ui.assets_path,
@@ -97,13 +107,16 @@ def create_page_router() -> APIRouter:
         return response
 
     @router.get("/replay/{session_id}", response_class=HTMLResponse)
-    async def replay_view(request: Request, session_id: str) -> HTMLResponse:
+    async def replay_view(request: Request, session_id: _SessionId) -> HTMLResponse:
         session = await request.app.state.uterm_registry.get_definition(session_id)
         if session is None:
             raise HTTPException(status_code=404, detail=f"unknown session: {session_id}")
         cfg = request.app.state.uterm_config
         secure = _is_secure_request(request)
         principal = resolve_http_principal(request, cfg.auth)
+        authz = request.app.state.uterm_authz
+        if not authz.can_read_session(principal, session):
+            raise HTTPException(status_code=403, detail="insufficient privileges")
         html = replay_page_html(
             session.display_name,
             cfg.ui.assets_path,

@@ -165,11 +165,27 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         {"type": "worker_disconnected", "worker_id": worker_id, "ts": time.time()},
                     )
                 )
-                _ = _broadcast_task
+                _broadcast_task.add_done_callback(
+                    lambda t: (
+                        logger.warning(
+                            "worker_disconnected_broadcast_failed worker_id=%s error=%s", worker_id, t.exception()
+                        )
+                        if not t.cancelled() and t.exception() is not None
+                        else None
+                    )
+                )
                 if was_hijacked:
                     hub.notify_hijack_changed(worker_id, enabled=False, owner=None)
                     _hijack_state_task = asyncio.create_task(hub.broadcast_hijack_state(worker_id))
-                    _ = _hijack_state_task
+                    _hijack_state_task.add_done_callback(
+                        lambda t: (
+                            logger.warning(
+                                "broadcast_hijack_state_failed worker_id=%s error=%s", worker_id, t.exception()
+                            )
+                            if not t.cancelled() and t.exception() is not None
+                            else None
+                        )
+                    )
             await hub.prune_if_idle(worker_id)
 
     @router.websocket("/ws/browser/{worker_id}/term")
@@ -268,13 +284,10 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
             resume_without_owner = disconnect_result["resume_without_owner"]
             if was_owner:
                 _do_resume = not rest_still_active
-                if _do_resume:
-                    # Re-check: a concurrent hijack_acquire may have written a new
-                    # session between the lock release above and _send_worker below.
-                    async with hub._lock:
-                        _st4 = hub._workers.get(worker_id)
-                        if _st4 is not None and hub.is_hijacked(_st4):
-                            _do_resume = False
+                # Re-check: a concurrent hijack_acquire may have written a new
+                # session between the lock release above and _send_worker below.
+                if _do_resume and await hub.check_still_hijacked(worker_id):
+                    _do_resume = False
                 if _do_resume:
                     _resume_task = asyncio.create_task(
                         hub.send_worker(
@@ -294,10 +307,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     hub.notify_hijack_changed(worker_id, enabled=False, owner=None)
                 await hub.append_event(worker_id, "hijack_released", {"owner": "dashboard_ws_disconnect"})
             elif resume_without_owner:
-                async with hub._lock:
-                    _st4 = hub._workers.get(worker_id)
-                    if _st4 is not None and hub.is_hijacked(_st4):
-                        resume_without_owner = False
+                if await hub.check_still_hijacked(worker_id):
+                    resume_without_owner = False
                 if resume_without_owner:
                     _resume_task = asyncio.create_task(
                         hub.send_worker(

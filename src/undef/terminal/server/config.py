@@ -132,6 +132,9 @@ def config_from_mapping(data: dict[str, Any]) -> ServerConfig:
             "owner",
             "visibility",
         }
+        visibility = str(raw.get("visibility", "public")).strip() or "public"
+        if visibility not in {"public", "operator", "private"}:
+            raise ValueError(f"invalid visibility for {session_id}: {visibility!r}")
         connector_config = {k: v for k, v in raw.items() if k not in known_fields}
         sessions.append(
             SessionDefinition(
@@ -146,7 +149,7 @@ def config_from_mapping(data: dict[str, Any]) -> ServerConfig:
                     None if raw.get("recording_enabled") is None else bool(raw.get("recording_enabled"))
                 ),
                 owner=(None if raw.get("owner") is None else str(raw.get("owner"))),
-                visibility=str(raw.get("visibility", "public")),  # type: ignore[arg-type]
+                visibility=visibility,  # type: ignore[arg-type]
             )
         )
 

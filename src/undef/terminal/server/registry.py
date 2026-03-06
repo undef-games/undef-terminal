@@ -24,6 +24,10 @@ if TYPE_CHECKING:
     from undef.terminal.hijack.hub import TermHub
 
 
+class SessionValidationError(ValueError):
+    """Raised when session creation/update data fails format validation."""
+
+
 class SessionRegistry:
     """Config-backed registry for named hosted sessions and their runtimes."""
 
@@ -99,13 +103,15 @@ class SessionRegistry:
     async def create_session(self, payload: dict[str, Any]) -> SessionRuntimeStatus:
         session_id = str(payload["session_id"])
         if not re.match(r"^[\w\-]+$", session_id):
-            raise ValueError(f"session_id must match ^[\\w\\-]+$, got: {session_id!r}")
+            raise SessionValidationError(f"session_id must match ^[\\w\\-]+$, got: {session_id!r}")
         input_mode_raw = str(payload.get("input_mode", "open"))
         if input_mode_raw not in {"open", "hijack"}:
-            raise ValueError(f"input_mode must be 'open' or 'hijack', got: {input_mode_raw!r}")
+            raise SessionValidationError(f"input_mode must be 'open' or 'hijack', got: {input_mode_raw!r}")
         visibility_raw = str(payload.get("visibility", "public"))
         if visibility_raw not in {"public", "operator", "private"}:
-            raise ValueError(f"visibility must be 'public', 'operator', or 'private', got: {visibility_raw!r}")
+            raise SessionValidationError(
+                f"visibility must be 'public', 'operator', or 'private', got: {visibility_raw!r}"
+            )
         session = SessionDefinition(
             session_id=session_id,
             display_name=str(payload.get("display_name", session_id)),
@@ -137,12 +143,14 @@ class SessionRegistry:
                 session.display_name = str(payload["display_name"])
             if "input_mode" in payload:
                 mode = str(payload["input_mode"])
-                if mode in {"open", "hijack"}:
-                    session.input_mode = mode  # type: ignore[assignment]
+                if mode not in {"open", "hijack"}:
+                    raise SessionValidationError(f"input_mode must be 'open' or 'hijack', got: {mode!r}")
+                session.input_mode = mode  # type: ignore[assignment]
             if "visibility" in payload:
                 vis = str(payload["visibility"])
-                if vis in {"public", "operator", "private"}:
-                    session.visibility = vis  # type: ignore[assignment]
+                if vis not in {"public", "operator", "private"}:
+                    raise SessionValidationError(f"visibility must be 'public', 'operator', or 'private', got: {vis!r}")
+                session.visibility = vis  # type: ignore[assignment]
             if "auto_start" in payload:
                 session.auto_start = bool(payload["auto_start"])
             if "tags" in payload:
@@ -159,7 +167,7 @@ class SessionRegistry:
 
     async def delete_session(self, session_id: str) -> None:
         async with self._lock:
-            self._sessions.pop(session_id)
+            self._sessions.pop(session_id, None)
             runtime = self._runtimes.pop(session_id, None)
         if runtime is not None:
             await runtime.stop()
