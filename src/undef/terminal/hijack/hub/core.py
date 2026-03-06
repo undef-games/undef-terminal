@@ -80,16 +80,15 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
         self.max_ws_message_bytes = max(1024, int(max_ws_message_bytes))
         self.max_input_chars = max(100, int(max_input_chars))
         self.browser_rate_limit_per_sec = float(browser_rate_limit_per_sec)
-        self._rest_acquire_bucket = TokenBucket(max(0.1, float(rest_acquire_rate_limit_per_sec)))
-        self._rest_send_bucket = TokenBucket(max(0.1, float(rest_send_rate_limit_per_sec)))
-
-    def allow_rest_acquire(self) -> bool:
-        """Return True if the REST acquire rate limit allows this request."""
-        return self._rest_acquire_bucket.allow()
-
-    def allow_rest_send(self) -> bool:
-        """Return True if the REST send/step rate limit allows this request."""
-        return self._rest_send_bucket.allow()
+        self._rest_acquire_rate = max(0.1, float(rest_acquire_rate_limit_per_sec))
+        self._rest_send_rate = max(0.1, float(rest_send_rate_limit_per_sec))
+        self._rest_acquire_bucket = TokenBucket(self._rest_acquire_rate)
+        self._rest_send_bucket = TokenBucket(self._rest_send_rate)
+        # Per-client buckets for fine-grained rate limiting.
+        # Capped at _REST_CLIENT_CACHE_MAX entries; cleared entirely on overflow
+        # (simple bounded growth — no LRU needed for typical deployment sizes).
+        self._rest_acquire_per_client: dict[str, TokenBucket] = {}
+        self._rest_send_per_client: dict[str, TokenBucket] = {}
 
     def metric(self, name: str, value: int = 1) -> None:
         callback = self._on_metric

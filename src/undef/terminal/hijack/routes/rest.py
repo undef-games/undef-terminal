@@ -54,7 +54,7 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 try:
-    from fastapi import APIRouter, Body, Path, Query
+    from fastapi import APIRouter, Body, Path, Query, Request
     from fastapi.responses import JSONResponse
 except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required for hijack routes: pip install 'undef-terminal[websocket]'") from _e
@@ -86,10 +86,12 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
 
     @router.post("/worker/{worker_id}/hijack/acquire")
     async def hijack_acquire(
+        http_request: Request,
         worker_id: str = Path(pattern=r"^[\w\-]+$"),
         request: HijackAcquireRequest | None = None,
     ) -> Any:
-        if not hub.allow_rest_acquire():
+        _client_id = (http_request.client.host if http_request.client else None) or "unknown"
+        if not hub.allow_rest_acquire_for(_client_id):
             return JSONResponse({"error": "rate_limited"}, status_code=429)
         if request is None:
             request = HijackAcquireRequest.model_validate({})
@@ -260,11 +262,13 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
 
     @router.post("/worker/{worker_id}/hijack/{hijack_id}/send")
     async def hijack_send(
+        http_request: Request,
         worker_id: str = Path(pattern=r"^[\w\-]+$"),
         hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$"),
         request: HijackSendRequest = Body(...),  # noqa: B008
     ) -> Any:
-        if not hub.allow_rest_send():
+        _client_id = (http_request.client.host if http_request.client else None) or "unknown"
+        if not hub.allow_rest_send_for(_client_id):
             return JSONResponse({"error": "rate_limited"}, status_code=429)
         hs = await hub.get_rest_session(worker_id, hijack_id)
         if hs is None:
@@ -322,9 +326,12 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
 
     @router.post("/worker/{worker_id}/hijack/{hijack_id}/step")
     async def hijack_step(
-        worker_id: str = Path(pattern=r"^[\w\-]+$"), hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$")
+        http_request: Request,
+        worker_id: str = Path(pattern=r"^[\w\-]+$"),
+        hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$"),
     ) -> Any:
-        if not hub.allow_rest_send():
+        _client_id = (http_request.client.host if http_request.client else None) or "unknown"
+        if not hub.allow_rest_send_for(_client_id):
             return JSONResponse({"error": "rate_limited"}, status_code=429)
         hs = await hub.get_rest_session(worker_id, hijack_id)
         if hs is None:

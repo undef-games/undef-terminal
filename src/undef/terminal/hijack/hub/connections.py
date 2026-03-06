@@ -17,6 +17,11 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from undef.terminal.hijack.models import WorkerTermState
+from undef.terminal.hijack.ratelimit import TokenBucket
+
+# Maximum number of per-client rate-limit buckets held in memory at once.
+# On overflow the entire dict is cleared (simple bounded growth).
+_REST_CLIENT_CACHE_MAX = 1024
 
 if TYPE_CHECKING:
     import asyncio
@@ -38,6 +43,12 @@ class _ConnectionMixin:
     _lock: asyncio.Lock
     _workers: dict[str, WorkerTermState]
     _worker_token: str | None
+    _rest_acquire_rate: float
+    _rest_send_rate: float
+    _rest_acquire_bucket: TokenBucket
+    _rest_send_bucket: TokenBucket
+    _rest_acquire_per_client: dict[str, TokenBucket]
+    _rest_send_per_client: dict[str, TokenBucket]
 
     # Methods provided by TermHub / _HijackOwnershipMixin used in this mixin.
     is_hijacked: Callable[..., bool]
@@ -49,6 +60,36 @@ class _ConnectionMixin:
     _resolve_role_for_browser: Callable[..., Awaitable[str]]
 
     # --------------------------------------------------------------------------
+
+    # -- Rate limiting ---------------------------------------------------------
+
+    def allow_rest_acquire(self) -> bool:
+        """Return True if the global REST acquire rate limit allows this request."""
+        return self._rest_acquire_bucket.allow()
+
+    def allow_rest_send(self) -> bool:
+        """Return True if the global REST send/step rate limit allows this request."""
+        return self._rest_send_bucket.allow()
+
+    def allow_rest_acquire_for(self, client_id: str) -> bool:
+        """Per-client REST acquire rate limit (also checks the global bucket).
+
+        The per-client dict is capped at ``_REST_CLIENT_CACHE_MAX`` entries;
+        on overflow it is cleared entirely (simple bounded growth).
+        """
+        if len(self._rest_acquire_per_client) >= _REST_CLIENT_CACHE_MAX:
+            self._rest_acquire_per_client.clear()
+        bucket = self._rest_acquire_per_client.setdefault(client_id, TokenBucket(self._rest_acquire_rate))
+        return self._rest_acquire_bucket.allow() and bucket.allow()
+
+    def allow_rest_send_for(self, client_id: str) -> bool:
+        """Per-client REST send/step rate limit (also checks the global bucket)."""
+        if len(self._rest_send_per_client) >= _REST_CLIENT_CACHE_MAX:
+            self._rest_send_per_client.clear()
+        bucket = self._rest_send_per_client.setdefault(client_id, TokenBucket(self._rest_send_rate))
+        return self._rest_send_bucket.allow() and bucket.allow()
+
+    # -- Token access ----------------------------------------------------------
 
     def worker_token(self) -> str | None:
         """Return the configured worker bearer token (read-only)."""
