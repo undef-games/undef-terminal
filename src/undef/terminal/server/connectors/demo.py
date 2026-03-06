@@ -220,6 +220,11 @@ class DemoSessionConnector(SessionConnector):
             ]
         )
 
+    async def clear(self) -> list[dict[str, Any]]:
+        self._transcript = deque(maxlen=10)
+        self._banner = "Transcript cleared."
+        return [self._snapshot()]
+
     async def set_mode(self, mode: str) -> list[dict[str, Any]]:
         if mode not in {"open", "hijack"}:
             raise ValueError(f"invalid mode: {mode}")

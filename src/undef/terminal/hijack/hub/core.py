@@ -31,6 +31,7 @@ import logging
 
 from undef.terminal.hijack.hub.ownership import _HijackOwnershipMixin
 from undef.terminal.hijack.models import WorkerTermState, extract_prompt_id
+from undef.terminal.hijack.ratelimit import TokenBucket
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,8 @@ class TermHub(_HijackOwnershipMixin):
         max_ws_message_bytes: int = 1_048_576,
         max_input_chars: int = 10_000,
         browser_rate_limit_per_sec: float = 30,
+        rest_acquire_rate_limit_per_sec: float = 5,
+        rest_send_rate_limit_per_sec: float = 20,
         worker_token: str | None = None,
     ) -> None:
         self._lock = asyncio.Lock()
@@ -77,6 +80,16 @@ class TermHub(_HijackOwnershipMixin):
         self.max_ws_message_bytes = max(1024, int(max_ws_message_bytes))
         self.max_input_chars = max(100, int(max_input_chars))
         self.browser_rate_limit_per_sec = float(browser_rate_limit_per_sec)
+        self._rest_acquire_bucket = TokenBucket(max(0.1, float(rest_acquire_rate_limit_per_sec)))
+        self._rest_send_bucket = TokenBucket(max(0.1, float(rest_send_rate_limit_per_sec)))
+
+    def allow_rest_acquire(self) -> bool:
+        """Return True if the REST acquire rate limit allows this request."""
+        return self._rest_acquire_bucket.allow()
+
+    def allow_rest_send(self) -> bool:
+        """Return True if the REST send/step rate limit allows this request."""
+        return self._rest_send_bucket.allow()
 
     def metric(self, name: str, value: int = 1) -> None:
         callback = self._on_metric

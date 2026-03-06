@@ -42,6 +42,8 @@ class UiConfig:
 
     app_path: str = "/app"
     assets_path: str = "/_terminal"
+    xterm_cdn: str = "https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0"
+    fonts_cdn: str = "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&display=swap"
 
 
 @dataclass(slots=True)
@@ -50,6 +52,7 @@ class RecordingConfig:
 
     enabled_by_default: bool = False
     directory: Path = Path(".uterm-recordings")
+    max_bytes: int = 0  # 0 = unlimited
 
 
 @dataclass(slots=True)

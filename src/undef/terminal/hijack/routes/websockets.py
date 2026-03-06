@@ -114,6 +114,12 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                                 _st_hello.input_mode = _hello_mode
                         await hub.broadcast_hijack_state(worker_id)
                         logger.info("worker_hello worker_id=%s input_mode=%s", worker_id, _hello_mode)
+                    elif _hello_mode is not None:
+                        logger.warning(
+                            "worker_hello_invalid_mode worker_id=%s input_mode=%r — expected 'hijack' or 'open', ignoring",
+                            worker_id,
+                            _hello_mode,
+                        )
                     continue
                 if mtype == "term":
                     data = msg.get("data", "")

@@ -99,10 +99,13 @@ def config_from_mapping(data: dict[str, Any]) -> ServerConfig:
     ui = UiConfig(
         app_path=_clean_path(str(ui_data.get("app_path", base.ui.app_path)), base.ui.app_path),
         assets_path=_clean_path(str(ui_data.get("assets_path", base.ui.assets_path)), base.ui.assets_path),
+        xterm_cdn=str(ui_data.get("xterm_cdn", base.ui.xterm_cdn)),
+        fonts_cdn=str(ui_data.get("fonts_cdn", base.ui.fonts_cdn)),
     )
     recording = RecordingConfig(
         enabled_by_default=bool(recording_data.get("enabled_by_default", base.recording.enabled_by_default)),
         directory=Path(recording_data.get("directory", base.recording.directory)),
+        max_bytes=int(recording_data.get("max_bytes", base.recording.max_bytes)),
     )
 
     sessions: list[SessionDefinition] = []

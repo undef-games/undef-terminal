@@ -89,6 +89,8 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         worker_id: str = Path(pattern=r"^[\w\-]+$"),
         request: HijackAcquireRequest | None = None,
     ) -> Any:
+        if not hub.allow_rest_acquire():
+            return JSONResponse({"error": "rate_limited"}, status_code=429)
         if request is None:
             request = HijackAcquireRequest.model_validate({})
         await hub.cleanup_expired_hijack(worker_id)
@@ -262,6 +264,8 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$"),
         request: HijackSendRequest = Body(...),  # noqa: B008
     ) -> Any:
+        if not hub.allow_rest_send():
+            return JSONResponse({"error": "rate_limited"}, status_code=429)
         hs = await hub.get_rest_session(worker_id, hijack_id)
         if hs is None:
             return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)
@@ -320,6 +324,8 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
     async def hijack_step(
         worker_id: str = Path(pattern=r"^[\w\-]+$"), hijack_id: str = Path(pattern=r"^[0-9a-f\-]{1,64}$")
     ) -> Any:
+        if not hub.allow_rest_send():
+            return JSONResponse({"error": "rate_limited"}, status_code=429)
         hs = await hub.get_rest_session(worker_id, hijack_id)
         if hs is None:
             return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)
