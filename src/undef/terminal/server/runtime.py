@@ -24,13 +24,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _session_num(session_id: str) -> int:
-    total = 0
-    for idx, ch in enumerate(session_id):
-        total += (idx + 1) * ord(ch)
-    return total or 1
-
-
 async def _cancel_and_wait(tasks: set[asyncio.Task[object]]) -> None:
     for task in tasks:
         task.cancel()
@@ -84,7 +77,9 @@ class HostedSessionRuntime:
             auto_start=self.definition.auto_start,
             tags=list(self.definition.tags),
             recording_enabled=self._recording_enabled(),
-            recording_path=(str(self._recording_path) if self._recording_path is not None else None),
+            recording_available=(self._recording_path is not None and self._recording_path.exists()),
+            owner=self.definition.owner,
+            visibility=self.definition.visibility,
             last_error=self._last_error,
         )
 
@@ -155,7 +150,7 @@ class HostedSessionRuntime:
         if self._recording_enabled():
             self._recording_path = self._recording_cfg.directory / f"{self.definition.session_id}.jsonl"
             self._logger = SessionLogger(self._recording_path)
-            await self._logger.start(_session_num(self.definition.session_id))
+            await self._logger.start(self.definition.session_id)
         return connector
 
     async def _stop_connector(self) -> None:

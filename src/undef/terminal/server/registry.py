@@ -42,6 +42,13 @@ class SessionRegistry:
         self._sessions: dict[str, SessionDefinition] = {session.session_id: session for session in sessions}
         self._runtimes: dict[str, HostedSessionRuntime] = {}
 
+    def _require_session(self, session_id: str) -> SessionDefinition:
+        """Return the session definition or raise ``KeyError``.  Caller must hold ``self._lock``."""
+        session = self._sessions.get(session_id)
+        if session is None:
+            raise KeyError(f"unknown session: {session_id!r}")
+        return session
+
     def _runtime_for(self, session: SessionDefinition) -> HostedSessionRuntime:
         runtime = self._runtimes.get(session.session_id)
         if runtime is None:
@@ -79,7 +86,7 @@ class SessionRegistry:
 
     async def get_session(self, session_id: str) -> SessionRuntimeStatus:
         async with self._lock:
-            session = self._sessions[session_id]
+            session = self._require_session(session_id)
         return self._runtime_for(session).status()
 
     async def get_definition(self, session_id: str) -> SessionDefinition | None:
@@ -113,7 +120,7 @@ class SessionRegistry:
 
     async def update_session(self, session_id: str, payload: dict[str, Any]) -> SessionRuntimeStatus:
         async with self._lock:
-            session = self._sessions[session_id]
+            session = self._require_session(session_id)
             if "display_name" in payload:
                 session.display_name = str(payload["display_name"])
             if "input_mode" in payload:
@@ -137,13 +144,13 @@ class SessionRegistry:
     async def delete_session(self, session_id: str) -> None:
         async with self._lock:
             self._sessions.pop(session_id)
-        runtime = self._runtimes.pop(session_id, None)
+            runtime = self._runtimes.pop(session_id, None)
         if runtime is not None:
             await runtime.stop()
 
     async def start_session(self, session_id: str) -> SessionRuntimeStatus:
         async with self._lock:
-            session = self._sessions[session_id]
+            session = self._require_session(session_id)
             session.last_active_at = time.time()
         runtime = self._runtime_for(session)
         await runtime.start()
@@ -151,7 +158,7 @@ class SessionRegistry:
 
     async def stop_session(self, session_id: str) -> SessionRuntimeStatus:
         async with self._lock:
-            session = self._sessions[session_id]
+            session = self._require_session(session_id)
             session.last_active_at = time.time()
         runtime = self._runtime_for(session)
         await runtime.stop()
@@ -159,7 +166,7 @@ class SessionRegistry:
 
     async def restart_session(self, session_id: str) -> SessionRuntimeStatus:
         async with self._lock:
-            session = self._sessions[session_id]
+            session = self._require_session(session_id)
             session.last_active_at = time.time()
         runtime = self._runtime_for(session)
         await runtime.restart()
@@ -167,7 +174,7 @@ class SessionRegistry:
 
     async def set_mode(self, session_id: str, mode: str) -> SessionRuntimeStatus:
         async with self._lock:
-            session = self._sessions[session_id]
+            session = self._require_session(session_id)
             session.input_mode = mode  # type: ignore[assignment]
             session.last_active_at = time.time()
         if mode == "open":
@@ -178,7 +185,7 @@ class SessionRegistry:
 
     async def clear_session(self, session_id: str) -> SessionRuntimeStatus:
         async with self._lock:
-            session = self._sessions[session_id]
+            session = self._require_session(session_id)
             session.last_active_at = time.time()
         runtime = self._runtime_for(session)
         await runtime.clear()
@@ -186,25 +193,19 @@ class SessionRegistry:
 
     async def analyze_session(self, session_id: str) -> str:
         async with self._lock:
-            session = self._sessions[session_id]
+            session = self._require_session(session_id)
             session.last_active_at = time.time()
         return await self._runtime_for(session).analyze()
 
     async def last_snapshot(self, session_id: str) -> dict[str, Any] | None:
-        async with self._hub._lock:
-            st = self._hub._workers.get(session_id)
-            return None if st is None else st.last_snapshot
+        return await self._hub.get_last_snapshot(session_id)
 
     async def events(self, session_id: str, limit: int = 100) -> list[dict[str, Any]]:
-        async with self._hub._lock:
-            st = self._hub._workers.get(session_id)
-            if st is None:
-                return []
-            return list(st.events)[-max(1, min(limit, 500)) :]
+        return await self._hub.get_recent_events(session_id, limit)
 
     async def recording_meta(self, session_id: str) -> dict[str, Any]:
         async with self._lock:
-            session = self._sessions[session_id]
+            session = self._require_session(session_id)
         runtime = self._runtime_for(session)
         path = runtime.recording_path
         return {
@@ -216,7 +217,7 @@ class SessionRegistry:
 
     async def recording_path(self, session_id: str) -> Path | None:
         async with self._lock:
-            session = self._sessions[session_id]
+            session = self._require_session(session_id)
         return self._runtime_for(session).recording_path
 
     async def recording_entries(

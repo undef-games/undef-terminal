@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import logging
 import time
 from typing import Any
 
@@ -20,6 +21,8 @@ try:
     import asyncssh
 except ImportError as _e:  # pragma: no cover
     raise ImportError("asyncssh is required for the SSH server connector: pip install 'undef-terminal[ssh]'") from _e
+
+logger = logging.getLogger(__name__)
 
 _COLS = 80
 _ROWS = 25
@@ -55,6 +58,13 @@ class SshSessionConnector(SessionConnector):
         self._password = None if config.get("password") is None else str(config.get("password"))
         self._client_keys = client_keys
         self._known_hosts = None if config.get("known_hosts") is None else str(config.get("known_hosts"))
+        if self._known_hosts is None:
+            logger.warning(
+                "ssh_connector_no_known_hosts session_id=%s host=%s — "
+                "host key verification is disabled; set known_hosts in connector_config to enable it",
+                session_id,
+                self._host,
+            )
         self._input_mode = str(config.get("input_mode", "open"))
         self._paused = False
         self._connected = False

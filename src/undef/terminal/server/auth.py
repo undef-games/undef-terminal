@@ -112,7 +112,7 @@ def _principal_from_jwt_token(token: str, auth: AuthConfig) -> Principal:
         issuer=auth.jwt_issuer,
         audience=auth.jwt_audience,
         leeway=max(0, int(auth.clock_skew_seconds)),
-        options={"require": ["sub", "exp", "iat", "nbf"]},
+        options={"require": ["sub", "exp"]},
     )
     subject = str(claims.get("sub", "")).strip()
     if not subject:

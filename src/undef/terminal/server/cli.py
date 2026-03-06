@@ -29,7 +29,8 @@ def main(argv: list[str] | None = None) -> None:
     if args.port:
         config.server.port = int(args.port)
     if args.host or args.port:
-        config.server.public_base_url = f"http://{config.server.host}:{config.server.port}"
+        scheme = "https" if config.server.public_base_url.startswith("https://") else "http"
+        config.server.public_base_url = f"{scheme}://{config.server.host}:{config.server.port}"
 
     app = create_server_app(config)
     uvicorn.run(app, host=config.server.host, port=config.server.port, log_level="info")

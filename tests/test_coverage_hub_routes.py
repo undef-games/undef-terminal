@@ -40,7 +40,7 @@ class TestWaitForSnapshot:
         """_wait_for_snapshot returns None if worker disappears mid-wait."""
         hub, _ = _make_app()
         # No worker registered → returns None immediately
-        result = await hub._wait_for_snapshot("nonexistent", timeout_ms=100)
+        result = await hub.wait_for_snapshot("nonexistent", timeout_ms=100)
         assert result is None
 
     async def test_returns_fresh_snapshot(self) -> None:
@@ -61,7 +61,7 @@ class TestWaitForSnapshot:
                 st2.last_snapshot = {"type": "snapshot", "screen": "test", "ts": time.time()}
 
         task = asyncio.create_task(_set_snapshot())
-        result = await hub._wait_for_snapshot("w1", timeout_ms=2000)
+        result = await hub.wait_for_snapshot("w1", timeout_ms=2000)
         await task
         assert result is not None
         assert result["screen"] == "test"
@@ -75,7 +75,7 @@ class TestWaitForSnapshot:
 class TestTouchHijackOwner:
     async def test_returns_none_when_no_worker(self) -> None:
         hub, _ = _make_app()
-        result = await hub._touch_hijack_owner("nonexistent")
+        result = await hub.touch_hijack_owner("nonexistent")
         assert result is None
 
     async def test_returns_none_when_no_owner(self) -> None:
@@ -84,7 +84,7 @@ class TestTouchHijackOwner:
             from undef.terminal.hijack.models import WorkerTermState
 
             hub._workers["w1"] = WorkerTermState()
-        result = await hub._touch_hijack_owner("w1")
+        result = await hub.touch_hijack_owner("w1")
         assert result is None
 
 
@@ -272,7 +272,7 @@ class TestBroadcastDeadSocketHijackOwner:
             st.hijack_owner = dead_browser
             st.hijack_owner_expires_at = time.time() + 600
 
-        await hub._broadcast("w1", {"type": "test_msg"})
+        await hub.broadcast("w1", {"type": "test_msg"})
 
         # Worker should have received the original broadcast + resume control
         resume_msgs = [json.loads(p) for p in sent_to_worker if "resume" in p]
@@ -317,7 +317,7 @@ class TestBroadcastHijackStateDeadSocketOwner:
             st.hijack_owner = dead_browser
             st.hijack_owner_expires_at = time.time() + 600
 
-        await hub._broadcast_hijack_state("w1")
+        await hub.broadcast_hijack_state("w1")
 
         # Resume should have been sent to the worker
         resume_msgs = [json.loads(p) for p in sent_to_worker if "resume" in p]
@@ -333,7 +333,7 @@ class TestBroadcastHijackStateDeadSocketOwner:
 class TestTryAcquireRestHijackNoWorker:
     async def test_returns_no_worker_when_disconnected(self) -> None:
         hub, _ = _make_app()
-        ok, err = await hub._try_acquire_rest_hijack(
+        ok, err = await hub.try_acquire_rest_hijack(
             "no-such-worker", owner="owner", lease_s=300, hijack_id="aabb", now=time.time()
         )
         assert ok is False
@@ -345,9 +345,7 @@ class TestTryAcquireRestHijackNoWorker:
         hub, _ = _make_app()
         async with hub._lock:
             hub._workers["w1"] = WorkerTermState()  # worker_ws defaults to None
-        ok, err = await hub._try_acquire_rest_hijack(
-            "w1", owner="owner", lease_s=300, hijack_id="aabb", now=time.time()
-        )
+        ok, err = await hub.try_acquire_rest_hijack("w1", owner="owner", lease_s=300, hijack_id="aabb", now=time.time())
         assert ok is False
         assert err == "no_worker"
 
@@ -368,7 +366,7 @@ class TestTouchHijackOwnerWithLease:
             st.hijack_owner = mock_ws
             st.hijack_owner_expires_at = time.time() + 10
 
-        result = await hub._touch_hijack_owner("w1", lease_s=120)
+        result = await hub.touch_hijack_owner("w1", lease_s=120)
         assert result is not None
         # Should be approximately now + 120
         assert result > time.time() + 100
@@ -399,7 +397,7 @@ class TestDisconnectWorkerCloseError:
             st = hub._workers.setdefault("w1", WorkerTermState())
             st.worker_ws = mock_ws
 
-        ok = await hub._disconnect_worker("w1")
+        ok = await hub.disconnect_worker("w1")
         assert ok is True
         mock_ws.close.assert_awaited_once()
 
@@ -440,7 +438,7 @@ class TestDisconnectWorkerWasHijacked:
                 last_heartbeat=now,
             )
 
-        ok = await hub._disconnect_worker("w1")
+        ok = await hub.disconnect_worker("w1")
         assert ok is True
         # was_hijacked=True → _notify_hijack_changed fired
         assert len(hijack_calls) == 1
@@ -478,7 +476,7 @@ class TestRestSendToctouRecheck:
             )
 
         # Monkey-patch _wait_for_guard to expire the session before returning success
-        _original_guard = hub._wait_for_guard
+        _original_guard = hub.wait_for_guard
 
         async def _guard_that_expires(*args, **kwargs):
             async with hub._lock:
@@ -487,7 +485,7 @@ class TestRestSendToctouRecheck:
                     st2.hijack_session = None  # simulate expiry
             return True, {"screen": ""}, None
 
-        with patch.object(hub, "_wait_for_guard", side_effect=_guard_that_expires):
+        with patch.object(hub, "wait_for_guard", side_effect=_guard_that_expires):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
                 r = await c.post(f"/worker/w1/hijack/{hid}/send", json={"keys": "x"})
         # Re-validate finds expired → 404 at line 312
@@ -525,7 +523,7 @@ class TestRestStepToctouRecheck:
             )
 
         # Monkey-patch _get_rest_session to return valid session but expire state
-        _original = hub._get_rest_session
+        _original = hub.get_rest_session
 
         async def _get_then_expire(worker_id, hijack_id):
             result = await _original(worker_id, hijack_id)
@@ -536,7 +534,7 @@ class TestRestStepToctouRecheck:
                         st2.hijack_session = None
             return result
 
-        with patch.object(hub, "_get_rest_session", side_effect=_get_then_expire):
+        with patch.object(hub, "get_rest_session", side_effect=_get_then_expire):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
                 r = await c.post(f"/worker/w1/hijack/{hid}/step")
         # Re-validate finds expired → 404 at line 368

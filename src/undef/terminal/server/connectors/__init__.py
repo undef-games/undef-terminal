@@ -33,4 +33,4 @@ def build_connector(
         from undef.terminal.server.connectors.ssh import SshSessionConnector
 
         return SshSessionConnector(session_id, display_name, config)
-    raise RuntimeError(f"unsupported connector_type: {connector_type}")
+    raise ValueError(f"unsupported connector_type: {connector_type}")

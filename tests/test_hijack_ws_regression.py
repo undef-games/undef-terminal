@@ -207,14 +207,14 @@ def test_hijack_request_send_fail_no_notify_no_owner() -> None:
             _read_worker_connected(browser)
             _read_worker_snapshot_req(worker)
 
-            orig_send = hub._send_worker
+            orig_send = hub.send_worker
 
             async def _fail_pause(bot_id: str, msg: dict) -> bool:
                 if msg.get("action") == "pause":
                     return False
                 return await orig_send(bot_id, msg)
 
-            with patch.object(hub, "_send_worker", side_effect=_fail_pause):
+            with patch.object(hub, "send_worker", side_effect=_fail_pause):
                 browser.send_json({"type": "hijack_request"})
                 err = browser.receive_json()
                 # browser also receives hijack_state after error
@@ -412,14 +412,14 @@ def test_hijack_request_send_fail_no_notify_when_rest_session_active() -> None:
             rest_id = str(uuid.uuid4())
             hub._workers["bot1"].hijack_session = _active_session(rest_id, "rest_owner")
 
-            orig_send = hub._send_worker
+            orig_send = hub.send_worker
 
             async def _fail_pause(bot_id: str, msg: dict) -> bool:
                 if msg.get("action") == "pause":
                     return False
                 return await orig_send(bot_id, msg)
 
-            with patch.object(hub, "_send_worker", side_effect=_fail_pause):
+            with patch.object(hub, "send_worker", side_effect=_fail_pause):
                 browser.send_json({"type": "hijack_request"})
                 browser.receive_json()  # error or hijack_state
 

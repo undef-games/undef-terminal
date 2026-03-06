@@ -108,7 +108,8 @@ def test_jwt_mode_ignores_cookie_and_role_header_escalation_for_ws() -> None:
     with (
         TestClient(app) as client,
         client.websocket_connect(
-            "/ws/worker/demo-session/term", headers=_jwt_headers(sub="worker", roles=["admin"])
+            "/ws/worker/demo-session/term",
+            headers={"Authorization": f"Bearer {config.auth.worker_bearer_token}"},
         ) as worker,
     ):
         msg = worker.receive_json()

@@ -37,16 +37,21 @@ class SessionLogger:
         self._log_path = Path(log_path)
         self._file: TextIOWrapper | None = None
         self._lock = asyncio.Lock()
-        self._session_id: int | None = None
+        self._session_id: str | None = None
         self._context: dict[str, str] = {}
 
-    async def start(self, session_id: int) -> None:
+    async def start(self, session_id: str) -> None:
         """Open log file and write a ``log_start`` header entry."""
         async with self._lock:
             self._log_path.parent.mkdir(parents=True, exist_ok=True)
             self._file = self._log_path.open("a", encoding="utf-8")
             self._session_id = session_id
-            self._write_event_unlocked("log_start", {"path": str(self._log_path), "started_at": time.time()})
+            try:
+                self._write_event_unlocked("log_start", {"path": str(self._log_path), "started_at": time.time()})
+            except Exception:
+                self._file.close()
+                self._file = None
+                raise
             file_to_flush = self._file
         await self._flush(file_to_flush)
 
@@ -124,12 +129,7 @@ class SessionLogger:
         if self._session_id is not None:
             record["session_id"] = self._session_id
         if self._context:
-            ctx = dict(self._context)
-            record["ctx"] = ctx
-            if "menu" in ctx:
-                record["menu"] = ctx["menu"]
-            if "action" in ctx:
-                record["action"] = ctx["action"]
+            record["ctx"] = dict(self._context)
         self._file.write(json.dumps(record, ensure_ascii=True) + "\n")
 
     @staticmethod

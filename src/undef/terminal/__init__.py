@@ -7,7 +7,12 @@
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("undef-terminal")
+except PackageNotFoundError:  # pragma: no cover
+    __version__ = "0.0.0"
 
 from undef.terminal.ansi import (
     BOLD,

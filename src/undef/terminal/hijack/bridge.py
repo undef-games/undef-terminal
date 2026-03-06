@@ -96,10 +96,11 @@ class TermBridge:
         manager_url: Base URL of the Swarm Manager (``http://`` or ``https://``).
     """
 
-    def __init__(self, bot: Any, worker_id: str, manager_url: str) -> None:
+    def __init__(self, bot: Any, worker_id: str, manager_url: str, *, max_ws_message_bytes: int = 1_048_576) -> None:
         self._bot = bot
         self._worker_id = worker_id
         self._manager_url = manager_url
+        self._max_ws_message_bytes = max(1024, int(max_ws_message_bytes))
         self._send_q: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=2000)
         self._latest_snapshot: dict[str, Any] | None = None
         self._running = False
@@ -160,7 +161,7 @@ class TermBridge:
             send_task: asyncio.Task[None] | None = None
             recv_task: asyncio.Task[None] | None = None
             try:
-                async with websockets.connect(url, max_size=10 * 1024 * 1024) as ws:
+                async with websockets.connect(url, max_size=self._max_ws_message_bytes) as ws:
                     attempt = 0  # reset backoff on successful connect
                     send_task = asyncio.create_task(self._send_loop(ws))
                     recv_task = asyncio.create_task(self._recv_loop(ws))

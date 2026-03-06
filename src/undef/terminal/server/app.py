@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketException, status
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import HTTPConnection  # noqa: TC002
 from starlette.staticfiles import StaticFiles
 
@@ -130,7 +131,11 @@ def create_server_app(config: ServerConfig) -> FastAPI:
             raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="insufficient privileges")
         return policy.role_for(principal, session)
 
-    hub = TermHub(resolve_browser_role=_resolve_browser_role, on_metric=_inc_metric)
+    hub = TermHub(
+        resolve_browser_role=_resolve_browser_role,
+        on_metric=_inc_metric,
+        worker_token=config.auth.worker_bearer_token,
+    )
     registry = SessionRegistry(
         config.sessions,
         hub=hub,
@@ -206,7 +211,16 @@ def create_server_app(config: ServerConfig) -> FastAPI:
 
     app.include_router(hub.create_router(), dependencies=[Depends(_require_authenticated)])
     app.include_router(create_api_router(), dependencies=[Depends(_require_authenticated)])
-    app.include_router(create_page_router(), prefix=config.ui.app_path)
+    app.include_router(create_page_router(), prefix=config.ui.app_path, dependencies=[Depends(_require_authenticated)])
+
+    if config.server.allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=config.server.allowed_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     frontend_path = importlib.resources.files("undef.terminal") / "frontend"
     app.mount(config.ui.assets_path, StaticFiles(directory=str(frontend_path), html=False), name="uterm-assets")

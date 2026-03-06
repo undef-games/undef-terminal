@@ -13,16 +13,15 @@ version = "0.1.0"
 description = "Shared terminal I/O primitives for the undef ecosystem"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = [
-    "pyjwt>=2.9",
-]
+dependencies = []
 
 [project.optional-dependencies]
-websocket = ["fastapi>=0.110"]
+websocket = ["fastapi>=0.110", "websockets>=12.0"]
 ssh       = ["asyncssh>=2.14"]
 emulator  = ["pyte>=0.8"]
+server    = ["fastapi>=0.110", "uvicorn>=0.24", "pyjwt>=2.9"]
 cli       = ["fastapi>=0.110", "uvicorn>=0.24", "websockets>=12.0"]
-all       = ["fastapi>=0.110", "asyncssh>=2.14", "pyte>=0.8", "uvicorn>=0.24", "websockets>=12.0"]
+all       = ["fastapi>=0.110", "asyncssh>=2.14", "pyte>=0.8", "uvicorn>=0.24", "websockets>=12.0", "pyjwt>=2.9"]
 
 [project.scripts]
 undefterm = "undef.terminal.cli:main"
@@ -144,6 +143,11 @@ mypy_path = ["src"]
 
 [tool.ty.environment]
 python-version = "3.11"
+
+[tool.ty.rules]
+# FastAPI/Starlette add_middleware(CORSMiddleware, ...) is the documented
+# pattern; ty incorrectly rejects it due to incomplete starlette stubs.
+invalid-argument-type = "ignore"
 
 [tool.codespell]
 skip = ".git,*.pyc,__pycache__,.venv,node_modules,uv.lock,*.mmd"

@@ -21,7 +21,7 @@ class TestSessionLogger:
     async def test_start_stop_writes_header_and_footer(self, tmp_path: Path) -> None:
         log_path = tmp_path / "session.jsonl"
         logger = SessionLogger(log_path)
-        await logger.start(session_id=1)
+        await logger.start(session_id="1")
         await logger.stop()
 
         lines = [json.loads(line) for line in log_path.read_text().splitlines() if line.strip()]
@@ -31,7 +31,7 @@ class TestSessionLogger:
     async def test_log_send(self, tmp_path: Path) -> None:
         log_path = tmp_path / "session.jsonl"
         logger = SessionLogger(log_path)
-        await logger.start(session_id=2)
+        await logger.start(session_id="2")
         await logger.log_send("hello")
         await logger.stop()
 
@@ -43,7 +43,7 @@ class TestSessionLogger:
     async def test_log_send_masked(self, tmp_path: Path) -> None:
         log_path = tmp_path / "session.jsonl"
         logger = SessionLogger(log_path)
-        await logger.start(session_id=3)
+        await logger.start(session_id="3")
         await logger.log_send_masked(byte_count=8)
         await logger.stop()
 
@@ -55,7 +55,7 @@ class TestSessionLogger:
     async def test_log_screen_round_trip(self, tmp_path: Path) -> None:
         log_path = tmp_path / "session.jsonl"
         logger = SessionLogger(log_path)
-        await logger.start(session_id=4)
+        await logger.start(session_id="4")
         raw = b"raw screen bytes"
         await logger.log_screen({"screen": "text"}, raw)
         await logger.stop()
@@ -69,7 +69,7 @@ class TestSessionLogger:
     async def test_log_event(self, tmp_path: Path) -> None:
         log_path = tmp_path / "session.jsonl"
         logger = SessionLogger(log_path)
-        await logger.start(session_id=5)
+        await logger.start(session_id="5")
         await logger.log_event("custom", {"key": "value"})
         await logger.stop()
 
@@ -80,15 +80,17 @@ class TestSessionLogger:
     async def test_context_included_in_records(self, tmp_path: Path) -> None:
         log_path = tmp_path / "session.jsonl"
         logger = SessionLogger(log_path)
-        await logger.start(session_id=6)
+        await logger.start(session_id="6")
         logger.set_context({"menu": "main", "action": "move"})
         await logger.log_event("nav", {})
         await logger.stop()
 
         lines = [json.loads(line) for line in log_path.read_text().splitlines() if line.strip()]
         nav = [rec for rec in lines if rec["event"] == "nav"][0]
-        assert nav["menu"] == "main"
-        assert nav["action"] == "move"
+        assert nav["ctx"]["menu"] == "main"
+        assert nav["ctx"]["action"] == "move"
+        assert "menu" not in nav
+        assert "action" not in nav
 
 
 class TestSessionLoggerExtra:
@@ -117,7 +119,7 @@ class TestSessionLoggerFlushRegression:
         from unittest.mock import MagicMock
 
         log = SessionLogger(tmp_path / "flush_test.jsonl")
-        await log.start(session_id=99)
+        await log.start(session_id="99")
 
         mock_file = MagicMock()
         log._file = mock_file
@@ -137,7 +139,7 @@ class TestSessionLoggerFlushRegression:
         from unittest.mock import MagicMock
 
         log = SessionLogger(tmp_path / "close_err.jsonl")
-        await log.start(session_id=100)
+        await log.start(session_id="100")
 
         mock_file = MagicMock()
         mock_file.close = MagicMock(side_effect=OSError("disk full"))
@@ -161,7 +163,7 @@ class TestSessionLoggerNonBlockingFlush:
         from unittest.mock import MagicMock, patch
 
         log = SessionLogger(tmp_path / "exec_flush.jsonl")
-        await log.start(session_id=101)
+        await log.start(session_id="101")
 
         mock_file = MagicMock()
         log._file = mock_file
@@ -195,7 +197,7 @@ class TestSessionLoggerNonBlockingFlush:
         import time as _time
 
         log = SessionLogger(tmp_path / "concurrent_flush.jsonl")
-        await log.start(session_id=102)
+        await log.start(session_id="102")
 
         ran: list[bool] = []
 
@@ -235,7 +237,7 @@ class TestSessionLoggerRunningLoopRegression:
         from unittest.mock import patch
 
         log = SessionLogger(tmp_path / "loop_test.jsonl")
-        await log.start(session_id=103)
+        await log.start(session_id="103")
 
         running_loop_calls: list[bool] = []
 
@@ -256,7 +258,7 @@ class TestSessionLoggerRunningLoopRegression:
         import warnings
 
         log = SessionLogger(tmp_path / "warn_test.jsonl")
-        await log.start(session_id=104)
+        await log.start(session_id="104")
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
@@ -281,7 +283,7 @@ class TestSessionLoggerCloseViaExecutor:
         from unittest.mock import MagicMock, patch
 
         log = SessionLogger(tmp_path / "close_exec.jsonl")
-        await log.start(session_id=200)
+        await log.start(session_id="200")
 
         mock_file = MagicMock()
         log._file = mock_file
@@ -308,7 +310,7 @@ class TestSessionLoggerCloseViaExecutor:
         from unittest.mock import MagicMock
 
         log = SessionLogger(tmp_path / "close_err2.jsonl")
-        await log.start(session_id=201)
+        await log.start(session_id="201")
 
         mock_file = MagicMock()
         mock_file.close = MagicMock(side_effect=OSError("disk full"))

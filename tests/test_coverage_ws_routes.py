@@ -105,7 +105,7 @@ class TestCompensatingResumeNoWorker:
 
                 # Patch _try_acquire_ws_hijack to return no_worker
                 # and track _send_worker calls for the resume
-                _orig_send = hub._send_worker
+                _orig_send = hub.send_worker
 
                 async def _track_send(wid, msg):
                     if msg.get("action") == "resume":
@@ -115,10 +115,10 @@ class TestCompensatingResumeNoWorker:
                 with (
                     patch.object(
                         hub,
-                        "_try_acquire_ws_hijack",
+                        "try_acquire_ws_hijack",
                         return_value=(False, "no_worker"),
                     ),
-                    patch.object(hub, "_send_worker", side_effect=_track_send),
+                    patch.object(hub, "send_worker", side_effect=_track_send),
                 ):
                     browser.send_json({"type": "hijack_request"})
                     # Browser gets error
@@ -165,7 +165,7 @@ class TestHijackStepSendFailure:
                 async def _fail_step(wid, msg):
                     return msg.get("action") != "step"
 
-                with patch.object(hub, "_send_worker", side_effect=_fail_step):
+                with patch.object(hub, "send_worker", side_effect=_fail_step):
                     browser.send_json({"type": "hijack_step"})
                     error = browser.receive_json()
                     assert error["type"] == "error"
@@ -197,7 +197,7 @@ class TestInputSendFailureOpenMode:
                 async def _fail_input(wid, msg):
                     return msg.get("type") != "input"
 
-                with patch.object(hub, "_send_worker", side_effect=_fail_input):
+                with patch.object(hub, "send_worker", side_effect=_fail_input):
                     browser.send_json({"type": "input", "data": "test-data"})
                     error = browser.receive_json()
                     assert error["type"] == "error"

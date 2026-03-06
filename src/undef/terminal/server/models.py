@@ -60,6 +60,7 @@ class ServerBindConfig:
     port: int = 8780
     public_base_url: str = "http://127.0.0.1:8780"
     title: str = "undef-terminal-server"
+    allowed_origins: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -93,7 +94,9 @@ class SessionRuntimeStatus:
     auto_start: bool
     tags: list[str]
     recording_enabled: bool
-    recording_path: str | None = None
+    recording_available: bool = False
+    owner: str | None = None
+    visibility: str = "public"
     last_error: str | None = None
 
 

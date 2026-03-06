@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -72,6 +73,7 @@ def config_from_mapping(data: dict[str, Any]) -> ServerConfig:
         port=int(server_data.get("port", base.server.port)),
         public_base_url=str(server_data.get("public_base_url", base.server.public_base_url)),
         title=str(server_data.get("title", base.server.title)),
+        allowed_origins=[str(v) for v in server_data.get("allowed_origins", base.server.allowed_origins)],
     )
     auth = AuthConfig(
         mode=str(auth_data.get("mode", base.auth.mode)),
@@ -110,6 +112,8 @@ def config_from_mapping(data: dict[str, Any]) -> ServerConfig:
         session_id = str(raw.get("session_id", "")).strip()
         if not session_id:
             raise ValueError("session_id is required for each [[sessions]] entry")
+        if not re.match(r"^[\w\-]+$", session_id):
+            raise ValueError(f"session_id must match ^[\\w\\-]+$, got: {session_id!r}")
         connector_type = str(raw.get("connector_type", "demo")).strip() or "demo"
         input_mode = str(raw.get("input_mode", "open")).strip() or "open"
         if input_mode not in {"hijack", "open"}:

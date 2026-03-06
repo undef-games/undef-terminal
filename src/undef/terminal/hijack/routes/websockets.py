@@ -43,7 +43,7 @@ async def _periodic_hijack_cleanup(hub: TermHub, worker_id: str, interval_s: flo
     """Run lease cleanup on a fixed cadence while a WS handler is active."""
     while True:
         await asyncio.sleep(interval_s)
-        await hub._cleanup_expired_hijack(worker_id)
+        await hub.cleanup_expired_hijack(worker_id)
 
 
 def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
@@ -51,6 +51,12 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
 
     @router.websocket("/ws/worker/{worker_id}/term")
     async def ws_worker_term(websocket: WebSocket, worker_id: Annotated[str, Path(pattern=r"^[\w\-]+$")]) -> None:
+        if hub._worker_token is not None:
+            auth_header = websocket.headers.get("authorization", "")
+            provided = auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer ") else ""
+            if provided != hub._worker_token:
+                await websocket.close(code=1008, reason="authentication required")
+                return
         await websocket.accept()
         prev_was_hijacked = False
         async with hub._lock:
@@ -68,13 +74,13 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
             st.worker_ws = websocket
         logger.info("term_worker_connected worker_id=%s", worker_id)
         if prev_was_hijacked:
-            hub._notify_hijack_changed(worker_id, enabled=False, owner=None)
-            await hub._broadcast_hijack_state(worker_id)
-        await hub._broadcast(
+            hub.notify_hijack_changed(worker_id, enabled=False, owner=None)
+            await hub.broadcast_hijack_state(worker_id)
+        await hub.broadcast(
             worker_id,
             {"type": "worker_connected", "worker_id": worker_id, "ts": time.time()},
         )
-        await hub._request_snapshot(worker_id)
+        await hub.request_snapshot(worker_id)
 
         cleanup_task = asyncio.create_task(_periodic_hijack_cleanup(hub, worker_id, _WORKER_HIJACK_CLEANUP_INTERVAL_S))
         try:
@@ -106,15 +112,13 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                             _st_hello = hub._workers.get(worker_id)
                             if _st_hello is not None:
                                 _st_hello.input_mode = _hello_mode
-                        await hub._broadcast_hijack_state(worker_id)
+                        await hub.broadcast_hijack_state(worker_id)
                         logger.info("worker_hello worker_id=%s input_mode=%s", worker_id, _hello_mode)
                     continue
                 if mtype == "term":
                     data = msg.get("data", "")
                     if data:
-                        await hub._broadcast(
-                            worker_id, {"type": "term", "data": data, "ts": msg.get("ts", time.time())}
-                        )
+                        await hub.broadcast(worker_id, {"type": "term", "data": data, "ts": msg.get("ts", time.time())})
                 elif mtype == "snapshot":
                     snapshot: dict[str, Any] = {
                         "type": "snapshot",
@@ -132,14 +136,14 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         st2 = hub._workers.get(worker_id)
                         if st2 is not None:
                             st2.last_snapshot = snapshot
-                    await hub._broadcast(worker_id, snapshot)
-                    await hub._append_event(
+                    await hub.broadcast(worker_id, snapshot)
+                    await hub.append_event(
                         worker_id,
                         "snapshot",
                         {"prompt_id": extract_prompt_id(snapshot), "screen_hash": snapshot.get("screen_hash")},
                     )
                 elif mtype == "analysis":
-                    await hub._broadcast(
+                    await hub.broadcast(
                         worker_id,
                         {
                             "type": "analysis",
@@ -149,8 +153,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         },
                     )
                 elif mtype == "status":
-                    await hub._broadcast(worker_id, msg)
-                    await hub._append_event(worker_id, "worker_status", {"status": msg})
+                    await hub.broadcast(worker_id, msg)
+                    await hub.append_event(worker_id, "worker_status", {"status": msg})
         except WebSocketDisconnect:
             pass
         except Exception as exc:  # pragma: no cover
@@ -171,21 +175,21 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     st3.hijack_owner = None
                     st3.hijack_owner_expires_at = None
             if should_broadcast_disconnect:
-                hub._metric("ws_disconnect_total")
-                hub._metric("ws_disconnect_worker_total")
+                hub.metric("ws_disconnect_total")
+                hub.metric("ws_disconnect_worker_total")
                 logger.info("term_worker_disconnected worker_id=%s", worker_id)
                 _broadcast_task = asyncio.create_task(
-                    hub._broadcast(
+                    hub.broadcast(
                         worker_id,
                         {"type": "worker_disconnected", "worker_id": worker_id, "ts": time.time()},
                     )
                 )
                 _ = _broadcast_task
                 if was_hijacked:
-                    hub._notify_hijack_changed(worker_id, enabled=False, owner=None)
-                    _hijack_state_task = asyncio.create_task(hub._broadcast_hijack_state(worker_id))
+                    hub.notify_hijack_changed(worker_id, enabled=False, owner=None)
+                    _hijack_state_task = asyncio.create_task(hub.broadcast_hijack_state(worker_id))
                     _ = _hijack_state_task
-            await hub._prune_if_idle(worker_id)
+            await hub.prune_if_idle(worker_id)
 
     @router.websocket("/ws/browser/{worker_id}/term")
     async def ws_browser_term(
@@ -206,8 +210,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         async with hub._lock:
             st = hub._workers.setdefault(worker_id, WorkerTermState())
             st.browsers[websocket] = role
-            is_hijacked = hub._is_hijacked(st)
-            hijacked_by_me = hub._is_dashboard_hijack_active(st) and st.hijack_owner is websocket
+            is_hijacked = hub.is_hijacked(st)
+            hijacked_by_me = hub.is_dashboard_hijack_active(st) and st.hijack_owner is websocket
             worker_online = st.worker_ws is not None
             input_mode = st.input_mode
             initial_snapshot = st.last_snapshot  # captured under lock to avoid stale read
@@ -233,12 +237,12 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                 ensure_ascii=True,
             )
         )
-        await websocket.send_text(json.dumps(await hub._hijack_state_msg_for(worker_id, websocket), ensure_ascii=True))
+        await websocket.send_text(json.dumps(await hub.hijack_state_msg_for(worker_id, websocket), ensure_ascii=True))
 
         if initial_snapshot is not None:
             await websocket.send_text(json.dumps(initial_snapshot, ensure_ascii=True))
         else:
-            await hub._request_snapshot(worker_id)
+            await hub.request_snapshot(worker_id)
 
         cleanup_task = asyncio.create_task(_periodic_hijack_cleanup(hub, worker_id, _BROWSER_HIJACK_CLEANUP_INTERVAL_S))
         try:
@@ -256,6 +260,10 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                 mtype = msg_b.get("type")
                 if mtype == "input" and not _browser_bucket.allow():
                     logger.warning("ws_browser_rate_limited worker_id=%s", worker_id)
+                    with suppress(Exception):
+                        await websocket.send_text(
+                            json.dumps({"type": "error", "message": "rate_limited"}, ensure_ascii=True)
+                        )
                     continue
 
                 owned_hijack = await handle_browser_message(hub, websocket, worker_id, role, msg_b, owned_hijack)
@@ -265,8 +273,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         except Exception as exc:  # pragma: no cover
             logger.warning("term_browser_ws_error worker_id=%s error=%s", worker_id, exc)
         finally:
-            hub._metric("ws_disconnect_total")
-            hub._metric("ws_disconnect_browser_total")
+            hub.metric("ws_disconnect_total")
+            hub.metric("ws_disconnect_browser_total")
             cleanup_task.cancel()
             with suppress(asyncio.CancelledError):
                 await cleanup_task
@@ -274,20 +282,20 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
             # the owner — all in one lock block to avoid the TOCTOU window where
             # _is_owner() returns True but another coroutine steals hijack_owner
             # (or vice-versa), and to avoid a second lock round-trip for
-            # _is_rest_session_active after the owner has already been cleared.
+            # _has_valid_rest_lease after the owner has already been cleared.
             was_owner = False
             resume_without_owner = False
             rest_still_active = False
             async with hub._lock:
                 st3 = hub._workers.get(worker_id)
-                was_owner = st3 is not None and hub._is_dashboard_hijack_active(st3) and st3.hijack_owner is websocket
+                was_owner = st3 is not None and hub.is_dashboard_hijack_active(st3) and st3.hijack_owner is websocket
                 if st3 is not None:
                     st3.browsers.pop(websocket, None)
                     if was_owner:
                         st3.hijack_owner = None
                         st3.hijack_owner_expires_at = None
-                        rest_still_active = hub._is_rest_session_active(st3)
-                    elif owned_hijack and st3.worker_ws is not None and not hub._is_hijacked(st3):
+                        rest_still_active = hub.has_valid_rest_lease(st3)
+                    elif owned_hijack and st3.worker_ws is not None and not hub.is_hijacked(st3):
                         last_event_type = str(st3.events[-1].get("type", "")) if st3.events else ""
                         # Another path may have already cleared this dead socket
                         # from the hub before this handler reached finally. If no
@@ -303,11 +311,11 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     # session between the lock release above and _send_worker below.
                     async with hub._lock:
                         _st4 = hub._workers.get(worker_id)
-                        if _st4 is not None and hub._is_hijacked(_st4):
+                        if _st4 is not None and hub.is_hijacked(_st4):
                             _do_resume = False
                 if _do_resume:
                     _resume_task = asyncio.create_task(
-                        hub._send_worker(
+                        hub.send_worker(
                             worker_id,
                             {
                                 "type": "control",
@@ -319,18 +327,18 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         )
                     )
                     _ = _resume_task
-                await hub._broadcast_hijack_state(worker_id)
+                await hub.broadcast_hijack_state(worker_id)
                 if _do_resume:
-                    hub._notify_hijack_changed(worker_id, enabled=False, owner=None)
-                await hub._append_event(worker_id, "hijack_released", {"owner": "dashboard_ws_disconnect"})
+                    hub.notify_hijack_changed(worker_id, enabled=False, owner=None)
+                await hub.append_event(worker_id, "hijack_released", {"owner": "dashboard_ws_disconnect"})
             elif resume_without_owner:
                 async with hub._lock:
                     _st4 = hub._workers.get(worker_id)
-                    if _st4 is not None and hub._is_hijacked(_st4):
+                    if _st4 is not None and hub.is_hijacked(_st4):
                         resume_without_owner = False
                 if resume_without_owner:
                     _resume_task = asyncio.create_task(
-                        hub._send_worker(
+                        hub.send_worker(
                             worker_id,
                             {
                                 "type": "control",
@@ -342,4 +350,4 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         )
                     )
                     _ = _resume_task
-            await hub._prune_if_idle(worker_id)
+            await hub.prune_if_idle(worker_id)

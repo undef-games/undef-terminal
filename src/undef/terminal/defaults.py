@@ -9,6 +9,6 @@ from __future__ import annotations
 
 
 class TerminalDefaults:
-    TELNET_HOST: str = "0.0.0.0"  # nosec B104
+    TELNET_HOST: str = "127.0.0.1"
     TELNET_PORT: int = 2102
     SSH_PORT: int = 2222
