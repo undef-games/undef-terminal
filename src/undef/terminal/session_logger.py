@@ -33,12 +33,14 @@ class SessionLogger:
         await logger.stop()
     """
 
-    def __init__(self, log_path: str | Path) -> None:
+    def __init__(self, log_path: str | Path, max_bytes: int = 0) -> None:
         self._log_path = Path(log_path)
         self._file: TextIOWrapper | None = None
         self._lock = asyncio.Lock()
         self._session_id: str | None = None
         self._context: dict[str, str] = {}
+        self._max_bytes = max_bytes  # 0 = unlimited
+        self._bytes_written = 0
 
     async def start(self, session_id: str) -> None:
         """Open log file and write a ``log_start`` header entry."""
@@ -125,12 +127,16 @@ class SessionLogger:
         """Synchronously write one record.  Caller **must** hold ``self._lock``."""
         if not self._file:
             return
+        if self._max_bytes > 0 and self._bytes_written >= self._max_bytes:
+            return
         record: dict[str, Any] = {"ts": time.time(), "event": event, "data": data}
         if self._session_id is not None:
             record["session_id"] = self._session_id
         if self._context:
             record["ctx"] = dict(self._context)
-        self._file.write(json.dumps(record, ensure_ascii=True) + "\n")
+        line = json.dumps(record, ensure_ascii=True) + "\n"
+        self._file.write(line)
+        self._bytes_written += len(line.encode("utf-8"))
 
     @staticmethod
     async def _flush(file: TextIOWrapper | None) -> None:

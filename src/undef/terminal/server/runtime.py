@@ -149,7 +149,7 @@ class HostedSessionRuntime:
             self._connected = True
         if self._recording_enabled():
             self._recording_path = self._recording_cfg.directory / f"{self.definition.session_id}.jsonl"
-            self._logger = SessionLogger(self._recording_path)
+            self._logger = SessionLogger(self._recording_path, max_bytes=self._recording_cfg.max_bytes)
             await self._logger.start(self.definition.session_id)
         return connector
 

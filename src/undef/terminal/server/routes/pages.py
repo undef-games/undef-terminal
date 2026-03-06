@@ -38,7 +38,15 @@ def create_page_router() -> APIRouter:
     async def operator_dashboard(request: Request) -> HTMLResponse:
         cfg = request.app.state.uterm_config
         secure = _is_secure_request(request)
-        response = HTMLResponse(operator_dashboard_html(cfg.server.title, cfg.ui.app_path, cfg.ui.assets_path))
+        response = HTMLResponse(
+            operator_dashboard_html(
+                cfg.server.title,
+                cfg.ui.app_path,
+                cfg.ui.assets_path,
+                xterm_cdn=cfg.ui.xterm_cdn,
+                fonts_cdn=cfg.ui.fonts_cdn,
+            )
+        )
         principal = resolve_http_principal(request, cfg.auth)
         _set_auth_cookie(response, cfg.auth.principal_cookie, principal.name, secure=secure)
         _set_auth_cookie(response, cfg.auth.surface_cookie, "operator", secure=secure)
@@ -53,7 +61,13 @@ def create_page_router() -> APIRouter:
         secure = _is_secure_request(request)
         principal = resolve_http_principal(request, cfg.auth)
         html = session_page_html(
-            session.display_name, cfg.ui.assets_path, session_id, operator=False, app_path=cfg.ui.app_path
+            session.display_name,
+            cfg.ui.assets_path,
+            session_id,
+            operator=False,
+            app_path=cfg.ui.app_path,
+            xterm_cdn=cfg.ui.xterm_cdn,
+            fonts_cdn=cfg.ui.fonts_cdn,
         )
         response = HTMLResponse(html)
         _set_auth_cookie(response, cfg.auth.principal_cookie, principal.name, secure=secure)
@@ -69,7 +83,13 @@ def create_page_router() -> APIRouter:
         secure = _is_secure_request(request)
         principal = resolve_http_principal(request, cfg.auth)
         html = session_page_html(
-            session.display_name, cfg.ui.assets_path, session_id, operator=True, app_path=cfg.ui.app_path
+            session.display_name,
+            cfg.ui.assets_path,
+            session_id,
+            operator=True,
+            app_path=cfg.ui.app_path,
+            xterm_cdn=cfg.ui.xterm_cdn,
+            fonts_cdn=cfg.ui.fonts_cdn,
         )
         response = HTMLResponse(html)
         _set_auth_cookie(response, cfg.auth.principal_cookie, principal.name, secure=secure)
@@ -84,7 +104,14 @@ def create_page_router() -> APIRouter:
         cfg = request.app.state.uterm_config
         secure = _is_secure_request(request)
         principal = resolve_http_principal(request, cfg.auth)
-        html = replay_page_html(session.display_name, cfg.ui.assets_path, session_id, app_path=cfg.ui.app_path)
+        html = replay_page_html(
+            session.display_name,
+            cfg.ui.assets_path,
+            session_id,
+            app_path=cfg.ui.app_path,
+            xterm_cdn=cfg.ui.xterm_cdn,
+            fonts_cdn=cfg.ui.fonts_cdn,
+        )
         response = HTMLResponse(html)
         _set_auth_cookie(response, cfg.auth.principal_cookie, principal.name, secure=secure)
         _set_auth_cookie(response, cfg.auth.surface_cookie, "operator", secure=secure)

@@ -40,6 +40,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Delay between FastAPI startup completing and the auto-start session loop
+# beginning.  Gives the event loop time to finish route/middleware init.
+_AUTO_START_DELAY_S = 0.15
+
 
 def _validate_frontend_assets() -> None:
     required = (
@@ -149,7 +153,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
         async def _delayed_boot() -> None:
             # Yield to the event loop so FastAPI finishes its own startup tasks
             # (route registration, middleware init) before we connect sessions.
-            await asyncio.sleep(0.15)
+            await asyncio.sleep(_AUTO_START_DELAY_S)
             await registry.start_auto_start_sessions()
 
         boot_task = asyncio.create_task(_delayed_boot())
