@@ -22,8 +22,8 @@ def _shell(
     *,
     extra_css: tuple[str, ...] = (),
     scripts: tuple[str, ...] = (),
-    xterm_cdn: str = "https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0",
-    fonts_cdn: str = "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&display=swap",
+    xterm_cdn: str = "",
+    fonts_cdn: str = "",
 ) -> str:
     css_links = "".join(f"<link rel='stylesheet' href='{escape(assets_path)}/{escape(name)}'>" for name in extra_css)
     script_tags = "".join(

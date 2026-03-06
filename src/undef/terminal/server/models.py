@@ -14,6 +14,9 @@ from typing import Any, Literal, TypeAlias
 
 SessionLifecycle = Literal["stopped", "starting", "running", "error"]
 
+XTERM_CDN_DEFAULT = "https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0"
+FONTS_CDN_DEFAULT = "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&display=swap"
+
 
 @dataclass(slots=True)
 class AuthConfig:
@@ -42,8 +45,8 @@ class UiConfig:
 
     app_path: str = "/app"
     assets_path: str = "/_terminal"
-    xterm_cdn: str = "https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0"
-    fonts_cdn: str = "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&display=swap"
+    xterm_cdn: str = XTERM_CDN_DEFAULT
+    fonts_cdn: str = FONTS_CDN_DEFAULT
 
 
 @dataclass(slots=True)
