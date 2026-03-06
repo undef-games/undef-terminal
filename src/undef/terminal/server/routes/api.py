@@ -123,8 +123,8 @@ def create_api_router() -> APIRouter:
         session_id: _SessionId,
         payload: Annotated[dict[str, Any], Body(...)],
     ) -> dict[str, Any]:
-        # connector_config is merged (shallow), not replaced. Only keys present
-        # in the patch payload are updated; omitted keys retain their current value.
+        # connector_config is replaced entirely when present in the payload.
+        # Callers must send the full desired config, not just changed keys.
         principal = _principal(request)
         authz = _authz(request)
         definition = await _session_definition(request, session_id)

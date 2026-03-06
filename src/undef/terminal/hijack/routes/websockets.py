@@ -24,7 +24,7 @@ except ImportError as _e:  # pragma: no cover
 
 import logging
 
-from undef.terminal.hijack.models import VALID_ROLES, WorkerTermState, _safe_int, extract_prompt_id
+from undef.terminal.hijack.models import VALID_ROLES, _safe_int, extract_prompt_id
 from undef.terminal.hijack.ratelimit import TokenBucket
 from undef.terminal.hijack.routes.browser_handlers import handle_browser_message
 
@@ -51,27 +51,21 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
 
     @router.websocket("/ws/worker/{worker_id}/term")
     async def ws_worker_term(websocket: WebSocket, worker_id: Annotated[str, Path(pattern=r"^[\w\-]+$")]) -> None:
-        if hub._worker_token is not None:
+        worker_token = hub.worker_token()
+        if worker_token is not None:
             auth_header = websocket.headers.get("authorization", "")
             provided = auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer ") else ""
-            if provided != hub._worker_token:
+            if provided != worker_token:
                 await websocket.close(code=1008, reason="authentication required")
                 return
         await websocket.accept()
-        prev_was_hijacked = False
-        async with hub._lock:
-            st = hub._workers.setdefault(worker_id, WorkerTermState())
-            # A crashed worker may reconnect before its old finally block clears
-            # state (the identity check `worker_ws is old_ws` skips cleanup when
-            # a new connection has already overwritten worker_ws).  Clear any stale
-            # hijack state now so the new worker starts unpaused and REST clients
-            # cannot send keystrokes under a dead session.
-            if st.hijack_session is not None or st.hijack_owner is not None:
-                prev_was_hijacked = True
-                st.hijack_session = None
-                st.hijack_owner = None
-                st.hijack_owner_expires_at = None
-            st.worker_ws = websocket
+        # Register worker, atomically clearing any stale hijack state from a
+        # crashed previous connection.  A crashed worker may reconnect before its
+        # old finally block clears state; the identity check `worker_ws is old_ws`
+        # in deregister_worker skips cleanup when a new connection has already
+        # overwritten worker_ws, so stale REST clients cannot send keystrokes under
+        # a dead session.
+        prev_was_hijacked = await hub.register_worker(worker_id, websocket)
         logger.info("term_worker_connected worker_id=%s", worker_id)
         if prev_was_hijacked:
             hub.notify_hijack_changed(worker_id, enabled=False, owner=None)
@@ -89,10 +83,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                 if len(raw) > hub.max_ws_message_bytes:
                     logger.warning("ws_worker_oversized worker_id=%s size=%d", worker_id, len(raw))
                     continue
-                async with hub._lock:
-                    _st_live = hub._workers.get(worker_id)
-                    _is_active_worker = _st_live is not None and _st_live.worker_ws is websocket
-                if not _is_active_worker:
+                if not await hub.is_active_worker(worker_id, websocket):
                     with suppress(Exception):
                         await websocket.close()
                     break
@@ -108,10 +99,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                 if mtype == "worker_hello":
                     _hello_mode = msg.get("input_mode")
                     if _hello_mode in ("hijack", "open"):
-                        async with hub._lock:
-                            _st_hello = hub._workers.get(worker_id)
-                            if _st_hello is not None:
-                                _st_hello.input_mode = _hello_mode
+                        await hub.set_worker_hello_mode(worker_id, _hello_mode)
                         await hub.broadcast_hijack_state(worker_id)
                         logger.info("worker_hello worker_id=%s input_mode=%s", worker_id, _hello_mode)
                     elif _hello_mode is not None:
@@ -138,10 +126,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         "prompt_detected": msg.get("prompt_detected"),
                         "ts": msg.get("ts", time.time()),
                     }
-                    async with hub._lock:
-                        st2 = hub._workers.get(worker_id)
-                        if st2 is not None:
-                            st2.last_snapshot = snapshot
+                    await hub.update_last_snapshot(worker_id, snapshot)
                     await hub.broadcast(worker_id, snapshot)
                     await hub.append_event(
                         worker_id,
@@ -169,18 +154,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
             cleanup_task.cancel()
             with suppress(asyncio.CancelledError):
                 await cleanup_task
-            was_hijacked = False
-            should_broadcast_disconnect = False
-            async with hub._lock:
-                st3 = hub._workers.get(worker_id)
-                if st3 is not None and st3.worker_ws is websocket:
-                    should_broadcast_disconnect = True
-                    st3.worker_ws = None
-                    was_hijacked = st3.hijack_session is not None or st3.hijack_owner is not None
-                    st3.hijack_session = None
-                    st3.hijack_owner = None
-                    st3.hijack_owner_expires_at = None
-            if should_broadcast_disconnect:
+            should_broadcast, was_hijacked = await hub.deregister_worker(worker_id, websocket)
+            if should_broadcast:
                 hub.metric("ws_disconnect_total")
                 hub.metric("ws_disconnect_worker_total")
                 logger.info("term_worker_disconnected worker_id=%s", worker_id)
@@ -204,7 +179,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
     ) -> None:
         await websocket.accept()
         try:
-            role = await hub._resolve_role_for_browser(websocket, worker_id)
+            role = await hub.resolve_role_for_browser(websocket, worker_id)
         except BrowserRoleResolutionError:
             await websocket.close(code=1011, reason="browser role resolution failed")
             return
@@ -213,14 +188,12 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         can_hijack = role == "admin"
         owned_hijack = False
         # Capture all startup state atomically while registering the browser.
-        async with hub._lock:
-            st = hub._workers.setdefault(worker_id, WorkerTermState())
-            st.browsers[websocket] = role
-            is_hijacked = hub.is_hijacked(st)
-            hijacked_by_me = hub.is_dashboard_hijack_active(st) and st.hijack_owner is websocket
-            worker_online = st.worker_ws is not None
-            input_mode = st.input_mode
-            initial_snapshot = st.last_snapshot  # captured under lock to avoid stale read
+        browser_state = await hub.register_browser(worker_id, websocket, role)
+        is_hijacked = browser_state["is_hijacked"]
+        hijacked_by_me = browser_state["hijacked_by_me"]
+        worker_online = browser_state["worker_online"]
+        input_mode = browser_state["input_mode"]
+        initial_snapshot = browser_state["initial_snapshot"]
 
         await websocket.send_text(
             json.dumps(
@@ -288,28 +261,11 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
             # the owner — all in one lock block to avoid the TOCTOU window where
             # _is_owner() returns True but another coroutine steals hijack_owner
             # (or vice-versa), and to avoid a second lock round-trip for
-            # _has_valid_rest_lease after the owner has already been cleared.
-            was_owner = False
-            resume_without_owner = False
-            rest_still_active = False
-            async with hub._lock:
-                st3 = hub._workers.get(worker_id)
-                was_owner = st3 is not None and hub.is_dashboard_hijack_active(st3) and st3.hijack_owner is websocket
-                if st3 is not None:
-                    st3.browsers.pop(websocket, None)
-                    if was_owner:
-                        st3.hijack_owner = None
-                        st3.hijack_owner_expires_at = None
-                        rest_still_active = hub.has_valid_rest_lease(st3)
-                    elif owned_hijack and st3.worker_ws is not None and not hub.is_hijacked(st3):
-                        last_event_type = str(st3.events[-1].get("type", "")) if st3.events else ""
-                        # Another path may have already cleared this dead socket
-                        # from the hub before this handler reached finally. If no
-                        # replacement hijack exists, still unpause the worker.
-                        resume_without_owner = last_event_type not in {
-                            "hijack_owner_expired",
-                            "hijack_lease_expired",
-                        }
+            # has_valid_rest_lease after the owner has already been cleared.
+            disconnect_result = await hub.cleanup_browser_disconnect(worker_id, websocket, owned_hijack)
+            was_owner = disconnect_result["was_owner"]
+            rest_still_active = disconnect_result["rest_still_active"]
+            resume_without_owner = disconnect_result["resume_without_owner"]
             if was_owner:
                 _do_resume = not rest_still_active
                 if _do_resume:

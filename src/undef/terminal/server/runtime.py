@@ -249,9 +249,11 @@ class HostedSessionRuntime:
                 self._connector = await self._start_connector()
                 worker_url = self._ws_url() + f"/ws/worker/{self.definition.session_id}/term"
                 headers = {"Authorization": f"Bearer {self._worker_bearer_token}"} if self._worker_bearer_token else {}
-                async with websockets.connect(worker_url, additional_headers=headers) as ws:
-                    attempt = 0
+                async with websockets.connect(worker_url, additional_headers=headers, open_timeout=10) as ws:
                     await self._bridge_session(ws)
+                    # Reset backoff only after a session completes normally,
+                    # not on bare TCP connect — prevents tight loops on auth errors.
+                    attempt = 0
             except asyncio.CancelledError:
                 break
             except Exception as exc:

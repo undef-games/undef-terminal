@@ -34,12 +34,13 @@ class DemoSessionConnector(SessionConnector):
         self._display_name = display_name
         self._connected = False
         self._input_mode = "open"
-        self._paused = False
-        self._turns = 0
-        self._nickname = "user"
-        self._last_command: str | None = None
-        self._banner = "Ready. Type /help for commands."
-        self._transcript: deque[_Entry] = deque(maxlen=10)
+        # Fields below are initialised by _reset_state(); declared here for type checkers.
+        self._paused: bool
+        self._turns: int
+        self._nickname: str
+        self._last_command: str | None
+        self._banner: str
+        self._transcript: deque[_Entry]
         self._reset_state()
 
     def _reset_state(self) -> None:

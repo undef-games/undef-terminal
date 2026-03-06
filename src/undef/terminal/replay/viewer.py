@@ -48,25 +48,26 @@ def replay_log(
     wanted = set(events or ["read", "screen"])
     last_ts: float | None = None
 
-    for lineno, line in enumerate(log_path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.strip():
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            logger.warning("replay_log corrupt line skipped path=%s line=%d", log_path, lineno)
-            continue
-        event = record.get("event")
-        if event not in wanted:
-            continue
-        screen = record.get("data", {}).get("screen")
-        if screen is None:
-            continue
-        if last_ts is not None and not step:
-            delta = (record.get("ts", last_ts) - last_ts) / max(speed, 0.01)
-            if delta > 0:
-                time.sleep(delta)
-        _render_screen(screen, out)
-        if step:
-            input("-- next --")
-        last_ts = record.get("ts", last_ts)
+    with log_path.open(encoding="utf-8") as _fh:
+        for lineno, line in enumerate(_fh, start=1):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                logger.warning("replay_log corrupt line skipped path=%s line=%d", log_path, lineno)
+                continue
+            event = record.get("event")
+            if event not in wanted:
+                continue
+            screen = record.get("data", {}).get("screen")
+            if screen is None:
+                continue
+            if last_ts is not None and not step:
+                delta = (record.get("ts", last_ts) - last_ts) / max(speed, 0.01)
+                if delta > 0:
+                    time.sleep(delta)
+            _render_screen(screen, out)
+            if step:
+                input("-- next --")
+            last_ts = record.get("ts", last_ts)

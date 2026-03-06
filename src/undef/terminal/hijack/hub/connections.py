@@ -1,0 +1,215 @@
+#
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+
+"""Connection lifecycle mixin for TermHub.
+
+Extracted from ``core.py`` to keep file sizes under 500 LOC.
+Provides public methods used by WS route handlers to register and
+deregister workers/browsers without accessing hub internals directly.
+"""
+
+from __future__ import annotations
+
+import time
+import uuid
+from typing import TYPE_CHECKING, Any
+
+from undef.terminal.hijack.models import WorkerTermState
+
+if TYPE_CHECKING:
+    import asyncio
+    from collections.abc import Awaitable, Callable
+
+    from fastapi import WebSocket
+
+
+class _ConnectionMixin:
+    """Mixin providing worker/browser connection lifecycle methods for TermHub.
+
+    Requires the host class to provide: ``_lock``, ``_workers``,
+    ``_worker_token``, ``is_hijacked``, ``is_dashboard_hijack_active``,
+    ``has_valid_rest_lease``, ``send_worker``, ``broadcast_hijack_state``,
+    ``notify_hijack_changed``, ``_resolve_role_for_browser``.
+    """
+
+    # -- Declared attributes required from the host class ----------------------
+    _lock: asyncio.Lock
+    _workers: dict[str, WorkerTermState]
+    _worker_token: str | None
+
+    # Methods provided by TermHub / _HijackOwnershipMixin used in this mixin.
+    is_hijacked: Callable[..., bool]
+    is_dashboard_hijack_active: Callable[..., bool]
+    has_valid_rest_lease: Callable[..., bool]
+    send_worker: Callable[..., Awaitable[bool]]
+    broadcast_hijack_state: Callable[..., Awaitable[None]]
+    notify_hijack_changed: Callable[..., None]
+    _resolve_role_for_browser: Callable[..., Awaitable[str]]
+
+    # --------------------------------------------------------------------------
+
+    def worker_token(self) -> str | None:
+        """Return the configured worker bearer token (read-only)."""
+        return self._worker_token
+
+    # -- Worker connection lifecycle --------------------------------------------
+
+    async def register_worker(self, worker_id: str, ws: WebSocket) -> bool:
+        """Register *ws* as the active worker for *worker_id*.
+
+        Clears any stale hijack state from a previous crashed worker session.
+        Returns ``True`` if a previous hijack was active (caller should broadcast
+        a cleared-hijack notification), ``False`` otherwise.
+        """
+        async with self._lock:
+            st = self._workers.setdefault(worker_id, WorkerTermState())
+            prev_was_hijacked = st.hijack_session is not None or st.hijack_owner is not None
+            if prev_was_hijacked:
+                st.hijack_session = None
+                st.hijack_owner = None
+                st.hijack_owner_expires_at = None
+            st.worker_ws = ws
+        return prev_was_hijacked
+
+    async def is_active_worker(self, worker_id: str, ws: WebSocket) -> bool:
+        """Return True if *ws* is still the registered worker for *worker_id*."""
+        async with self._lock:
+            st = self._workers.get(worker_id)
+            return st is not None and st.worker_ws is ws
+
+    async def set_worker_hello_mode(self, worker_id: str, mode: str) -> bool:
+        """Set input_mode from a ``worker_hello`` message.
+
+        Returns ``True`` if the mode was applied, ``False`` if the worker is no
+        longer registered.
+        """
+        async with self._lock:
+            st = self._workers.get(worker_id)
+            if st is None:
+                return False
+            st.input_mode = mode
+        return True
+
+    async def update_last_snapshot(self, worker_id: str, snapshot: dict[str, Any]) -> None:
+        """Store *snapshot* as the most recent snapshot for *worker_id*."""
+        async with self._lock:
+            st = self._workers.get(worker_id)
+            if st is not None:
+                st.last_snapshot = snapshot
+
+    async def deregister_worker(self, worker_id: str, ws: WebSocket) -> tuple[bool, bool]:
+        """Clear *ws* as the active worker if it is still current.
+
+        Returns ``(should_broadcast_disconnect, was_hijacked)``.
+        ``should_broadcast_disconnect`` is ``True`` only when *ws* was the
+        current worker (i.e. a replacement has not already taken over).
+        """
+        async with self._lock:
+            st = self._workers.get(worker_id)
+            if st is None or st.worker_ws is not ws:
+                return False, False
+            was_hijacked = st.hijack_session is not None or st.hijack_owner is not None
+            st.worker_ws = None
+            st.hijack_session = None
+            st.hijack_owner = None
+            st.hijack_owner_expires_at = None
+        return True, was_hijacked
+
+    # -- Browser connection lifecycle ------------------------------------------
+
+    async def register_browser(self, worker_id: str, ws: WebSocket, role: str) -> dict[str, Any]:
+        """Register *ws* as a browser for *worker_id* and return initial state.
+
+        Returns a dict with keys: ``is_hijacked``, ``hijacked_by_me``,
+        ``worker_online``, ``input_mode``, ``initial_snapshot``.
+        """
+        async with self._lock:
+            st = self._workers.setdefault(worker_id, WorkerTermState())
+            st.browsers[ws] = role
+            return {
+                "is_hijacked": self.is_hijacked(st),
+                "hijacked_by_me": self.is_dashboard_hijack_active(st) and st.hijack_owner is ws,
+                "worker_online": st.worker_ws is not None,
+                "input_mode": st.input_mode,
+                "initial_snapshot": st.last_snapshot,
+            }
+
+    async def cleanup_browser_disconnect(self, worker_id: str, ws: WebSocket, owned_hijack: bool) -> dict[str, Any]:
+        """Handle a browser WS disconnect atomically.
+
+        Returns a dict with keys: ``was_owner``, ``resume_without_owner``,
+        ``rest_still_active``.
+        """
+        async with self._lock:
+            st = self._workers.get(worker_id)
+            was_owner = st is not None and self.is_dashboard_hijack_active(st) and st.hijack_owner is ws
+            rest_still_active = False
+            resume_without_owner = False
+            if st is not None:
+                st.browsers.pop(ws, None)
+                if was_owner:
+                    st.hijack_owner = None
+                    st.hijack_owner_expires_at = None
+                    rest_still_active = self.has_valid_rest_lease(st)
+                elif owned_hijack and st.worker_ws is not None and not self.is_hijacked(st):
+                    last_event_type = str(st.events[-1].get("type", "")) if st.events else ""
+                    resume_without_owner = last_event_type not in {"hijack_owner_expired", "hijack_lease_expired"}
+        return {
+            "was_owner": was_owner,
+            "rest_still_active": rest_still_active,
+            "resume_without_owner": resume_without_owner,
+        }
+
+    async def resolve_role_for_browser(self, ws: WebSocket, worker_id: str) -> str:
+        """Public wrapper around ``_resolve_role_for_browser``."""
+        return await self._resolve_role_for_browser(ws, worker_id)
+
+    # -- Misc connection helpers -----------------------------------------------
+
+    def can_send_input(self, st: WorkerTermState, ws: WebSocket) -> bool:
+        """Check if *ws* can send input to the worker (open mode or hijack owner).
+
+        In open mode, viewers are excluded — only operators and admins may send.
+        """
+        if st.input_mode == "open":
+            role = st.browsers.get(ws, "viewer")
+            return role in ("operator", "admin")
+        return self.is_dashboard_hijack_active(st) and st.hijack_owner is ws
+
+    async def request_snapshot(self, worker_id: str) -> None:
+        await self.send_worker(worker_id, {"type": "snapshot_req", "req_id": str(uuid.uuid4()), "ts": time.time()})
+
+    async def request_analysis(self, worker_id: str) -> None:
+        await self.send_worker(worker_id, {"type": "analyze_req", "req_id": str(uuid.uuid4()), "ts": time.time()})
+
+    async def force_release_hijack(self, worker_id: str) -> bool:
+        """Forcibly clear any active hijack for *worker_id* and send a resume control frame.
+
+        Returns ``True`` if a hijack was active and was cleared, ``False`` otherwise.
+        Typically called before switching input mode to ``"open"`` or on session teardown.
+        """
+        owner = "server-forced"
+        had_hijack = False
+        async with self._lock:
+            st = self._workers.get(worker_id)
+            if st is None:
+                return False
+            if st.hijack_session is not None:
+                owner = st.hijack_session.owner
+                st.hijack_session = None
+                had_hijack = True
+            if self.is_dashboard_hijack_active(st):
+                st.hijack_owner = None
+                st.hijack_owner_expires_at = None
+                had_hijack = True
+        if not had_hijack:
+            return False
+        await self.send_worker(
+            worker_id,
+            {"type": "control", "action": "resume", "owner": owner, "lease_s": 0, "ts": time.time()},
+        )
+        self.notify_hijack_changed(worker_id, enabled=False, owner=None)
+        await self.broadcast_hijack_state(worker_id)
+        return True

@@ -136,7 +136,7 @@ class SessionLogger:
             record["ctx"] = dict(self._context)
         line = json.dumps(record, ensure_ascii=True) + "\n"
         self._file.write(line)
-        self._bytes_written += len(line.encode("utf-8"))
+        self._bytes_written += len(line)  # ensure_ascii=True guarantees 1 byte per char
 
     @staticmethod
     async def _flush(file: TextIOWrapper | None) -> None:

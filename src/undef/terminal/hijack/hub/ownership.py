@@ -30,9 +30,9 @@ class _HijackOwnershipMixin:
     """Mixin providing hijack ownership/lease methods for TermHub.
 
     Requires the host class to provide: ``_lock``, ``_workers``,
-    ``_dashboard_hijack_lease_s``, ``_is_hijacked``, ``_is_dashboard_hijack_active``,
-    ``_has_valid_rest_lease``, ``_send_worker``, ``_broadcast_hijack_state``,
-    ``_append_event``, ``_prune_if_idle``, ``_notify_hijack_changed``.
+    ``_dashboard_hijack_lease_s``, ``is_hijacked``, ``is_dashboard_hijack_active``,
+    ``has_valid_rest_lease``, ``send_worker``, ``broadcast_hijack_state``,
+    ``append_event``, ``prune_if_idle``, ``notify_hijack_changed``.
     """
 
     # -- Typed self helpers (avoid repeating the cast everywhere) ---------------

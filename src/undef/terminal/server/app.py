@@ -109,6 +109,20 @@ def create_server_app(config: ServerConfig) -> FastAPI:
         metrics[name] = metrics.get(name, 0) + value
 
     async def _require_authenticated(connection: HTTPConnection) -> None:
+        # Workers authenticate with a raw bearer token, not a JWT.  Check it
+        # before JWT resolution so a valid worker token is never mis-rejected as
+        # anonymous when auth.mode='jwt'.
+        if config.auth.worker_bearer_token:
+            from undef.terminal.server.auth import _extract_bearer_token
+
+            token = _extract_bearer_token(connection.headers)
+            if token == config.auth.worker_bearer_token:
+                from undef.terminal.server.auth import Principal
+
+                connection.state.uterm_principal = Principal(
+                    subject_id="worker", roles=frozenset({"admin"}), scopes=frozenset({"*"})
+                )
+                return
         if connection.scope.get("type") == "websocket":
             principal = resolve_ws_principal(connection, config.auth)
             connection.state.uterm_principal = principal

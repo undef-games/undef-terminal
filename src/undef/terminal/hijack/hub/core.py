@@ -17,7 +17,6 @@ import inspect
 import json
 import re
 import time
-import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from typing import Any
@@ -29,6 +28,7 @@ except ImportError as _e:  # pragma: no cover
 
 import logging
 
+from undef.terminal.hijack.hub.connections import _ConnectionMixin
 from undef.terminal.hijack.hub.ownership import _HijackOwnershipMixin
 from undef.terminal.hijack.models import WorkerTermState, extract_prompt_id
 from undef.terminal.hijack.ratelimit import TokenBucket
@@ -45,7 +45,7 @@ class BrowserRoleResolutionError(RuntimeError):
     """Raised when a browser-role resolver fails and the WS should be rejected."""
 
 
-class TermHub(_HijackOwnershipMixin):
+class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
     """In-memory registry for terminal WebSocket connections.
 
     Manages the lifecycle of worker / browser terminal streams and hijack leases.
@@ -461,52 +461,6 @@ class TermHub(_HijackOwnershipMixin):
             self.notify_hijack_changed(worker_id, enabled=False, owner=None)
             await self.broadcast_hijack_state(worker_id)
         await self.prune_if_idle(worker_id)
-        return True
-
-    def can_send_input(self, st: WorkerTermState, ws: WebSocket) -> bool:
-        """Check if *ws* can send input to the worker (open mode or hijack owner).
-
-        In open mode, viewers are excluded — only operators and admins may send.
-        """
-        if st.input_mode == "open":
-            role = st.browsers.get(ws, "viewer")
-            return role in ("operator", "admin")
-        return self.is_dashboard_hijack_active(st) and st.hijack_owner is ws
-
-    async def request_snapshot(self, worker_id: str) -> None:
-        await self.send_worker(worker_id, {"type": "snapshot_req", "req_id": str(uuid.uuid4()), "ts": time.time()})
-
-    async def request_analysis(self, worker_id: str) -> None:
-        await self.send_worker(worker_id, {"type": "analyze_req", "req_id": str(uuid.uuid4()), "ts": time.time()})
-
-    async def force_release_hijack(self, worker_id: str) -> bool:
-        """Forcibly clear any active hijack for *worker_id* and send a resume control frame.
-
-        Returns ``True`` if a hijack was active and was cleared, ``False`` otherwise.
-        Typically called before switching input mode to ``"open"`` or on session teardown.
-        """
-        owner = "server-forced"
-        had_hijack = False
-        async with self._lock:
-            st = self._workers.get(worker_id)
-            if st is None:
-                return False
-            if st.hijack_session is not None:
-                owner = st.hijack_session.owner
-                st.hijack_session = None
-                had_hijack = True
-            if self.is_dashboard_hijack_active(st):
-                st.hijack_owner = None
-                st.hijack_owner_expires_at = None
-                had_hijack = True
-        if not had_hijack:
-            return False
-        await self.send_worker(
-            worker_id,
-            {"type": "control", "action": "resume", "owner": owner, "lease_s": 0, "ts": time.time()},
-        )
-        self.notify_hijack_changed(worker_id, enabled=False, owner=None)
-        await self.broadcast_hijack_state(worker_id)
         return True
 
     async def get_last_snapshot(self, worker_id: str) -> dict[str, Any] | None:

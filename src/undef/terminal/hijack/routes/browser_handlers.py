@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -156,7 +157,8 @@ async def handle_browser_message(
             return False  # owned_hijack = False
 
     elif mtype == "ping":
-        pass  # keepalive — TCP ACK is sufficient, no response needed
+        with suppress(Exception):
+            await ws.send_text(json.dumps({"type": "pong", "ts": time.time()}, ensure_ascii=True))
 
     elif mtype == "input":
         can_send = await hub.prepare_browser_input(worker_id, ws)
