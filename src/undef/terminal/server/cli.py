@@ -17,7 +17,7 @@ from undef.terminal.server.app import create_server_app
 
 def main(argv: list[str] | None = None) -> None:
     """Run the reference hosted terminal server."""
-    parser = argparse.ArgumentParser(prog="undefterm-server", description="Run the undef-terminal reference server")
+    parser = argparse.ArgumentParser(prog="uterm-server", description="Run the undef-terminal reference server")
     parser.add_argument("--config", type=str, default=None, help="Path to a TOML config file")
     parser.add_argument("--host", type=str, default=None, help="Override the bind host")
     parser.add_argument("--port", type=int, default=None, help="Override the bind port")

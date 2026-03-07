@@ -26,7 +26,7 @@ dev = [
 ]
 
 [project.scripts]
-undefterm-cf = "undef_terminal_cloudflare.cli:main"
+uterm-cf = "undef_terminal_cloudflare.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/undef_terminal_cloudflare"]

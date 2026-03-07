@@ -2,24 +2,24 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-"""undefterm — bidirectional WebSocket terminal proxy.
+"""uterm — bidirectional WebSocket terminal proxy.
 
 Two complementary subcommands:
 
 ``proxy``  (browser WS → telnet/SSH)
     Accepts browser WebSocket connections and proxies to a remote BBS.
 
-        undefterm proxy bbs.example.com 23
-        undefterm proxy bbs.example.com 23 --port 9000 --path /ws/term
-        undefterm proxy bbs.example.com 22 --transport ssh
+        uterm proxy bbs.example.com 23
+        uterm proxy bbs.example.com 23 --port 9000 --path /ws/term
+        uterm proxy bbs.example.com 22 --transport ssh
 
 ``listen``  (telnet/SSH client → WebSocket server)
     Accepts traditional telnet and/or SSH clients and proxies to a
     remote WebSocket terminal endpoint.
 
-        undefterm listen wss://warp.undef.games/ws/terminal
-        undefterm listen wss://warp.undef.games/ws/terminal --port 2112 --ssh-port 2222
-        undefterm listen wss://warp.undef.games/ws/terminal --server-key /etc/host_key
+        uterm listen wss://warp.undef.games/ws/terminal
+        uterm listen wss://warp.undef.games/ws/terminal --port 2112 --ssh-port 2222
+        uterm listen wss://warp.undef.games/ws/terminal --server-key /etc/host_key
 
 Requires the ``[cli]`` extra::
 
@@ -88,12 +88,10 @@ def _cmd_proxy(args: argparse.Namespace) -> None:
         transport_factory=transport_factory,
     )
 
-    app = FastAPI(title="undefterm proxy", docs_url=None, redoc_url=None)
+    app = FastAPI(title="uterm proxy", docs_url=None, redoc_url=None)
     app.include_router(proxy.create_router(args.path))
 
-    print(
-        f"undefterm proxy  {args.transport}://{args.host}:{args.bbs_port}  →  ws://{args.bind}:{args.port}{args.path}"
-    )
+    print(f"uterm proxy  {args.transport}://{args.host}:{args.bbs_port}  →  ws://{args.bind}:{args.port}{args.path}")
 
     uvicorn.run(app, host=args.bind, port=args.port, log_level="warning")
 
@@ -141,14 +139,14 @@ async def _run_listen(
         gw = TelnetWsGateway(ws_url)
         srv = await gw.start(bind, telnet_port)
         servers.append(srv)
-        print(f"undefterm listen  telnet://{bind}:{telnet_port}  →  {ws_url}")
+        print(f"uterm listen  telnet://{bind}:{telnet_port}  →  {ws_url}")
 
     if ssh_port:
         try:
             gw_ssh = SshWsGateway(ws_url, server_key=server_key)
             srv_ssh = await gw_ssh.start(bind, ssh_port)
             servers.append(srv_ssh)
-            print(f"undefterm listen  ssh://{bind}:{ssh_port}     →  {ws_url}")
+            print(f"uterm listen  ssh://{bind}:{ssh_port}     →  {ws_url}")
         except ImportError as exc:
             print(f"warning: SSH gateway disabled — {exc}", file=sys.stderr)
 
@@ -172,7 +170,7 @@ async def _run_listen(
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="undefterm",
+        prog="uterm",
         description="Bidirectional WebSocket terminal proxy for BBS/telnet servers.",
     )
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
@@ -261,7 +259,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """CLI entry point — called by the ``undefterm`` script."""
+    """CLI entry point — called by the ``uterm`` script."""
     parser = _build_parser()
     args = parser.parse_args(argv)
     args.func(args)

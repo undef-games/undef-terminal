@@ -4,9 +4,9 @@ Cloudflare Workers package for running the `undef-terminal` hosted control plane
 
 ## Commands
 
-- `undefterm-cf build`
-- `undefterm-cf dev`
-- `undefterm-cf deploy --env production`
+- `uterm-cf build`
+- `uterm-cf dev`
+- `uterm-cf deploy --env production`
 
 ## Runtime model
 
@@ -19,4 +19,4 @@ Cloudflare Workers package for running the `undef-terminal` hosted control plane
 
 - `/ws/worker/{worker_id}/term` - runtime worker protocol (JSON frames)
 - `/ws/browser/{worker_id}/term` - browser/operator protocol (JSON frames)
-- `/ws/raw/{worker_id}/term` - raw stream mode for `undefterm listen` telnet/SSH gateways
+- `/ws/raw/{worker_id}/term` - raw stream mode for `uterm listen` telnet/SSH gateways

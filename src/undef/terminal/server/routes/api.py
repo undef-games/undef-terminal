@@ -55,8 +55,8 @@ def create_api_router() -> APIRouter:
         ready = getattr(request.app.state, "uterm_registry", None) is not None
         if not ready:
             response.status_code = 503
-            return {"ok": False, "ready": False, "service": "undefterm-server"}
-        return {"ok": True, "ready": True, "service": "undefterm-server"}
+            return {"ok": False, "ready": False, "service": "uterm-server"}
+        return {"ok": True, "ready": True, "service": "uterm-server"}
 
     @router.get("/metrics")
     async def metrics(request: Request) -> dict[str, object]:

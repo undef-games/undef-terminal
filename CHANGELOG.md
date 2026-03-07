@@ -236,7 +236,7 @@ Initial public release.
   CP437 encode/decode, and screen-content extraction helpers.
 - **Replay viewer** — JSONL session log playback with speed control and step mode.
 - **Frontend assets** — browser-side `hijack.js` client with configurable role and mode display.
-- **CLI entry points** — `undefterm` and `undefterm-server`.
+- **CLI entry points** — `uterm` and `uterm-server`.
 - **Test coverage** — 690+ tests across unit, integration, property-based (Hypothesis),
   and Playwright UI suites.
 
