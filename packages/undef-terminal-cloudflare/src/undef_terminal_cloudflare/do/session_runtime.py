@@ -19,14 +19,14 @@ try:
     from undef_terminal_cloudflare.config import CloudflareConfig
     from undef_terminal_cloudflare.state.store import LeaseRecord, SqliteStateStore
 except Exception:
-    from api.http_routes import route_http
-    from api.ws_routes import handle_socket_message
-    from auth.jwt import JwtValidationError, decode_jwt
-    from auth.jwt import resolve_role as _resolve_jwt_role
-    from bridge.hijack import HijackCoordinator, HijackSession
-    from cf_types import DurableObject, Response
-    from config import CloudflareConfig
-    from state.store import LeaseRecord, SqliteStateStore
+    from api.http_routes import route_http  # type: ignore[import-not-found]
+    from api.ws_routes import handle_socket_message  # type: ignore[import-not-found]
+    from auth.jwt import JwtValidationError, decode_jwt  # type: ignore[import-not-found]
+    from auth.jwt import resolve_role as _resolve_jwt_role  # type: ignore[import-not-found]
+    from bridge.hijack import HijackCoordinator, HijackSession  # type: ignore[import-not-found]
+    from cf_types import DurableObject, Response  # type: ignore[import-not-found]
+    from config import CloudflareConfig  # type: ignore[import-not-found]
+    from state.store import LeaseRecord, SqliteStateStore  # type: ignore[import-not-found]
 
 logger = logging.getLogger(__name__)
 
@@ -251,7 +251,7 @@ class SessionRuntime(DurableObject):
 
         upgrade_header = str(request.headers.get("Upgrade") or "").lower()  # type: ignore[attr-defined]
         if upgrade_header == "websocket":
-            from js import WebSocketPair
+            from js import WebSocketPair  # type: ignore[import-not-found]
 
             path = urlparse(str(request.url)).path  # type: ignore[attr-defined]
             socket_role = "browser"

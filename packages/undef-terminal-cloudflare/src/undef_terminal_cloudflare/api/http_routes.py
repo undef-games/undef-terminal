@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
 
 try:
     from undef_terminal_cloudflare.cf_types import Response, json_response
 except Exception:
-    from cf_types import Response, json_response
+    from cf_types import Response, json_response  # type: ignore[import-not-found]
+
+if TYPE_CHECKING:
+    try:
+        from undef_terminal_cloudflare.contracts import RuntimeProtocol
+    except Exception:
+        from contracts import RuntimeProtocol  # type: ignore[import-not-found]
 
 # Matches /hijack/{hijack_id}/ in any path segment position.
 _HIJACK_ID_RE = re.compile(r"/hijack/([0-9a-fA-F\-]{1,64})/")
@@ -28,7 +35,7 @@ def _parse_lease_s(payload: dict[str, object], *, default: int = 60) -> tuple[in
     return max(_MIN_LEASE_S, min(parsed, _MAX_LEASE_S)), None
 
 
-async def route_http(runtime: object, request: object) -> Response:
+async def route_http(runtime: RuntimeProtocol, request: object) -> Response:
     url = str(getattr(request, "url", ""))
     path = urlparse(url).path
     method = str(getattr(request, "method", "GET")).upper()

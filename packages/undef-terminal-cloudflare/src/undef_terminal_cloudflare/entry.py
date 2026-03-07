@@ -9,10 +9,10 @@ try:
     from undef_terminal_cloudflare.do.session_runtime import SessionRuntime
     from undef_terminal_cloudflare.ui.assets import serve_asset
 except Exception:
-    from cf_types import WorkerEntrypoint, json_response
-    from config import CloudflareConfig
-    from do.session_runtime import SessionRuntime
-    from ui.assets import serve_asset
+    from cf_types import WorkerEntrypoint, json_response  # type: ignore[import-not-found]
+    from config import CloudflareConfig  # type: ignore[import-not-found]
+    from do.session_runtime import SessionRuntime  # type: ignore[import-not-found]
+    from ui.assets import serve_asset  # type: ignore[import-not-found]
 
 __all__ = ["Default", "SessionRuntime", "UndefTerminalCloudflareWorker"]
 

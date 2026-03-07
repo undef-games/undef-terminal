@@ -29,7 +29,7 @@ async def _fetch_jwks(url: str) -> dict[str, Any]:
     Outside CF (tests / local dev), falls back to ``urllib`` as a last resort.
     """
     try:
-        from js import fetch as _js_fetch  # CF Workers native async fetch
+        from js import fetch as _js_fetch  # type: ignore[import-not-found]  # CF Workers native async fetch
 
         response = await _js_fetch(url)
         return (await response.json()).to_py()  # type: ignore[no-any-return]
