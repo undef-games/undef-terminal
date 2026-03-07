@@ -1,4 +1,4 @@
-import { type UndefHijackConstructor, apiJson, requireElement } from "./server-common.js";
+import { apiJson, requireElement, type UndefHijackConstructor } from "./server-common.js";
 
 declare global {
   interface Window {
