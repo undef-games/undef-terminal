@@ -42,10 +42,19 @@ def test_session_runtime_extract_token_respects_query_policy() -> None:
     assert runtime._extract_token(request) is None
 
 
-async def test_decode_jwt_requires_exp_iat_nbf() -> None:
+async def test_decode_jwt_requires_sub_and_exp() -> None:
+    # Token without exp must be rejected (matches FastAPI behaviour: require=[sub, exp]).
     token = jwt.encode({"sub": "u1", "roles": ["viewer"]}, "secret", algorithm="HS256")
     with pytest.raises(JwtValidationError):
         await decode_jwt(token, JwtConfig(mode="jwt", public_key_pem="secret", algorithms=("HS256",)))
+
+
+async def test_decode_jwt_accepts_token_without_iat_nbf() -> None:
+    # iat/nbf no longer required — Auth0/Google/Azure AD tokens may omit them.
+    now = int(time.time())
+    token = jwt.encode({"sub": "u1", "exp": now + 600, "roles": ["viewer"]}, "secret", algorithm="HS256")
+    principal = await decode_jwt(token, JwtConfig(mode="jwt", public_key_pem="secret", algorithms=("HS256",)))
+    assert principal.subject_id == "u1"
 
 
 async def test_decode_jwt_rejects_future_nbf_outside_skew() -> None:

@@ -78,7 +78,9 @@ async def decode_jwt(token: str, config: JwtConfig) -> Principal:
     options = {
         "verify_aud": bool(config.audience),
         "verify_iss": bool(config.issuer),
-        "require": ["sub", "exp", "iat", "nbf"],
+        # Match FastAPI: only sub+exp required so Auth0/Google/Azure AD tokens
+        # that omit iat/nbf are accepted without config changes.
+        "require": ["sub", "exp"],
     }
     try:
         claims: dict[str, Any] = jwt.decode(
