@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **CF Access / Zero Trust JWT support** — `JwtConfig.jwt_default_role` (env var
+  `JWT_DEFAULT_ROLE`, default `"viewer"`) assigns a role when the JWT has no `roles` or
+  `scope` claim. Cloudflare Access JWTs omit roles by default; set `JWT_DEFAULT_ROLE=operator`
+  to grant all CF Access users operator access without claim transforms.
+- **E2E test suite** — `tests/test_e2e_ws.py` adds 10 async tests covering: worker
+  connect/disconnect KV registration, browser hello frame, snapshot delivery, hijack
+  acquire/release/conflict (409), alarm-based lease expiry, input_mode change, and fleet
+  session listing. Tests run via `pywrangler dev` locally (`-m e2e`) or against a live
+  deployment (`REAL_CF=1 REAL_CF_URL=https://...`).
+- **`REAL_CF_URL` fixture support** — `conftest.py` `wrangler_server` fixture skips local
+  `pywrangler dev` startup when `REAL_CF_URL` is set, yielding the remote URL directly.
+- **CF Access groups-based role mapping** — documented in `wrangler.toml`: configure SCIM
+  identity groups in the Zero Trust dashboard, add a custom JWT claim (e.g. `"groups"`), and
+  set `JWT_ROLES_CLAIM=groups` to map group membership to viewer/operator/admin roles.
+
+### Fixed
+
+- **DO hibernation: worker_id always "default"** — `ctx.id.name()` returns `"default"` in
+  the CF Python runtime. Added `_lazy_init_worker_id()` which extracts the real worker ID from
+  the request URL path in `fetch()`, before KV registration and attachment serialization.
+- **DO hibernation: KV registration dropped** — `webSocketOpen` is a no-op after hibernation.
+  Worker connect now registers in KV synchronously inside `fetch()` before returning the 101
+  Switching Protocols response, so the entry is always written.
+- **DO hibernation: browser hello frame dropped** — `webSocketOpen` handler runs after
+  hibernation wake but is not reliably async-awaitable. The hello frame is now sent
+  synchronously via `server.send()` inside `fetch()` before the 101 response.
+- **DO hibernation: `broadcast_to_browsers` empty after wake** — `self.browser_sockets` is
+  reset to `{}` when the DO hibernates. `broadcast_to_browsers` now uses
+  `ctx.getWebSockets()` to enumerate live sockets, falling back to the in-memory dict.
+- **DO hibernation: close handlers lost role/worker_id** — `webSocketClose` compared
+  `ws is self.worker_ws` which is always `False` after hibernation (`self.worker_ws = None`).
+  Role and worker_id are now encoded in the WS attachment (`"role:browser_role:worker_id"`)
+  and recovered via `_socket_role()` / `_socket_worker_id()` in close handlers.
+- **KV `put` with `expirationTtl` fails silently** — Pyodide cannot map Python keyword
+  arguments to the CF Workers KV JS options object. The `expirationTtl` parameter was removed;
+  entries are cleaned up explicitly via `kv.delete()` on disconnect.
+- **CF Bot Fight Mode blocks E2E HTTP requests** — Python `urllib.request` default User-Agent
+  is blocked by CF Bot Fight Mode (error 1010). All E2E HTTP helpers now send
+  `User-Agent: undef-terminal-e2e-test/1.0`.
+
 ---
 
 ## [0.2.0] — 2026-03-07

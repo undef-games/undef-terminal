@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Quick-connect page** — `GET /app/connect` renders a self-contained form for creating
+  ephemeral terminal sessions (SSH / Telnet / Local Shell) without pre-configuring a session
+  definition. `POST /api/connect` creates the session, starts it, and returns a redirect URL.
+- **Ephemeral sessions** — `SessionDefinition.ephemeral: bool = False`; ephemeral sessions are
+  automatically deleted when the last browser disconnects (`on_worker_empty` callback on
+  `TermHub`, wired in `SessionRegistry`).
+- **Dashboard "Quick Connect" button** — the operator dashboard now includes a primary
+  "Quick Connect" link to `/connect` and a "Refresh" button.
+- **Dashboard auto-refresh** — session list polls `GET /api/sessions` every 10 s and updates
+  in place; status chip shows last-updated time. Polling stops when the page is hidden.
+
+### Changed
+
+- **`demo` connector renamed to `shell`** — `DemoSessionConnector` is now `ShellSessionConnector`
+  in `server/connectors/shell.py`; `demo.py` is removed. `KNOWN_CONNECTOR_TYPES` updated to
+  `{"shell", "telnet", "ssh"}`. Default session in `default_server_config()` uses
+  `connector_type="shell"` and display name `"Interactive Shell Session"`.
+
 ---
 
 ## [0.2.0] — 2026-03-07

@@ -19,12 +19,37 @@ def _user_url(base_url: str, session_id: str = "demo-session") -> str:
 
 
 class TestReferenceServerPages:
-    def test_dashboard_links_to_operator_and_replay(self, page: Page, reference_server: str) -> None:
+    def test_dashboard_links_to_operator_replay_and_quick_connect(self, page: Page, reference_server: str) -> None:
         page.goto(f"{reference_server}/app/", wait_until="domcontentloaded")
 
         expect(page.get_by_role("heading", name="undef-terminal-server")).to_be_visible(timeout=5000)
         expect(page.get_by_role("link", name="Operator")).to_be_visible(timeout=5000)
         expect(page.get_by_role("link", name="Replay")).to_be_visible(timeout=5000)
+        expect(page.get_by_role("link", name="Quick Connect")).to_be_visible(timeout=5000)
+        expect(page.get_by_role("button", name="Refresh")).to_be_visible(timeout=5000)
+
+    def test_quick_connect_page_renders_form_and_toggles_fields(self, page: Page, reference_server: str) -> None:
+        page.goto(f"{reference_server}/app/connect", wait_until="domcontentloaded")
+
+        expect(page.get_by_role("heading", name="Quick Connect")).to_be_visible(timeout=5000)
+        expect(page.get_by_role("link", name="← Dashboard")).to_be_visible(timeout=5000)
+
+        # SSH is the default: host/port and credentials visible
+        expect(page.locator("#connect-host")).to_be_visible(timeout=5000)
+        expect(page.locator("#connect-user")).to_be_visible(timeout=5000)
+
+        # Switch to Telnet: host visible, SSH credentials hidden
+        page.locator("#connect-type").select_option("telnet")
+        expect(page.locator("#connect-host")).to_be_visible(timeout=2000)
+        expect(page.locator("#connect-user")).to_be_hidden(timeout=2000)
+
+        # Switch to Local Shell: host and credentials both hidden
+        page.locator("#connect-type").select_option("shell")
+        expect(page.locator("#connect-host")).to_be_hidden(timeout=2000)
+        expect(page.locator("#connect-user")).to_be_hidden(timeout=2000)
+
+        # Connect button present
+        expect(page.get_by_role("button", name="Connect")).to_be_visible(timeout=2000)
 
     def test_user_page_is_shared_and_not_operator_console(self, page: Page, reference_server: str) -> None:
         page.goto(_user_url(reference_server), wait_until="domcontentloaded")
