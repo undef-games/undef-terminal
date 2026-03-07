@@ -299,6 +299,9 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
     ) -> Any:
         _client_id = (http_request.client.host if http_request.client else None) or "unknown"
         if not hub.allow_rest_send_for(_client_id):
+            logger.warning(
+                "rest_send_rate_limited worker_id=%s hijack_id=%s client=%s", worker_id, hijack_id, _client_id
+            )
             return JSONResponse({"error": "rate_limited"}, status_code=429)
         hs = await hub.get_rest_session(worker_id, hijack_id)
         if hs is None:
@@ -332,6 +335,13 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         ok = await hub.send_worker(worker_id, {"type": "input", "data": request.keys, "ts": time.time()})
         if not ok:
             return JSONResponse({"error": "No worker connected for this session."}, status_code=409)
+        logger.info(
+            "rest_send_ok worker_id=%s hijack_id=%s client=%s keys_len=%d",
+            worker_id,
+            hijack_id,
+            _client_id,
+            len(request.keys),
+        )
         await hub.append_event(
             worker_id,
             "hijack_send",
@@ -362,6 +372,9 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
     ) -> Any:
         _client_id = (http_request.client.host if http_request.client else None) or "unknown"
         if not hub.allow_rest_send_for(_client_id):
+            logger.warning(
+                "rest_step_rate_limited worker_id=%s hijack_id=%s client=%s", worker_id, hijack_id, _client_id
+            )
             return JSONResponse({"error": "rate_limited"}, status_code=429)
         hs = await hub.get_rest_session(worker_id, hijack_id)
         if hs is None:
@@ -377,6 +390,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         )
         if not ok:
             return JSONResponse({"error": "No worker connected for this session."}, status_code=409)
+        logger.info("rest_step_ok worker_id=%s hijack_id=%s client=%s", worker_id, hijack_id, _client_id)
         await hub.append_event(worker_id, "hijack_step", {"hijack_id": hijack_id})
         hub.metric("hijack_steps_total")
         fresh_expires = await hub.get_fresh_hijack_expiry(worker_id, hijack_id, hs.lease_expires_at)
@@ -419,7 +433,9 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
             error_msg = (
                 "No worker registered." if err == "not_found" else "Cannot switch to open while hijack is active."
             )
+            logger.warning("rest_input_mode_error worker_id=%s mode=%s err=%s", worker_id, request.input_mode, err)
             return JSONResponse({"error": error_msg}, status_code=status)
+        logger.info("rest_input_mode_ok worker_id=%s mode=%s", worker_id, request.input_mode)
         return {"ok": True, "input_mode": request.input_mode, "worker_id": worker_id}
 
     @router.post("/worker/{worker_id}/disconnect_worker")

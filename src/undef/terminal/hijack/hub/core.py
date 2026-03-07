@@ -204,6 +204,7 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
         return not (expect_regex is not None and not expect_regex.search(str(snapshot.get("screen", ""))))
 
     async def wait_for_snapshot(self, worker_id: str, timeout_ms: int = 1500) -> dict[str, Any] | None:
+        """Poll for a fresh snapshot from *worker_id*, waiting up to *timeout_ms* ms."""
         req_ts = time.time()
         end = req_ts + timeout_ms / 1000.0
         await self.request_snapshot(worker_id)
@@ -227,6 +228,11 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
         timeout_ms: int,
         poll_interval_ms: int,
     ) -> tuple[bool, dict[str, Any] | None, str | None]:
+        """Poll until the snapshot satisfies prompt-id/regex guards or *timeout_ms* elapses.
+
+        Returns ``(matched, snapshot, reason)`` where *reason* is None on success
+        or a short error string on failure.
+        """
         regex_obj: re.Pattern[str] | None = None
         if expect_regex:
             try:

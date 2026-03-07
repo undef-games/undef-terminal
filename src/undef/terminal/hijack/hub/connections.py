@@ -221,9 +221,11 @@ class _ConnectionMixin:
         return self.is_dashboard_hijack_active(st) and st.hijack_owner is ws
 
     async def request_snapshot(self, worker_id: str) -> None:
+        """Send a snapshot_req control frame to the worker (no-op if no worker connected)."""
         await self.send_worker(worker_id, {"type": "snapshot_req", "req_id": str(uuid.uuid4()), "ts": time.time()})
 
     async def request_analysis(self, worker_id: str) -> None:
+        """Send an analyze_req control frame to the worker (no-op if no worker connected)."""
         await self.send_worker(worker_id, {"type": "analyze_req", "req_id": str(uuid.uuid4()), "ts": time.time()})
 
     async def force_release_hijack(self, worker_id: str) -> bool:
