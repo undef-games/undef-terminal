@@ -61,4 +61,5 @@ def test_hijack_acquire_requires_worker_id(wrangler_server: str) -> None:
             status = resp.status
     except urllib.error.HTTPError as exc:
         status = exc.code
-    assert status in {200, 403, 409}, f"unexpected status {status}"
+    # 200 = acquired, 401 = jwt required, 403 = forbidden, 409 = no worker
+    assert status in {200, 401, 403, 409}, f"unexpected status {status}"
