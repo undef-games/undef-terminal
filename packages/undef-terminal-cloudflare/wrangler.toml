@@ -9,8 +9,21 @@ port = 8788
 
 [vars]
 # Set AUTH_MODE=dev for the test deployment (no JWT required).
-# Change to AUTH_MODE=jwt (and configure JWT_JWKS_URI) for production.
+# Change to AUTH_MODE=jwt (and configure JWT_JWKS_URL) for production.
 AUTH_MODE = "dev"
+
+# Cloudflare Access / Zero Trust JWT configuration (production example):
+#
+#   AUTH_MODE        = "jwt"
+#   JWT_JWKS_URL     = "https://<your-team>.cloudflareaccess.com/cdn-cgi/access/certs"
+#   JWT_ISSUER       = "https://<your-team>.cloudflareaccess.com"
+#   JWT_AUDIENCE     = "<your-CF-Access-Application-AUD-tag>"
+#   JWT_ALGORITHMS   = "RS256"
+#   JWT_DEFAULT_ROLE = "operator"   # role assigned to CF Access users (no roles claim by default)
+#
+# CF Access JWTs carry sub (email), aud (array), iss, iat, exp — but no roles.
+# JWT_DEFAULT_ROLE sets the role for those users (viewer / operator / admin).
+# Store secrets via: wrangler secret put AUTH_MODE  (or use .dev.vars for local dev)
 
 [[durable_objects.bindings]]
 name = "SESSION_RUNTIME"

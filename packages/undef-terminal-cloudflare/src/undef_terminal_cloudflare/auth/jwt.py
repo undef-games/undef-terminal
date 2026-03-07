@@ -122,6 +122,13 @@ async def decode_jwt(token: str, config: JwtConfig) -> Principal:
         raw_scope = claims.get(scopes_claim, "")
         if isinstance(raw_scope, str) and raw_scope:
             roles = tuple(part.strip() for part in raw_scope.split() if part.strip())
+
+    # If still no roles (e.g. CF Access JWTs which omit roles by default),
+    # assign the configured default role so operators don't end up as viewers.
+    if not roles:
+        default_role = getattr(config, "jwt_default_role", "viewer") or "viewer"
+        roles = (default_role,)
+
     return Principal(subject_id=sub, roles=roles)
 
 
