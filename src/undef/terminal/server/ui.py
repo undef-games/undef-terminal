@@ -104,68 +104,70 @@ def session_page_html(
 def connect_page_html(title: str, assets_path: str, app_path: str, *, xterm_cdn: str = "", fonts_cdn: str = "") -> str:
     """Return a self-contained quick-connect form page."""
     safe_app = escape(app_path)
-    inline_script = f"""
+    # NOTE: /api/connect is mounted at root (not under app_path) so use the
+    # absolute root path here, not f"{safe_app}/api/connect".
+    inline_script = """
 <script>
-(function () {{
+(function () {
   var form = document.getElementById('connect-form');
   var typeSelect = document.getElementById('connect-type');
   var errorBox = document.getElementById('connect-error');
   var submitBtn = document.getElementById('connect-submit');
 
-  function updateFields() {{
+  function updateFields() {
     var t = typeSelect.value;
     var sshFields = document.querySelectorAll('.field-ssh');
     var hostFields = document.querySelectorAll('.field-host');
-    sshFields.forEach(function (el) {{ el.style.display = (t === 'ssh') ? '' : 'none'; }});
-    hostFields.forEach(function (el) {{ el.style.display = (t === 'ssh' || t === 'telnet') ? '' : 'none'; }});
+    sshFields.forEach(function (el) { el.style.display = (t === 'ssh') ? '' : 'none'; });
+    hostFields.forEach(function (el) { el.style.display = (t === 'ssh' || t === 'telnet') ? '' : 'none'; });
     var portEl = document.getElementById('connect-port');
-    if (portEl && !portEl.dataset.userEdited) {{
+    if (portEl && !portEl.dataset.userEdited) {
       portEl.value = t === 'telnet' ? '23' : '22';
-    }}
-  }}
+    }
+  }
 
   typeSelect.addEventListener('change', updateFields);
-  document.getElementById('connect-port').addEventListener('input', function () {{
+  document.getElementById('connect-port').addEventListener('input', function () {
     this.dataset.userEdited = '1';
-  }});
+  });
   updateFields();
 
-  form.addEventListener('submit', function (e) {{
+  form.addEventListener('submit', function (e) {
     e.preventDefault();
     errorBox.textContent = '';
     submitBtn.disabled = true;
     submitBtn.textContent = 'Connecting\u2026';
     var t = typeSelect.value;
-    var payload = {{ connector_type: t }};
+    var payload = { connector_type: t };
     var name = document.getElementById('connect-name').value.trim();
     if (name) payload.display_name = name;
-    if (t === 'ssh' || t === 'telnet') {{
+    if (t === 'ssh' || t === 'telnet') {
       payload.host = document.getElementById('connect-host').value.trim();
       payload.port = parseInt(document.getElementById('connect-port').value, 10) || (t === 'telnet' ? 23 : 22);
-    }}
-    if (t === 'ssh') {{
+    }
+    if (t === 'ssh') {
       var user = document.getElementById('connect-user').value.trim();
       var pass = document.getElementById('connect-pass').value;
       if (user) payload.username = user;
       if (pass) payload.password = pass;
-    }}
-    fetch('{safe_app}/api/connect', {{
+    }
+    fetch('/api/connect', {
       method: 'POST',
-      headers: {{'Content-Type': 'application/json'}},
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(payload),
-    }})
-      .then(function (r) {{ return r.json().then(function (d) {{ return {{ ok: r.ok, data: d }}; }}); }})
-      .then(function (r) {{
-        if (!r.ok) {{ throw new Error(r.data.detail || 'Connection failed'); }}
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+      .then(function (r) {
+        if (!r.ok) { throw new Error(r.data.detail || 'Connection failed'); }
         window.location.href = r.data.url;
-      }})
-      .catch(function (err) {{
+      })
+      .catch(function (err) {
         errorBox.textContent = err.message;
         submitBtn.disabled = false;
         submitBtn.textContent = 'Connect';
-      }});
-  }});
-}})();
+      });
+  });
+})();
 </script>"""
     field_css = (
         "<style>"

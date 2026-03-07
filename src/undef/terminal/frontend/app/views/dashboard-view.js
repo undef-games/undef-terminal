@@ -8,13 +8,17 @@ function escapeHtml(value) {
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
 }
-function sectionMarkup(title, sessions, appPath) {
+function sectionMarkup(title, sessions, appPath, { showConnectCta = false } = {}) {
     const safeTitle = escapeHtml(title);
     const safeAppPath = escapeHtml(appPath);
     if (sessions.length === 0) {
+        const cta = showConnectCta
+            ? `<a class="btn primary" href="${safeAppPath}/connect">Quick Connect</a>`
+            : "";
         return `
       <section class="card stack">
         <div class="section-heading"><h2>${safeTitle}</h2><div class="small">No sessions.</div></div>
+        ${cta}
       </section>
     `;
     }
@@ -52,7 +56,7 @@ async function refreshSessions(content, status, appPath) {
         status.className = "status-chip ok";
         status.textContent = `${sessions.length} session(s) · ${new Date().toLocaleTimeString()}`;
         content.innerHTML = [
-            sectionMarkup("Running", groups.running, appPath),
+            sectionMarkup("Running", groups.running, appPath, { showConnectCta: true }),
             sectionMarkup("Stopped", groups.stopped, appPath),
             sectionMarkup("Degraded", groups.degraded, appPath),
         ].join("");

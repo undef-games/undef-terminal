@@ -28,6 +28,8 @@ async def update_kv_session(
     connected: bool,
     hijacked: bool = False,
     input_mode: str = "hijack",
+    recording_enabled: bool = False,
+    recording_available: bool = False,
 ) -> None:
     """Write (or delete) this DO's session entry in the KV registry.
 
@@ -53,8 +55,8 @@ async def update_kv_session(
         "connected": True,
         "auto_start": False,
         "tags": [],
-        "recording_enabled": False,
-        "recording_available": False,
+        "recording_enabled": recording_enabled,
+        "recording_available": recording_available,
         "owner": None,
         "visibility": "public",
         "last_error": None,

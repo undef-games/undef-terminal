@@ -51,6 +51,19 @@ class TestReferenceServerPages:
         # Connect button present
         expect(page.get_by_role("button", name="Connect")).to_be_visible(timeout=2000)
 
+    def test_quick_connect_shell_submits_and_redirects_to_session(self, page: Page, reference_server: str) -> None:
+        page.goto(f"{reference_server}/app/connect", wait_until="domcontentloaded")
+
+        page.locator("#connect-type").select_option("shell")
+        page.locator("#connect-name").fill("E2E Shell Test")
+
+        with page.expect_navigation(url=f"{reference_server}/app/session/**", timeout=8000):
+            page.get_by_role("button", name="Connect").click()
+
+        # Session page for the ephemeral shell session should be connected
+        expect(page.get_by_role("heading", name="E2E Shell Test")).to_be_visible(timeout=5000)
+        expect(page.locator("[id$='-statustext']")).to_have_text("Connected (shared)", timeout=5000)
+
     def test_user_page_is_shared_and_not_operator_console(self, page: Page, reference_server: str) -> None:
         page.goto(_user_url(reference_server), wait_until="domcontentloaded")
 
