@@ -12,6 +12,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from undef.terminal.server.connectors import KNOWN_CONNECTOR_TYPES
 from undef.terminal.server.models import (
     AuthConfig,
     RecordingConfig,
@@ -121,6 +122,11 @@ def config_from_mapping(data: dict[str, Any]) -> ServerConfig:
         if not re.match(r"^[\w\-]+$", session_id):
             raise ValueError(f"session_id must match ^[\\w\\-]+$, got: {session_id!r}")
         connector_type = str(raw.get("connector_type", "demo")).strip() or "demo"
+        if connector_type not in KNOWN_CONNECTOR_TYPES:
+            raise ValueError(
+                f"invalid connector_type for {session_id!r}: {connector_type!r} — "
+                f"must be one of {sorted(KNOWN_CONNECTOR_TYPES)}"
+            )
         input_mode = str(raw.get("input_mode", "open")).strip() or "open"
         if input_mode not in {"hijack", "open"}:
             raise ValueError(f"invalid input_mode for {session_id}: {input_mode}")

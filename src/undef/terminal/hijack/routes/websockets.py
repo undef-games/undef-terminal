@@ -301,7 +301,15 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                             },
                         )
                     )
-                    _ = _resume_task
+                    _resume_task.add_done_callback(
+                        lambda t: (
+                            logger.warning(
+                                "ws_disconnect_resume_failed worker_id=%s error=%s", worker_id, t.exception()
+                            )
+                            if not t.cancelled() and t.exception() is not None
+                            else None
+                        )
+                    )
                 await hub.broadcast_hijack_state(worker_id)
                 if _do_resume:
                     hub.notify_hijack_changed(worker_id, enabled=False, owner=None)
@@ -322,5 +330,13 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                             },
                         )
                     )
-                    _ = _resume_task
+                    _resume_task.add_done_callback(
+                        lambda t: (
+                            logger.warning(
+                                "ws_disconnect_resume_failed worker_id=%s error=%s", worker_id, t.exception()
+                            )
+                            if not t.cancelled() and t.exception() is not None
+                            else None
+                        )
+                    )
             await hub.prune_if_idle(worker_id)

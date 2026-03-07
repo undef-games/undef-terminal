@@ -124,6 +124,7 @@ class SshSessionConnector(SessionConnector):
             config=[],
             client_keys=self._client_keys,
             encoding=None,
+            connect_timeout=30,
         )
         process = await conn.create_process(term_type="ansi", term_size=(_COLS, _ROWS), encoding=None)
         self._conn = conn
@@ -175,7 +176,7 @@ class SshSessionConnector(SessionConnector):
     async def handle_input(self, data: str) -> list[dict[str, Any]]:
         stdin = self._stdin
         if stdin is not None:
-            stdin.write(data.encode("latin-1", errors="replace"))
+            stdin.write(data.encode("utf-8", errors="replace"))
             await stdin.drain()
             self._banner = f"Sent {len(data)} characters upstream."
         return [self._snapshot()]

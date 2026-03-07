@@ -51,7 +51,7 @@ def create_page_router() -> APIRouter:
                 fonts_cdn=cfg.ui.fonts_cdn,
             )
         )
-        principal = resolve_http_principal(request, cfg.auth)
+        principal = getattr(request.state, "uterm_principal", None) or resolve_http_principal(request, cfg.auth)
         _set_auth_cookie(response, cfg.auth.principal_cookie, principal.name, secure=secure)
         _set_auth_cookie(response, cfg.auth.surface_cookie, "operator", secure=secure)
         return response
@@ -63,7 +63,7 @@ def create_page_router() -> APIRouter:
             raise HTTPException(status_code=404, detail=f"unknown session: {session_id}")
         cfg = request.app.state.uterm_config
         secure = _is_secure_request(request)
-        principal = resolve_http_principal(request, cfg.auth)
+        principal = getattr(request.state, "uterm_principal", None) or resolve_http_principal(request, cfg.auth)
         authz = request.app.state.uterm_authz
         if not authz.can_read_session(principal, session):
             raise HTTPException(status_code=403, detail="insufficient privileges")
@@ -88,7 +88,7 @@ def create_page_router() -> APIRouter:
             raise HTTPException(status_code=404, detail=f"unknown session: {session_id}")
         cfg = request.app.state.uterm_config
         secure = _is_secure_request(request)
-        principal = resolve_http_principal(request, cfg.auth)
+        principal = getattr(request.state, "uterm_principal", None) or resolve_http_principal(request, cfg.auth)
         authz = request.app.state.uterm_authz
         if not authz.can_read_session(principal, session):
             raise HTTPException(status_code=403, detail="insufficient privileges")
@@ -113,7 +113,7 @@ def create_page_router() -> APIRouter:
             raise HTTPException(status_code=404, detail=f"unknown session: {session_id}")
         cfg = request.app.state.uterm_config
         secure = _is_secure_request(request)
-        principal = resolve_http_principal(request, cfg.auth)
+        principal = getattr(request.state, "uterm_principal", None) or resolve_http_principal(request, cfg.auth)
         authz = request.app.state.uterm_authz
         if not authz.can_read_session(principal, session):
             raise HTTPException(status_code=403, detail="insufficient privileges")

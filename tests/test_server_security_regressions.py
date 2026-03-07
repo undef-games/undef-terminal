@@ -476,3 +476,150 @@ def test_ssh_connector_allows_insecure_no_host_check_flag() -> None:
 
     connector = SshSessionConnector("sess1", "Session 1", {"host": "localhost", "insecure_no_host_check": True})
     assert connector._known_hosts is None
+
+
+# --- Fifth-review regression tests ---
+
+
+async def test_ssh_connector_start_passes_connect_timeout() -> None:
+    """SshSessionConnector.start() must pass connect_timeout=30 to asyncssh.connect."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    pytest.importorskip("asyncssh", reason="asyncssh not installed")
+    from undef.terminal.server.connectors.ssh import SshSessionConnector
+
+    connector = SshSessionConnector("sess1", "Session 1", {"host": "localhost", "insecure_no_host_check": True})
+    mock_process = MagicMock()
+    mock_process.stdin = MagicMock()
+    mock_process.stdout = MagicMock()
+    mock_conn = AsyncMock()
+    mock_conn.create_process = AsyncMock(return_value=mock_process)
+
+    with patch("asyncssh.connect", new_callable=AsyncMock, return_value=mock_conn) as mock_connect:
+        await connector.start()
+        _, kwargs = mock_connect.call_args
+        assert kwargs.get("connect_timeout") == 30
+
+
+async def test_ssh_connector_handle_input_uses_utf8() -> None:
+    """SshSessionConnector.handle_input must encode input as UTF-8, not latin-1."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    pytest.importorskip("asyncssh", reason="asyncssh not installed")
+    from undef.terminal.server.connectors.ssh import SshSessionConnector
+
+    connector = SshSessionConnector("sess1", "Session 1", {"host": "localhost", "insecure_no_host_check": True})
+    mock_stdin = MagicMock()
+    mock_stdin.drain = AsyncMock()
+    connector._stdin = mock_stdin
+    connector._connected = True
+
+    await connector.handle_input("€test")
+    written: bytes = mock_stdin.write.call_args[0][0]
+    assert written == "€test".encode("utf-8", errors="replace")
+    # latin-1 would mangle the euro sign; verify we're not using it
+    assert written != "€test".encode("latin-1", errors="replace")
+
+
+def test_config_from_mapping_rejects_unknown_connector_type() -> None:
+    """config_from_mapping must raise ValueError for an unknown connector_type in [[sessions]]."""
+    with pytest.raises(ValueError, match="invalid connector_type"):
+        config_from_mapping(
+            {
+                "sessions": [
+                    {"session_id": "sess1", "display_name": "S1", "connector_type": "bogus_connector"},
+                ]
+            }
+        )
+
+
+async def test_bridge_stops_on_permanent_http_error() -> None:
+    """TermBridge._run must stop reconnecting on 401/403/404, not back off and retry."""
+    from unittest.mock import MagicMock
+
+    from undef.terminal.hijack.bridge import TermBridge
+
+    class FakeStatusError(Exception):
+        status_code = 403
+
+    class _FakeCtx:
+        async def __aenter__(self) -> None:
+            raise FakeStatusError("Forbidden")
+
+        async def __aexit__(self, *_: object) -> None:
+            return None
+
+    fake_ws = MagicMock()
+    fake_ws.connect = MagicMock(return_value=_FakeCtx())
+
+    bot = MagicMock()
+    bot.session = None
+    bridge = TermBridge(bot, "worker1", "http://localhost:9999")
+
+    import sys
+
+    real_websockets = sys.modules.pop("websockets", None)
+    sys.modules["websockets"] = fake_ws
+    try:
+        await bridge.start()
+        # Poll until the bridge self-stops or we time out.
+        for _ in range(50):
+            await asyncio.sleep(0.02)
+            if not bridge._running:
+                break
+    finally:
+        if real_websockets is not None:
+            sys.modules["websockets"] = real_websockets
+        else:
+            sys.modules.pop("websockets", None)
+
+    assert not bridge._running, "bridge should have stopped after a permanent HTTP error"
+
+
+def test_hijack_acquire_error_message_says_session_not_worker() -> None:
+    """hijack_acquire must return 'for this session', not the previous 'for this worker', in error text."""
+    from fastapi import APIRouter
+
+    from undef.terminal.hijack.hub import TermHub
+    from undef.terminal.hijack.routes import register_rest_routes
+
+    hub = TermHub()
+    router = APIRouter()
+    register_rest_routes(hub, router)
+    app = FastAPI()
+    app.include_router(router)
+
+    with TestClient(app) as client:
+        r = client.post("/worker/no-such-worker/hijack/acquire", json={"owner": "test"})
+        assert r.status_code == 409
+        body = r.json()
+        assert "session" in body["error"].lower()
+        assert "this worker" not in body["error"].lower()
+
+
+def test_pages_use_state_principal_not_double_resolved(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Page routes must use request.state.uterm_principal set by _require_authenticated
+    and must not call resolve_http_principal a second time."""
+    import undef.terminal.server.routes.pages as pages_module
+
+    call_count = {"n": 0}
+    original = pages_module.resolve_http_principal
+
+    def _spy(request: object, auth: object) -> object:
+        call_count["n"] += 1
+        return original(request, auth)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(pages_module, "resolve_http_principal", _spy)
+
+    config = default_server_config()
+    config.auth.mode = "dev"
+    app = create_server_app(config)
+    with TestClient(app) as client:
+        r = client.get(config.ui.app_path + "/")
+        assert r.status_code == 200
+
+    # _require_authenticated sets request.state.uterm_principal before page handlers run;
+    # page routes must use that value without calling resolve_http_principal again.
+    assert call_count["n"] == 0, (
+        f"resolve_http_principal called {call_count['n']} time(s) — expected 0 (state principal reused)"
+    )

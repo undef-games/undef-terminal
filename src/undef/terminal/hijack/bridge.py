@@ -191,6 +191,19 @@ class TermBridge:
                     exc,
                     attempt,
                 )
+                # Permanent failures (auth rejected, wrong URL) will never resolve
+                # on their own — stop retrying immediately rather than backing off.
+                _status = getattr(exc, "status_code", None) or getattr(
+                    getattr(exc, "response", None), "status_code", None
+                )
+                if _status in (401, 403, 404):
+                    logger.error(
+                        "term_bridge_permanent_error worker_id=%s status=%s — stopping reconnect",
+                        self._worker_id,
+                        _status,
+                    )
+                    self._running = False
+                    break
 
             if not self._running:
                 break

@@ -117,7 +117,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
             },
         )
         if not ok:
-            return JSONResponse({"error": "No worker connected for this worker."}, status_code=409)
+            return JSONResponse({"error": "No worker connected for this session."}, status_code=409)
 
         # From here the worker is paused. Guard against CancelledError (client
         # disconnect) or any other exception raised before the session is
@@ -301,7 +301,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         # processes stray keystrokes as normal input — no lock-state corruption.
         ok = await hub.send_worker(worker_id, {"type": "input", "data": request.keys, "ts": time.time()})
         if not ok:
-            return JSONResponse({"error": "No worker connected for this worker."}, status_code=409)
+            return JSONResponse({"error": "No worker connected for this session."}, status_code=409)
         await hub.append_event(
             worker_id,
             "hijack_send",
@@ -346,7 +346,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
             worker_id, {"type": "control", "action": "step", "owner": hs.owner, "lease_s": 0, "ts": time.time()}
         )
         if not ok:
-            return JSONResponse({"error": "No worker connected for this worker."}, status_code=409)
+            return JSONResponse({"error": "No worker connected for this session."}, status_code=409)
         await hub.append_event(worker_id, "hijack_step", {"hijack_id": hijack_id})
         hub.metric("hijack_steps_total")
         fresh_expires = await hub.get_fresh_hijack_expiry(worker_id, hijack_id, hs.lease_expires_at)

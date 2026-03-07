@@ -9,6 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`connector_type` validated at TOML config load time** — `config_from_mapping` now validates
+  `connector_type` against `KNOWN_CONNECTOR_TYPES` for each `[[sessions]]` entry, raising
+  `ValueError` with a descriptive message at startup rather than surfacing the error later via
+  `lifecycle_state == "error"`.
+- **SSH `connect_timeout=30`** — `SshSessionConnector.start()` now passes `connect_timeout=30`
+  to `asyncssh.connect()`, preventing indefinite hangs when connecting to unreachable SSH hosts.
+
+### Changed
+
+- **SSH input encoding** — `SshSessionConnector.handle_input()` now encodes keystrokes as UTF-8
+  instead of latin-1, allowing non-ASCII input (e.g. accented characters, euro sign) to reach
+  the remote shell correctly.
+- **`TermBridge` stops on permanent HTTP errors** — the reconnect loop in `TermBridge._run()` now
+  exits immediately when the server returns HTTP 401, 403, or 404, rather than backing off and
+  retrying indefinitely. These status codes indicate misconfiguration that will not resolve itself.
+- **Page routes reuse authenticated principal** — all four page handlers in `pages.py` now read
+  `request.state.uterm_principal` (set by `_require_authenticated`) instead of calling
+  `resolve_http_principal()` again, eliminating a redundant JWT decode / JWKS fetch per page load.
+- **Fire-and-forget `_resume_task` done callbacks** — the two `asyncio.create_task()` resume calls
+  in `ws_browser_term`'s finally block now have done callbacks that log any failures, matching the
+  pattern already used by the worker-disconnect broadcast tasks.
+
+### Fixed
+
+- **Hijack REST error messages** — three `"No worker connected for this worker."` strings in
+  `rest.py` corrected to `"No worker connected for this session."` (grammatically accurate and
+  consistent with the surrounding context).
+
+### Tests
+
+- **Fifth-review regression suite** — 7 new tests added to
+  `tests/test_server_security_regressions.py`: SSH `connect_timeout=30` forwarded to asyncssh,
+  SSH handle_input encodes as UTF-8, `config_from_mapping` rejects unknown `connector_type`,
+  `TermBridge` self-stops on permanent HTTP 401/403/404, hijack acquire error message says
+  "session" not "worker", and page routes do not call `resolve_http_principal` a second time
+  when `request.state.uterm_principal` is already set.
+
+---
+
+### Added (prior — fourth review)
+
 - **`connector_type` validated at session-creation time** — `POST /api/sessions` now returns
   HTTP 422 immediately when `connector_type` is not one of the built-in types (`demo`,
   `telnet`, `ssh`), rather than returning 200 and only surfacing the error later via
