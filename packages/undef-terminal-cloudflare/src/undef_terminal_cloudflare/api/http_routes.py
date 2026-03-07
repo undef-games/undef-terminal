@@ -37,21 +37,32 @@ async def route_http(runtime: object, request: object) -> Response:
         return json_response({"ok": True, "service": "undef-terminal-cloudflare"})
 
     if path == "/api/sessions":
-        return json_response(
-            {
-                "sessions": [
-                    {
-                        "session_id": runtime.worker_id,
-                        "connected": runtime.worker_ws is not None,
-                        "hijacked": runtime.hijack.session is not None,
-                    }
-                ]
-            }
-        )
+        # NOTE: This DO only knows about its own session. A fleet-wide listing
+        # requires a KV or D1 registry updated on worker connect/disconnect.
+        # The X-Sessions-Scope header signals to clients that the list is not
+        # exhaustive. Response shape mirrors FastAPI SessionRuntimeStatus so
+        # that the dashboard SPA works against either backend.
+        connected = runtime.worker_ws is not None
+        item: dict[str, object] = {
+            "session_id": runtime.worker_id,
+            "display_name": runtime.worker_id,
+            "connector_type": "unknown",
+            "lifecycle_state": "running" if connected else "idle",
+            "input_mode": "hijack",
+            "connected": connected,
+            "auto_start": False,
+            "tags": [],
+            "recording_enabled": False,
+            "recording_path": None,
+            "last_error": None,
+            # CF-specific field — FastAPI clients must tolerate extra keys.
+            "hijacked": runtime.hijack.session is not None,
+        }
+        return json_response([item], headers={"X-Sessions-Scope": "local"})
 
     if path.endswith("/hijack/acquire") and method == "POST":
         # Hijack requires admin role.
-        if runtime.browser_role_for_request(request) != "admin":
+        if await runtime.browser_role_for_request(request) != "admin":
             return json_response({"error": "admin role required"}, status=403)
         payload = await runtime.request_json(request)
         owner = str(payload.get("owner") or "unknown")
@@ -65,11 +76,17 @@ async def route_http(runtime: object, request: object) -> Response:
         await runtime.push_worker_control("pause", owner=owner, lease_s=lease_s)
         await runtime.broadcast_hijack_state()
         return json_response(
-            {"hijack_id": result.session.hijack_id, "lease_expires_at": result.session.lease_expires_at}
+            {
+                "ok": True,
+                "worker_id": runtime.worker_id,
+                "hijack_id": result.session.hijack_id,
+                "lease_expires_at": result.session.lease_expires_at,
+                "owner": owner,
+            }
         )
 
     if "/hijack/" in path and path.endswith("/heartbeat") and method == "POST":
-        if runtime.browser_role_for_request(request) != "admin":
+        if await runtime.browser_role_for_request(request) != "admin":
             return json_response({"error": "admin role required"}, status=403)
         hijack_id = _extract_hijack_id(path)
         if not hijack_id:
@@ -83,10 +100,17 @@ async def route_http(runtime: object, request: object) -> Response:
             return json_response({"error": result.error}, status=409)
         runtime.persist_lease(result.session)
         await runtime.broadcast_hijack_state()
-        return json_response({"lease_expires_at": result.session.lease_expires_at})
+        return json_response(
+            {
+                "ok": True,
+                "worker_id": runtime.worker_id,
+                "hijack_id": hijack_id,
+                "lease_expires_at": result.session.lease_expires_at,
+            }
+        )
 
     if "/hijack/" in path and path.endswith("/release") and method == "POST":
-        if runtime.browser_role_for_request(request) != "admin":
+        if await runtime.browser_role_for_request(request) != "admin":
             return json_response({"error": "admin role required"}, status=403)
         hijack_id = _extract_hijack_id(path)
         if not hijack_id:
@@ -97,10 +121,10 @@ async def route_http(runtime: object, request: object) -> Response:
         runtime.clear_lease()
         await runtime.push_worker_control("resume", owner="release", lease_s=0)
         await runtime.broadcast_hijack_state()
-        return json_response({"released": True})
+        return json_response({"ok": True, "worker_id": runtime.worker_id, "hijack_id": hijack_id})
 
     if "/hijack/" in path and path.endswith("/step") and method == "POST":
-        if runtime.browser_role_for_request(request) != "admin":
+        if await runtime.browser_role_for_request(request) != "admin":
             return json_response({"error": "admin role required"}, status=403)
         hijack_id = _extract_hijack_id(path)
         if not hijack_id:
@@ -111,10 +135,18 @@ async def route_http(runtime: object, request: object) -> Response:
         ok = await runtime.push_worker_control("step", owner=owner, lease_s=0)
         if not ok:
             return json_response({"error": "no_worker"}, status=409)
-        return json_response({"stepped": True})
+        lease_expires_at = runtime.hijack.session.lease_expires_at if runtime.hijack.session is not None else None
+        return json_response(
+            {
+                "ok": True,
+                "worker_id": runtime.worker_id,
+                "hijack_id": hijack_id,
+                "lease_expires_at": lease_expires_at,
+            }
+        )
 
     if "/hijack/" in path and path.endswith("/send") and method == "POST":
-        if runtime.browser_role_for_request(request) != "admin":
+        if await runtime.browser_role_for_request(request) != "admin":
             return json_response({"error": "admin role required"}, status=403)
         hijack_id = _extract_hijack_id(path)
         if not hijack_id:

@@ -42,13 +42,13 @@ def test_session_runtime_extract_token_respects_query_policy() -> None:
     assert runtime._extract_token(request) is None
 
 
-def test_decode_jwt_requires_exp_iat_nbf() -> None:
+async def test_decode_jwt_requires_exp_iat_nbf() -> None:
     token = jwt.encode({"sub": "u1", "roles": ["viewer"]}, "secret", algorithm="HS256")
     with pytest.raises(JwtValidationError):
-        decode_jwt(token, JwtConfig(mode="jwt", public_key_pem="secret", algorithms=("HS256",)))
+        await decode_jwt(token, JwtConfig(mode="jwt", public_key_pem="secret", algorithms=("HS256",)))
 
 
-def test_decode_jwt_rejects_future_nbf_outside_skew() -> None:
+async def test_decode_jwt_rejects_future_nbf_outside_skew() -> None:
     now = int(time.time())
     token = jwt.encode(
         {"sub": "u1", "iat": now, "nbf": now + 120, "exp": now + 3600},
@@ -56,7 +56,7 @@ def test_decode_jwt_rejects_future_nbf_outside_skew() -> None:
         algorithm="HS256",
     )
     with pytest.raises(JwtValidationError):
-        decode_jwt(
+        await decode_jwt(
             token,
             JwtConfig(mode="jwt", public_key_pem="secret", algorithms=("HS256",), clock_skew_seconds=10),
         )
@@ -74,7 +74,7 @@ class _Runtime:
     async def request_json(self, request: object) -> dict[str, object]:
         return json.loads(getattr(request, "_body", "{}"))
 
-    def browser_role_for_request(self, request: object) -> str:
+    async def browser_role_for_request(self, request: object) -> str:
         return self._role
 
     def persist_lease(self, session: object) -> None:

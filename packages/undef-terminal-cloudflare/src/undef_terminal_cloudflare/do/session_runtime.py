@@ -126,7 +126,7 @@ class SessionRuntime(DurableObject):
             logger.debug("failed to parse query token: %s", exc)
         return None
 
-    def _resolve_principal(self, request: object) -> tuple[Any, Response | None]:
+    async def _resolve_principal(self, request: object) -> tuple[Any, Response | None]:
         """Validate JWT auth.
 
         Returns ``(principal, None)`` when auth succeeds or is not required
@@ -142,7 +142,7 @@ class SessionRuntime(DurableObject):
                 headers={"content-type": "application/json"},
             )
         try:
-            principal = decode_jwt(token, self.config.jwt)
+            principal = await decode_jwt(token, self.config.jwt)
             return principal, None
         except JwtValidationError as exc:
             return None, Response(
@@ -151,7 +151,7 @@ class SessionRuntime(DurableObject):
                 headers={"content-type": "application/json"},
             )
 
-    def browser_role_for_request(self, request: object) -> str:
+    async def browser_role_for_request(self, request: object) -> str:
         """Return the caller's role string based on JWT or auth mode.
 
         Returns ``"admin"`` in ``none``/``dev`` mode (open access). In ``jwt`` mode,
@@ -165,7 +165,7 @@ class SessionRuntime(DurableObject):
         if not token:
             return "viewer"
         try:
-            principal = decode_jwt(token, self.config.jwt)
+            principal = await decode_jwt(token, self.config.jwt)
             return _resolve_jwt_role(principal)
         except Exception:
             return "viewer"
@@ -245,7 +245,7 @@ class SessionRuntime(DurableObject):
 
     async def fetch(self, request: object) -> Response:
         # Validate JWT before processing any request.
-        principal, auth_error = self._resolve_principal(request)
+        principal, auth_error = await self._resolve_principal(request)
         if auth_error is not None:
             return auth_error
 

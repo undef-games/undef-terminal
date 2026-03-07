@@ -5,6 +5,70 @@ import time
 from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
 
+# ---------------------------------------------------------------------------
+# REST API response contracts
+#
+# These TypedDicts are the canonical schema for CF REST responses and must
+# stay in sync with the FastAPI backend (undef-terminal SessionRuntimeStatus
+# and hijack route responses).  Any field added to the FastAPI schema must
+# also be added here, with an appropriate CF default documented inline.
+# ---------------------------------------------------------------------------
+
+
+class SessionStatusItem(TypedDict):
+    """Shape of each item in GET /api/sessions.
+
+    Mirrors ``undef-terminal`` ``SessionRuntimeStatus``/``SessionStatus`` (TS).
+    CF-only fields: ``hijacked``.
+    CF fields with synthetic defaults: ``display_name`` (= worker_id),
+    ``connector_type`` ("unknown"), ``lifecycle_state`` ("running"/"idle"),
+    ``auto_start`` (False), ``tags`` ([]), ``recording_enabled`` (False),
+    ``recording_path`` (None), ``last_error`` (None).
+    """
+
+    session_id: str
+    display_name: str
+    connector_type: str
+    lifecycle_state: str
+    input_mode: str
+    connected: bool
+    auto_start: bool
+    tags: list
+    recording_enabled: bool
+    recording_path: str | None
+    last_error: str | None
+    # CF-specific extras (not in FastAPI schema; clients must tolerate them)
+    hijacked: bool
+
+
+class HijackAcquireResponse(TypedDict):
+    ok: bool
+    worker_id: str
+    hijack_id: str
+    lease_expires_at: float
+    owner: str
+
+
+class HijackHeartbeatResponse(TypedDict):
+    ok: bool
+    worker_id: str
+    hijack_id: str
+    lease_expires_at: float
+
+
+class HijackStepResponse(TypedDict):
+    ok: bool
+    worker_id: str
+    hijack_id: str
+    lease_expires_at: float | None
+
+
+class HijackReleaseResponse(TypedDict):
+    ok: bool
+    worker_id: str
+    hijack_id: str
+
+
 FrameType = Literal[
     "snapshot_req",
     "snapshot",
@@ -16,7 +80,7 @@ FrameType = Literal[
     "error",
     "worker_connected",
     "worker_disconnected",
-    # Browser-originated frames (heartbeat/ping keep-alives, WS-level hijack requests).
+    # Browser-originated frames (heartbeat/ping keepalives, WS-level hijack requests).
     # The CF backend routes hijack through REST; these arrive via WS from hijack.js.
     "heartbeat",
     "ping",
