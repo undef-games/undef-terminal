@@ -22,7 +22,12 @@ _ROWS = 25
 class TelnetSessionConnector(SessionConnector):
     """Connect a hosted session to a remote telnet endpoint."""
 
+    _VALID_CONFIG_KEYS: frozenset[str] = frozenset({"host", "port", "input_mode"})
+
     def __init__(self, session_id: str, display_name: str, config: dict[str, Any]) -> None:
+        unknown = set(config) - self._VALID_CONFIG_KEYS
+        if unknown:
+            raise ValueError(f"unknown telnet connector_config keys: {sorted(unknown)}")
         self._session_id = session_id
         self._display_name = display_name
         self._host = str(config.get("host", "127.0.0.1"))

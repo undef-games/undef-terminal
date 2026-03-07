@@ -20,8 +20,10 @@ from undef.terminal.hijack.models import WorkerTermState
 from undef.terminal.hijack.ratelimit import TokenBucket
 
 # Maximum number of per-client rate-limit buckets held in memory at once.
-# On overflow the entire dict is cleared (simple bounded growth).
+# On overflow the oldest half of entries are evicted (LRU-lite), preserving
+# rate-limit state for recently-active clients while bounding memory growth.
 _REST_CLIENT_CACHE_MAX = 1024
+_REST_CLIENT_EVICT_COUNT = _REST_CLIENT_CACHE_MAX // 2
 
 if TYPE_CHECKING:
     import asyncio
@@ -66,18 +68,25 @@ class _ConnectionMixin:
     def allow_rest_acquire_for(self, client_id: str) -> bool:
         """Per-client REST acquire rate limit (also checks the global bucket).
 
-        The per-client dict is capped at ``_REST_CLIENT_CACHE_MAX`` entries;
-        on overflow it is cleared entirely (simple bounded growth).
+        The per-client dict is capped at ``_REST_CLIENT_CACHE_MAX`` entries.
+        On overflow the oldest half of entries are evicted so recently-active
+        clients keep their rate-limit state (avoids a full-clear DoS vector).
         """
         if len(self._rest_acquire_per_client) >= _REST_CLIENT_CACHE_MAX:
-            self._rest_acquire_per_client.clear()
+            for k in list(self._rest_acquire_per_client)[:_REST_CLIENT_EVICT_COUNT]:
+                del self._rest_acquire_per_client[k]
         bucket = self._rest_acquire_per_client.setdefault(client_id, TokenBucket(self._rest_acquire_rate))
         return self._rest_acquire_bucket.allow() and bucket.allow()
 
     def allow_rest_send_for(self, client_id: str) -> bool:
-        """Per-client REST send/step rate limit (also checks the global bucket)."""
+        """Per-client REST send/step rate limit (also checks the global bucket).
+
+        On overflow the oldest half of entries are evicted (same LRU-lite
+        strategy as :meth:`allow_rest_acquire_for`).
+        """
         if len(self._rest_send_per_client) >= _REST_CLIENT_CACHE_MAX:
-            self._rest_send_per_client.clear()
+            for k in list(self._rest_send_per_client)[:_REST_CLIENT_EVICT_COUNT]:
+                del self._rest_send_per_client[k]
         bucket = self._rest_send_per_client.setdefault(client_id, TokenBucket(self._rest_send_rate))
         return self._rest_send_bucket.allow() and bucket.allow()
 

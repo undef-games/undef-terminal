@@ -14,6 +14,11 @@ from typing import Any, Literal, TypeAlias
 
 SessionLifecycle = Literal["stopped", "starting", "running", "error"]
 
+# CDN URLs for xterm.js and fonts loaded into the operator dashboard HTML.
+# These are fetched from third-party CDNs without Subresource Integrity (SRI)
+# hashes.  Operators who require supply-chain isolation should override these
+# via UIConfig.xterm_cdn / UIConfig.fonts_cdn to point to self-hosted copies,
+# or add SRI attributes by customising the UI template.
 XTERM_CDN_DEFAULT = "https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0"
 FONTS_CDN_DEFAULT = "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&display=swap"
 

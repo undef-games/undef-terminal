@@ -161,3 +161,49 @@ class TestRecvLoopCleanReturn:
             await asyncio.gather(bridge._run(), _stop_soon())
 
         assert recv_call_count >= 2
+
+
+# ---------------------------------------------------------------------------
+# attach_session watcher: CP437 decode
+# ---------------------------------------------------------------------------
+
+
+class TestAttachSessionCp437Decode:
+    """bridge.py — watcher must decode raw bytes using CP437, not latin-1."""
+
+    def test_watcher_decodes_cp437_box_drawing(self) -> None:
+        """Box-drawing bytes (e.g. 0xC4 = ─) must survive the decode round-trip."""
+        import asyncio
+        from unittest.mock import MagicMock
+
+        from undef.terminal.hijack.bridge import TermBridge
+
+        bot = MagicMock()
+        watcher_cb: list = []
+        session = MagicMock()
+
+        def _capture_watcher(cb, **_kw):
+            watcher_cb.append(cb)
+
+        session.add_watch = _capture_watcher
+        bot.session = session
+
+        bridge = TermBridge.__new__(TermBridge)
+        bridge._bot = bot
+        bridge._worker_id = "test"
+        bridge._latest_snapshot = {}
+        bridge._send_q = asyncio.Queue()
+        bridge._attached_session = None
+
+        bridge.attach_session()
+        assert watcher_cb, "add_watch was not called"
+
+        # 0xC4 in CP437 is the horizontal box-drawing character ─ (U+2500).
+        # In latin-1 it decodes to Ä (U+00C4) — a different character.
+        raw = bytes([0xC4, 0xC4, 0xC4])
+        watcher_cb[0]({}, raw)
+
+        queued = bridge._send_q.get_nowait()
+        assert queued["data"] == "─" * 3, (
+            f"expected CP437 box-drawing '─', got {queued['data']!r} — bridge watcher is not using CP437 decode"
+        )

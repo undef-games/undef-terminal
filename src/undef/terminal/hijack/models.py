@@ -68,7 +68,7 @@ class WorkerTermState:
 
 
 class HijackAcquireRequest(BaseModel):
-    owner: str = Field("operator", max_length=200)
+    owner: str = Field("operator", min_length=1, max_length=200)
     lease_s: int = Field(90, ge=1, le=3600)
 
 

@@ -41,6 +41,7 @@ class _HijackOwnershipMixin:
     _dashboard_hijack_lease_s: int
 
     async def cleanup_expired_hijack(self, worker_id: str) -> bool:
+        """Expire any stale REST or dashboard leases for *worker_id*; send resume if fully released."""
         now = time.time()
         rest_expired = False
         dashboard_expired = False
@@ -100,6 +101,7 @@ class _HijackOwnershipMixin:
         return True
 
     async def get_rest_session(self, worker_id: str, hijack_id: str) -> HijackSession | None:
+        """Return the active REST hijack session matching *hijack_id*, or None if expired/missing."""
         await self.cleanup_expired_hijack(worker_id)
         async with self._lock:
             st = self._workers.get(worker_id)
@@ -161,6 +163,7 @@ class _HijackOwnershipMixin:
         return True, None
 
     async def touch_hijack_owner(self, worker_id: str, lease_s: int | None = None) -> float | None:
+        """Extend the dashboard WS hijack lease; returns new expiry timestamp or None if no owner."""
         async with self._lock:
             st = self._workers.get(worker_id)
             if st is None or st.hijack_owner is None:

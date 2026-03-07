@@ -197,7 +197,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         try:
             role = await hub.resolve_role_for_browser(websocket, worker_id)
         except BrowserRoleResolutionError:
-            await websocket.close(code=1011, reason="browser role resolution failed")
+            await websocket.close(code=1008, reason="browser role resolution failed")
             return
         if role not in VALID_ROLES:
             role = "viewer"

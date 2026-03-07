@@ -11,9 +11,12 @@ import asyncio
 import base64
 import contextlib
 import json
+import logging
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from io import TextIOWrapper
@@ -41,6 +44,7 @@ class SessionLogger:
         self._context: dict[str, str] = {}
         self._max_bytes = max_bytes  # 0 = unlimited
         self._bytes_written = 0
+        self._quota_warned = False
 
     async def start(self, session_id: str) -> None:
         """Open log file and write a ``log_start`` header entry."""
@@ -128,6 +132,13 @@ class SessionLogger:
         if not self._file:
             return
         if self._max_bytes > 0 and self._bytes_written >= self._max_bytes:
+            if not self._quota_warned:
+                self._quota_warned = True
+                logger.warning(
+                    "session_logger_quota_reached path=%s max_bytes=%d — further writes suppressed",
+                    self._log_path,
+                    self._max_bytes,
+                )
             return
         record: dict[str, Any] = {"ts": time.time(), "event": event, "data": data}
         if self._session_id is not None:

@@ -20,6 +20,14 @@ that can reach the router can acquire a hijack lease and send keystrokes to any
 worker.  You *must* protect the router at the application layer before exposing it
 to untrusted clients.  Typical approaches:
 
+.. rubric:: CSRF
+
+These endpoints are designed to be called by server-side agents or API clients
+using an ``Authorization: Bearer <token>`` header.  If you expose them to
+browser-based callers that authenticate via session cookies you **must** add
+CSRF protection at the application layer (e.g. a double-submit cookie, a
+synchroniser token, or ``SameSite=Strict`` on session cookies).
+
 * Mount the router behind a FastAPI dependency that validates an API key or
   session token::
 
@@ -92,6 +100,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
     ) -> Any:
         _client_id = (http_request.client.host if http_request.client else None) or "unknown"
         if not hub.allow_rest_acquire_for(_client_id):
+            logger.warning("rest_acquire_rate_limited client=%s worker_id=%s", _client_id, worker_id)
             return JSONResponse({"error": "rate_limited"}, status_code=429)
         if request is None:
             request = HijackAcquireRequest.model_validate({})
@@ -136,6 +145,19 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
             if not acquired:
                 if err == "already_hijacked":
                     hub.metric("hijack_conflicts_total")
+                    logger.warning(
+                        "rest_acquire_conflict worker_id=%s owner=%s client=%s",
+                        worker_id,
+                        request.owner,
+                        _client_id,
+                    )
+                else:
+                    logger.warning(
+                        "rest_acquire_no_worker worker_id=%s owner=%s client=%s",
+                        worker_id,
+                        request.owner,
+                        _client_id,
+                    )
                 # session_committed=True prevents the finally block from
                 # sending a second resume.  If err=="no_worker" (worker
                 # disconnected between _send_worker and the lock), _send_worker
@@ -161,6 +183,14 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
                 return JSONResponse({"error": error_msg}, status_code=409)
             session_committed = True
             hub.metric("hijack_acquires_total")
+            logger.info(
+                "rest_acquire_ok worker_id=%s hijack_id=%s owner=%s lease_s=%d client=%s",
+                worker_id,
+                hijack_id,
+                request.owner,
+                lease_s,
+                _client_id,
+            )
             hub.notify_hijack_changed(worker_id, enabled=True, owner=request.owner)
             await hub.append_event(
                 worker_id, "hijack_acquired", {"hijack_id": hijack_id, "owner": request.owner, "lease_s": lease_s}
@@ -372,6 +402,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
             )
             hub.notify_hijack_changed(worker_id, enabled=False, owner=None)
         hub.metric("hijack_releases_total")
+        logger.info("rest_release_ok worker_id=%s hijack_id=%s owner=%s", worker_id, hijack_id, hs.owner)
         await hub.append_event(worker_id, "hijack_released", {"hijack_id": hijack_id, "owner": hs.owner})
         await hub.broadcast_hijack_state(worker_id)
         await hub.prune_if_idle(worker_id)
@@ -397,5 +428,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
     ) -> Any:
         ok = await hub.disconnect_worker(worker_id)
         if not ok:
+            logger.warning("rest_disconnect_no_worker worker_id=%s", worker_id)
             return JSONResponse({"error": "No worker connected."}, status_code=404)
+        logger.info("rest_disconnect_ok worker_id=%s", worker_id)
         return {"ok": True, "worker_id": worker_id}

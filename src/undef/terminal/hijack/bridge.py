@@ -32,6 +32,12 @@ from undef.terminal.hijack.models import _safe_int
 
 logger = logging.getLogger(__name__)
 
+# Optional: websockets.exceptions.InvalidURI — used to detect malformed URLs
+# as a permanent failure in the reconnect loop.  None when websockets < 10.
+_InvalidURI: type | None = None
+with contextlib.suppress(ImportError):
+    from websockets.exceptions import InvalidURI as _InvalidURI
+
 
 def _to_ws_url(manager_url: str, path: str) -> str:
     base = manager_url.rstrip("/")
@@ -121,7 +127,7 @@ class TermBridge:
             self._latest_snapshot = snapshot
             if not raw:
                 return
-            text = raw.decode("latin-1", errors="replace")
+            text = raw.decode("cp437", errors="replace")
             try:
                 self._send_q.put_nowait({"type": "term", "data": text, "ts": time.time()})
             except asyncio.QueueFull:
@@ -201,6 +207,14 @@ class TermBridge:
                         "term_bridge_permanent_error worker_id=%s status=%s — stopping reconnect",
                         self._worker_id,
                         _status,
+                    )
+                    self._running = False
+                    break
+                if _InvalidURI is not None and isinstance(exc, _InvalidURI):
+                    logger.error(
+                        "term_bridge_permanent_error worker_id=%s error=%s — malformed URL, stopping reconnect",
+                        self._worker_id,
+                        exc,
                     )
                     self._running = False
                     break

@@ -31,7 +31,26 @@ _ROWS = 25
 class SshSessionConnector(SessionConnector):
     """Connect a hosted session to a remote SSH shell."""
 
+    _VALID_CONFIG_KEYS: frozenset[str] = frozenset(
+        {
+            "host",
+            "port",
+            "username",
+            "password",
+            "client_keys",
+            "client_key_path",
+            "client_key",
+            "client_key_data",
+            "known_hosts",
+            "insecure_no_host_check",
+            "input_mode",
+        }
+    )
+
     def __init__(self, session_id: str, display_name: str, config: dict[str, Any]) -> None:
+        unknown = set(config) - self._VALID_CONFIG_KEYS
+        if unknown:
+            raise ValueError(f"unknown ssh connector_config keys: {sorted(unknown)}")
         raw_client_keys = config.get("client_keys")
         client_keys: list[Any] = []
         if raw_client_keys is not None:

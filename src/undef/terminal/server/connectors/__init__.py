@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 from undef.terminal.server.connectors.base import SessionConnector
@@ -17,9 +18,16 @@ __all__ = [
     "KNOWN_CONNECTOR_TYPES",
     "DemoSessionConnector",
     "SessionConnector",
+    "SshSessionConnector",
     "TelnetSessionConnector",
     "build_connector",
 ]
+
+# SshSessionConnector is conditionally available (requires asyncssh).
+# Import lazily at module level for __all__ discoverability; callers that
+# need the class at runtime should catch ImportError if asyncssh is absent.
+with contextlib.suppress(ImportError):
+    from undef.terminal.server.connectors.ssh import SshSessionConnector
 
 # Connector types recognised by build_connector().  Used by the registry to
 # validate connector_type at session-creation time so callers get a 422 instead

@@ -19,6 +19,11 @@ _SessionId = Annotated[str, Path(pattern=r"^[\w\-]+$")]
 
 
 def _is_secure_request(request: Request) -> bool:
+    # Trust X-Forwarded-Proto only when the app is behind a known reverse proxy.
+    # If the app is deployed without a proxy, a client can forge this header to
+    # manipulate the Secure flag on auth cookies.  This is acceptable because:
+    # (a) cookies are also HttpOnly+SameSite=Lax, and (b) operators who run
+    # without a reverse proxy should use HTTPS directly (request.url.scheme).
     forwarded_proto = str(request.headers.get("x-forwarded-proto", "")).lower()
     if "https" in forwarded_proto:
         return True

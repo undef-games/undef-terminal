@@ -246,7 +246,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
             CORSMiddleware,
             allow_origins=config.server.allowed_origins,
             allow_credentials=True,
-            allow_methods=["*"],
+            allow_methods=["GET", "POST", "OPTIONS"],
             allow_headers=["*"],
         )
 

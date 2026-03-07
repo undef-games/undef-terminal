@@ -22,10 +22,9 @@ from contextlib import suppress
 from typing import Any
 
 try:
-    from fastapi import WebSocket, WebSocketException
+    from fastapi import APIRouter, WebSocket, WebSocketException
 except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required for TermHub: pip install 'undef-terminal[websocket]'") from _e
-
 import logging
 
 from undef.terminal.hijack.hub.connections import _ConnectionMixin
@@ -35,7 +34,7 @@ from undef.terminal.hijack.ratelimit import TokenBucket
 
 logger = logging.getLogger(__name__)
 
-# Callback: (worker_id, is_hijacked, owner_or_None)
+# Callback type aliases
 HijackStateCallback = Callable[[str, bool, str | None], Awaitable[None] | None]
 BrowserRoleResolver = Callable[[WebSocket, str], str | None | Awaitable[str | None]]
 MetricCallback = Callable[[str, int], None]
@@ -51,9 +50,13 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
     Manages the lifecycle of worker / browser terminal streams and hijack leases.
 
     Args:
-        on_hijack_changed: Optional async or sync callback invoked whenever hijack
-            state changes for any worker. Signature: ``(worker_id, hijacked, owner) -> None``.
-        dashboard_hijack_lease_s: Default dashboard WS hijack lease duration in seconds.
+        on_hijack_changed: ``(worker_id, hijacked, owner) -> None`` fired on any
+            hijack state change (async or sync).
+        dashboard_hijack_lease_s: Default WS hijack lease duration in seconds.
+        resolve_browser_role: ``(ws, worker_id) -> str | None`` — returns
+            ``"viewer"``, ``"operator"``, or ``"admin"`` for each browser; ``None``
+            defaults to ``"viewer"``. Raise :class:`BrowserRoleResolutionError`
+            to close the socket with 1008.
     """
 
     def __init__(
@@ -84,13 +87,12 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
         self._rest_send_rate = max(0.1, float(rest_send_rate_limit_per_sec))
         self._rest_acquire_bucket = TokenBucket(self._rest_acquire_rate)
         self._rest_send_bucket = TokenBucket(self._rest_send_rate)
-        # Per-client buckets for fine-grained rate limiting.
-        # Capped at _REST_CLIENT_CACHE_MAX entries; cleared entirely on overflow
-        # (simple bounded growth — no LRU needed for typical deployment sizes).
+        # Per-client buckets; oldest half evicted when cache exceeds _REST_CLIENT_CACHE_MAX.
         self._rest_acquire_per_client: dict[str, TokenBucket] = {}
         self._rest_send_per_client: dict[str, TokenBucket] = {}
 
     def metric(self, name: str, value: int = 1) -> None:
+        """Emit a named metric via the configured on_metric callback."""
         callback = self._on_metric
         if callback is None:
             return
@@ -101,15 +103,18 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
 
     @staticmethod
     def clamp_lease(lease_s: int) -> int:
+        """Clamp a lease duration to [1, 3600] seconds."""
         return max(1, min(int(lease_s), 3600))
 
     @staticmethod
     def has_valid_rest_lease(st: WorkerTermState) -> bool:
+        """Return True if *st* has an unexpired REST hijack session."""
         hs = st.hijack_session
         return hs is not None and hs.lease_expires_at > time.time()
 
     @staticmethod
     def is_dashboard_hijack_active(st: WorkerTermState) -> bool:
+        """Return True if a dashboard WS hijack owner exists and its lease has not expired."""
         if st.hijack_owner is None:
             return False
         if st.hijack_owner_expires_at is None:
@@ -117,6 +122,7 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
         return st.hijack_owner_expires_at > time.time()
 
     def is_hijacked(self, st: WorkerTermState) -> bool:
+        """Return True if *st* is under any active hijack (dashboard WS or REST)."""
         return self.is_dashboard_hijack_active(st) or self.has_valid_rest_lease(st)
 
     async def _get(self, worker_id: str) -> WorkerTermState:
@@ -128,6 +134,7 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
             return st
 
     def notify_hijack_changed(self, worker_id: str, *, enabled: bool, owner: str | None = None) -> None:
+        """Fire the on_hijack_changed callback (sync or async) without blocking."""
         cb = self._on_hijack_changed
         if cb is None:
             return
@@ -155,11 +162,8 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
                 except TimeoutError as exc:
                     logger.warning("resolve_browser_role_timeout worker_id=%s", worker_id)
                     raise BrowserRoleResolutionError(worker_id) from exc
-        except BrowserRoleResolutionError:
-            raise
-        except WebSocketException:
-            # Re-raise directly so the caller receives the original close code
-            # (e.g. 1008 policy violation) rather than a generic 1011 error.
+        except (BrowserRoleResolutionError, WebSocketException):
+            # Re-raise so the caller sees the original close code / error type.
             raise
         except Exception as exc:
             logger.warning("resolve_browser_role_failed worker_id=%s error=%s", worker_id, exc)
@@ -171,6 +175,7 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
         return role
 
     async def append_event(self, worker_id: str, event_type: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Append a timestamped event to the worker's event ring buffer and return it."""
         payload = data or {}
         async with self._lock:
             st = self._workers.get(worker_id)
@@ -191,6 +196,7 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
         expect_prompt_id: str | None,
         expect_regex: re.Pattern[str] | None,
     ) -> bool:
+        """Return True if *snapshot* satisfies the prompt-id and/or regex guard."""
         if snapshot is None:
             return False
         if expect_prompt_id and extract_prompt_id(snapshot) != expect_prompt_id:
@@ -254,6 +260,7 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
         return False, last_snapshot, "prompt_guard_not_satisfied"
 
     async def broadcast(self, worker_id: str, msg: dict[str, Any]) -> None:
+        """Send *msg* to all browser WebSockets registered for *worker_id*."""
         async with self._lock:
             st = self._workers.get(worker_id)
             if st is None:
@@ -273,6 +280,7 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
                 await self.broadcast_hijack_state(worker_id)
 
     async def broadcast_hijack_state(self, worker_id: str) -> None:
+        """Send a hijack_state message to every browser for *worker_id*, cleaning up dead sockets."""
         async with self._lock:
             st = self._workers.get(worker_id)
             if st is None:
@@ -354,6 +362,7 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
                     )
 
     async def send_worker(self, worker_id: str, msg: dict[str, Any]) -> bool:
+        """Send *msg* to the worker WebSocket; returns False if no worker is connected."""
         async with self._lock:
             st = self._workers.get(worker_id)
             if st is None or st.worker_ws is None:
@@ -381,6 +390,7 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
                 logger.debug("pruned idle worker_id=%s", worker_id)
 
     async def hijack_state_msg_for(self, worker_id: str, ws: WebSocket) -> dict[str, Any]:
+        """Build a hijack_state dict for *ws*, setting owner='me' if *ws* holds the lease."""
         async with self._lock:
             st = self._workers.get(worker_id)
             if st is None:
@@ -479,10 +489,8 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
                 return []
             return list(st.events)[-max(1, min(limit, 500)) :]
 
-    def create_router(self) -> Any:
+    def create_router(self) -> APIRouter:
         """Create and return a FastAPI ``APIRouter`` with all terminal routes registered."""
-        from fastapi import APIRouter
-
         from undef.terminal.hijack.routes.rest import register_rest_routes
         from undef.terminal.hijack.routes.websockets import register_ws_routes
 

@@ -271,6 +271,50 @@ class TestSessionLoggerRunningLoopRegression:
         await log.stop()
 
 
+class TestSessionLoggerQuota:
+    """Tests for max_bytes quota enforcement."""
+
+    async def test_writes_stop_at_quota(self, tmp_path: Path) -> None:
+        """Once max_bytes is reached, further writes are silently dropped."""
+        log_path = tmp_path / "quota.jsonl"
+        # Set a very small quota so any post-start write exceeds it.
+        logger = SessionLogger(log_path, max_bytes=1)
+        await logger.start(session_id="q1")
+        await logger.log_event("should_be_dropped", {"x": 1})
+        await logger.stop()
+
+        lines = [json.loads(line) for line in log_path.read_text().splitlines() if line.strip()]
+        event_types = [rec["event"] for rec in lines]
+        assert "should_be_dropped" not in event_types
+
+    async def test_quota_warned_flag_set_on_first_suppressed_write(self, tmp_path: Path) -> None:
+        """_quota_warned is False before the quota is hit and True after."""
+        log_path = tmp_path / "quota_flag.jsonl"
+        logger = SessionLogger(log_path, max_bytes=1)
+        await logger.start(session_id="q2")
+        assert logger._quota_warned is False
+        await logger.log_event("drop1", {})
+        assert logger._quota_warned is True
+        await logger.stop()
+
+    async def test_quota_warning_logged_exactly_once(self, tmp_path: Path) -> None:
+        """logger.warning() is called exactly once across multiple suppressed writes."""
+        from unittest.mock import patch
+
+        log_path = tmp_path / "quota_once.jsonl"
+        logger = SessionLogger(log_path, max_bytes=1)
+        await logger.start(session_id="q3")
+
+        with patch("undef.terminal.session_logger.logger") as mock_log:
+            await logger.log_event("drop1", {})
+            await logger.log_event("drop2", {})
+            await logger.log_event("drop3", {})
+
+        warning_calls = [c for c in mock_log.warning.call_args_list if "quota_reached" in str(c)]
+        assert len(warning_calls) == 1, f"expected exactly 1 quota warning, got {len(warning_calls)}"
+        await logger.stop()
+
+
 class TestSessionLoggerCloseViaExecutor:
     """Regression fix (round-8): file.close() must be dispatched via run_in_executor,
     not called inline on the event loop thread."""
