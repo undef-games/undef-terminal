@@ -51,8 +51,9 @@ class Default(WorkerEntrypoint):
         if path == "/api/sessions":
             # Fleet-wide list: query KV registry populated by each DO on connect/disconnect.
             # Falls back to empty list when SESSION_REGISTRY KV binding is not configured.
+            kv_configured = getattr(self.env, "SESSION_REGISTRY", None) is not None
             sessions = await list_kv_sessions(self.env)
-            scope = "fleet" if sessions else "local"
+            scope = "fleet" if kv_configured else "local"
             return json_response(sessions, headers={"X-Sessions-Scope": scope})
 
         if path.startswith("/assets/"):

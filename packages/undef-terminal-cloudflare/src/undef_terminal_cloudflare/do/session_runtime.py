@@ -69,7 +69,7 @@ class SessionRuntime(DurableObject):
         # session row — investigate the routing configuration.
         return "default"
 
-    def _ws_key(self, ws: Any) -> str:
+    def ws_key(self, ws: Any) -> str:
         try:
             existing = getattr(ws, "_ut_ws_key", None)
             if isinstance(existing, str) and existing:
@@ -103,6 +103,9 @@ class SessionRuntime(DurableObject):
         snapshot = row.get("last_snapshot")
         if isinstance(snapshot, dict):
             self.last_snapshot = snapshot
+        stored_mode = row.get("input_mode")
+        if stored_mode in {"hijack", "open"}:
+            self.input_mode = stored_mode
 
     # ------------------------------------------------------------------
     # Auth helpers
@@ -233,7 +236,7 @@ class SessionRuntime(DurableObject):
         return "admin"
 
     def _register_socket(self, ws: Any, role: str) -> None:
-        ws_id = self._ws_key(ws)
+        ws_id = self.ws_key(ws)
         if role == "worker":
             self.worker_ws = ws
             return
@@ -282,7 +285,7 @@ class SessionRuntime(DurableObject):
         return await route_http(self, request)
 
     async def webSocketOpen(self, ws: Any) -> None:  # noqa: N802
-        ws_id = self._ws_key(ws)
+        ws_id = self.ws_key(ws)
         role = self._socket_role(ws)
         self._register_socket(ws, role)
         if role == "worker":
@@ -310,10 +313,6 @@ class SessionRuntime(DurableObject):
                     "role": browser_role,
                     "hijack_control": "rest",
                     "hijack_step_supported": True,
-                    "capabilities": {
-                        "hijack_control": "rest",
-                        "hijack_step_supported": True,
-                    },
                     "ts": time.time(),
                 },
             )
@@ -336,7 +335,7 @@ class SessionRuntime(DurableObject):
 
     def _remove_ws(self, ws: Any) -> None:
         """Remove *ws* from all socket registries (worker, browser, raw)."""
-        ws_id = self._ws_key(ws)
+        ws_id = self.ws_key(ws)
         if ws is self.worker_ws:
             self.worker_ws = None
         self.browser_sockets.pop(ws_id, None)
@@ -405,7 +404,7 @@ class SessionRuntime(DurableObject):
             await result
 
     async def send_hijack_state(self, ws: Any) -> None:
-        ws_id = self._ws_key(ws)
+        ws_id = self.ws_key(ws)
         session = self.hijack.session
         owner = None
         if session is not None:

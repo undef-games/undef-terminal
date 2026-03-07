@@ -53,9 +53,16 @@ async def _resolve_signing_key(token: str, config: JwtConfig) -> Any:
         jwks = jwt.PyJWKSet.from_dict(jwks_data)
         headers = jwt.get_unverified_header(token)
         kid = headers.get("kid")
+        alg = headers.get("alg")
         for key in jwks.keys:
-            if kid is None or key.key_id == kid:
-                return key.key
+            if kid is not None:
+                if key.key_id == kid:
+                    return key.key
+            else:
+                # No kid: match by algorithm to avoid returning an incompatible key.
+                key_alg = getattr(key, "algorithm_name", None)
+                if alg is None or key_alg is None or key_alg == alg:
+                    return key.key
         raise JwtValidationError("no matching key found in JWKS")
     if config.public_key_pem:
         return config.public_key_pem

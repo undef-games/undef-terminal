@@ -9,11 +9,14 @@ class_name = "SessionRuntime"
 
 [[kv_namespaces]]
 # Fleet-wide session registry: each DO writes its status here on connect/disconnect.
-# Create with: wrangler kv namespace create SESSION_REGISTRY
-# Then replace the id below with the real namespace ID from that command.
+# BEFORE DEPLOYING: replace both placeholder IDs with real namespace IDs.
+#   1. Run: wrangler kv namespace create SESSION_REGISTRY
+#   2. Run: wrangler kv namespace create SESSION_REGISTRY --preview
+#   3. Replace the zeros below with the IDs printed by those commands.
+# Without real IDs, GET /api/sessions will return an empty list (no sessions visible).
 binding = "SESSION_REGISTRY"
-id = "00000000000000000000000000000000"
-preview_id = "00000000000000000000000000000000"
+id = "00000000000000000000000000000000"          # REPLACE with production namespace ID
+preview_id = "00000000000000000000000000000000"  # REPLACE with preview namespace ID
 
 [[migrations]]
 tag = "v1"
