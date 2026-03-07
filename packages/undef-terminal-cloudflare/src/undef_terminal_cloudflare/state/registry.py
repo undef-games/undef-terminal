@@ -61,7 +61,10 @@ async def update_kv_session(
         "hijacked": hijacked,
     }
     try:
-        await kv.put(key, json.dumps(status, ensure_ascii=True), expirationTtl=_KV_EXPIRATION_TTL)
+        # Note: do NOT pass expirationTtl as a keyword argument — CF Python Workers
+        # (Pyodide) cannot map Python kwargs to the JS options object for KV.put().
+        # Entries are cleaned up explicitly on disconnect via kv.delete().
+        await kv.put(key, json.dumps(status, ensure_ascii=True))
     except Exception as exc:
         logger.debug("kv put %s failed: %s", key, exc)
 

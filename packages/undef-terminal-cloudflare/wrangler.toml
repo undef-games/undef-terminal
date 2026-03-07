@@ -1,10 +1,16 @@
 name = "undef-terminal-cloudflare"
+account_id = "0cd7f4f58f13e02c5bf57aa9dc347d1d"
 main = "src/undef_terminal_cloudflare/entry.py"
 compatibility_date = "2026-03-04"
 compatibility_flags = ["python_workers"]
 
 [dev]
 port = 8788
+
+[vars]
+# Set AUTH_MODE=dev for the test deployment (no JWT required).
+# Change to AUTH_MODE=jwt (and configure JWT_JWKS_URI) for production.
+AUTH_MODE = "dev"
 
 [[durable_objects.bindings]]
 name = "SESSION_RUNTIME"
@@ -18,8 +24,8 @@ class_name = "SessionRuntime"
 #   3. Replace the zeros below with the IDs printed by those commands.
 # Without real IDs, GET /api/sessions will return an empty list (no sessions visible).
 binding = "SESSION_REGISTRY"
-id = "00000000000000000000000000000000"          # REPLACE with production namespace ID
-preview_id = "00000000000000000000000000000000"  # REPLACE with preview namespace ID
+id = "73112ec463934662b4f2891e713d04f9"
+preview_id = "45447d3587fc4e4598416a5df9e373e9"
 
 [[migrations]]
 tag = "v1"
