@@ -29,7 +29,7 @@ class TestReferenceServerPages:
     def test_user_page_is_shared_and_not_operator_console(self, page: Page, reference_server: str) -> None:
         page.goto(_user_url(reference_server), wait_until="domcontentloaded")
 
-        expect(page.get_by_role("heading", name="Interactive Demo Session")).to_be_visible(timeout=5000)
+        expect(page.get_by_role("heading", name="Interactive Shell Session")).to_be_visible(timeout=5000)
         expect(page.locator("[id$='-statustext']")).to_have_text("Connected (shared)", timeout=5000)
         expect(page.locator("#btn-refresh")).to_have_count(0)
         expect(page.get_by_role("button", name="Hijack")).to_have_count(0)
@@ -50,7 +50,7 @@ class TestReferenceServerPages:
         expect(page.locator("[id$='-statustext']")).to_have_text("Connected (shared)", timeout=5000)
 
         page.get_by_role("link", name="Replay").click()
-        expect(page.get_by_role("heading", name="Interactive Demo Session (demo-session)")).to_be_visible(timeout=5000)
+        expect(page.get_by_role("heading", name="Interactive Shell Session (demo-session)")).to_be_visible(timeout=5000)
         expect(page.get_by_role("link", name="Download JSONL")).to_be_visible(timeout=5000)
         expect(page.locator("#replay-meta")).not_to_have_text("Loading recording…", timeout=5000)
         expect(page.locator("#replay-list button").first).to_be_visible(timeout=5000)
