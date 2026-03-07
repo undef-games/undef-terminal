@@ -17,7 +17,7 @@ try:
     from undef_terminal_cloudflare.bridge.hijack import HijackCoordinator, HijackSession
     from undef_terminal_cloudflare.cf_types import DurableObject, Response
     from undef_terminal_cloudflare.config import CloudflareConfig
-    from undef_terminal_cloudflare.state.registry import update_kv_session
+    from undef_terminal_cloudflare.state.registry import KV_REFRESH_S, update_kv_session
     from undef_terminal_cloudflare.state.store import LeaseRecord, SqliteStateStore
 except Exception:
     from api.http_routes import route_http  # type: ignore[import-not-found]
@@ -27,7 +27,7 @@ except Exception:
     from bridge.hijack import HijackCoordinator, HijackSession  # type: ignore[import-not-found]
     from cf_types import DurableObject, Response  # type: ignore[import-not-found]
     from config import CloudflareConfig  # type: ignore[import-not-found]
-    from state.registry import update_kv_session  # type: ignore[import-not-found]
+    from state.registry import KV_REFRESH_S, update_kv_session  # type: ignore[import-not-found]
     from state.store import LeaseRecord, SqliteStateStore  # type: ignore[import-not-found]
 
 logger = logging.getLogger(__name__)
@@ -385,9 +385,8 @@ class SessionRuntime(DurableObject):
                 lease_expires_at=session.lease_expires_at,
             )
         )
-        _storage = getattr(self.ctx, "storage", None)
-        if _storage is not None and callable(getattr(_storage, "setAlarm", None)):
-            _storage.setAlarm(int(session.lease_expires_at * 1000))
+        if (_s := getattr(self.ctx, "storage", None)) is not None and callable(getattr(_s, "setAlarm", None)):
+            _s.setAlarm(int(session.lease_expires_at * 1000))
 
     def clear_lease(self) -> None:
         self.store.clear_lease(self.worker_id)
@@ -482,17 +481,19 @@ class SessionRuntime(DurableObject):
                 self.raw_sockets.pop(ws_id, None)
 
     async def alarm(self) -> None:
+        now = time.time()
         session = self.hijack.session
-        if session is None:
-            return
-        if session.lease_expires_at > time.time():
-            _s = getattr(self.ctx, "storage", None)
-            if _s is not None and callable(getattr(_s, "setAlarm", None)):
-                _s.setAlarm(int(session.lease_expires_at * 1000))
-            return
-        logger.info("alarm: auto-releasing expired lease owner=%s", session.owner)
-        self.hijack.release(session.hijack_id)
-        self.clear_lease()
-        with contextlib.suppress(Exception):
-            await self.push_worker_control("resume", owner="lease_expired", lease_s=0)
-        await self.broadcast_hijack_state()
+        if session is not None and session.lease_expires_at <= now:
+            logger.info("alarm: auto-releasing expired lease owner=%s", session.owner)
+            self.hijack.release(session.hijack_id)
+            self.clear_lease()
+            with contextlib.suppress(Exception):
+                await self.push_worker_control("resume", owner="lease_expired", lease_s=0)
+            await self.broadcast_hijack_state()
+        if self.worker_ws is not None:
+            await update_kv_session(self.env, self.worker_id, connected=True, hijacked=self.hijack.session is not None)
+            if (_s := getattr(self.ctx, "storage", None)) is not None and callable(getattr(_s, "setAlarm", None)):
+                _s.setAlarm(int((now + KV_REFRESH_S) * 1000))
+        elif self.hijack.session is not None:
+            if (_s := getattr(self.ctx, "storage", None)) is not None and callable(getattr(_s, "setAlarm", None)):
+                _s.setAlarm(int(self.hijack.session.lease_expires_at * 1000))

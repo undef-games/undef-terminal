@@ -17,7 +17,8 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _KV_PREFIX = "session:"
-_KV_EXPIRATION_TTL = 3600  # 1 h; refreshed on each connect
+_KV_EXPIRATION_TTL = 300  # 5 min safety-net TTL; alarm() heartbeat keeps it fresh during active leases
+KV_REFRESH_S = 60  # alarm reschedule interval for KV heartbeat (exported)
 
 
 async def update_kv_session(
