@@ -1,6 +1,6 @@
-# Production Readiness Pass 2
+# Production Readiness
 
-This document tracks the ordered release hardening gates for the release candidate.
+This document tracks the release hardening gates. **0.1.0 has shipped.** Gates 0–3 are implemented. Gates 4–6 define the ongoing release bar for future RCs.
 
 ## Gate 0 (P0): Freeze and Reproducible Baseline
 
@@ -22,7 +22,7 @@ Exit criteria:
 Implemented:
 - Cloudflare `AUTH_MODE` defaults to `jwt` and rejects `dev`/`none` in production.
 - Query-string token auth is disabled by default in production.
-- Cloudflare JWT requires `sub`, `exp`, `iat`, `nbf` and uses bounded clock skew.
+- Cloudflare JWT requires `sub`, `exp`, `iat`, `nbf` and uses bounded clock skew. (**Note**: FastAPI reduced its required claims to `["sub", "exp"]` for IdP compatibility; CF still requires all four — a known parity gap, tracked for resolution.)
 - Page-route auth cookies now set explicit `HttpOnly`, `SameSite=Lax`, and `Secure` policy.
 - Cloudflare hijack lease values are validated and clamped at HTTP entrypoints.
 
@@ -47,37 +47,28 @@ Implemented:
 
 ## Gate 4 (P1): Performance, Scalability, Resilience
 
-Required before release:
+Required per RC before promotion:
 - Load profile for concurrent browser sockets, reconnect churn, and snapshot throughput.
-  - Use `scripts/load_profile.py` for reproducible connect/hello latency measurement.
-  - Latest local baseline: `artifacts/soak/local-load-profile-20260305-113438.txt`.
-  - WS snapshot/input latency probe: `scripts/latency_probe.py` (run on staging candidate build).
-  - Latest local latency probe: `artifacts/soak/local-latency-probe-20260305-122728.txt`.
-- Failure-injection scenarios:
-  - worker disconnect/restart
-  - upstream WS flap
-  - latency spikes
-  - Restart churn harness: `scripts/failure_injection.py`.
-  - Latest local restart-churn baseline: `artifacts/soak/local-failure-injection-20260305-115436.txt`.
-- Publish SLOs:
-  - snapshot latency p95/p99
-  - command round-trip p95/p99
-  - reconnect time p95/p99
+  - `scripts/load_profile.py` — connect/hello latency measurement.
+  - `scripts/latency_probe.py` — snapshot fetch and command send latency.
+  - Initial 0.1.0 baselines in `artifacts/soak/` (captured 2026-03-05).
+- Failure-injection scenarios: worker disconnect/restart, upstream WS flap, latency spikes.
+  - `scripts/failure_injection.py` — restart churn harness.
+- SLO targets: see `docs/operations/slo.md`.
 
 ## Gate 5 (P1): Observability and Incident Readiness
 
-Required before release:
+Implemented:
 - Structured logs with correlation IDs: request/session/worker/hijack.
-  - Implemented for HTTP via `x-request-id` middleware logging and `/api/metrics`.
+  - HTTP via `x-request-id` middleware logging and `/api/metrics`.
 - Metrics: auth failures, hijack conflicts, lease expiries, disconnect reasons, reconnect counters.
-- Alert thresholds and on-call runbook with concrete triage queries.
-  - See `docs/operations/runbook.md`.
+- Alert thresholds and on-call runbook: `docs/operations/runbook.md`.
 
 ## Gate 6 (P2): Supply Chain and Release Governance
 
-Required before release:
+Required per RC before promotion:
 - Dependency vulnerability policy gate (fail on high/critical).
 - SBOM generation for release artifacts.
 - Artifact signing and provenance metadata.
 - Staging rollback drill with documented result.
-  - Governance automation entrypoint: `scripts/release_governance_check.sh`.
+  - Governance automation: `scripts/release_governance_check.sh`.

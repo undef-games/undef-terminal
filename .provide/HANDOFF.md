@@ -1,87 +1,101 @@
 # undef-terminal: Handoff
 
 ## Current State
-662 tests passing (99% coverage — 2373 stmts, 16 missed). All quality tools clean (ruff, mypy, bandit).
+
+- **Main package (`undef-terminal`)**: 813 tests passing. Pre-release quality. Pre-commit hooks active (ruff, mypy, ty, bandit).
+- **CF package (`undef-terminal-cloudflare`)**: 38 tests passing. Bugs fixed, API schemas aligned with FastAPI, contract tests in place.
 
 ---
 
-## Completed This Session — Hypothesis Property-Based / Fuzz / Concurrency Tests
+## Completed This Session — Cloudflare Package: Bug Fixes + API Alignment
 
-### New file: `tests/test_hypothesis_hub.py` (10 tests)
+### Bug A — Blocking PyJWT JWKS Fetch (auth/jwt.py)
+`PyJWKClient.get_signing_key_from_jwt()` used `urllib.request.urlopen` synchronously, blocking the V8 isolate. Fixed by making `_resolve_signing_key` and `decode_jwt` async. JWKS is now fetched via `js.fetch` (CF Workers native async), with `urllib` fallback for tests/local dev. Cascading `async` propagated to `_resolve_principal`, `browser_role_for_request`, and all callers.
 
-**Category 1: Stateful Testing** — `TermHubStateMachine` (RuleBasedStateMachine)
-- Models TermHub as a state machine with 8 rules: add_worker, add_browser, remove_browser, set_input_mode, acquire/release WS/REST hijack, disconnect_worker
-- 7 invariants checked after every step: valid input_mode, hijack_owner type, open-mode send permissions, hijack-mode exclusive send, mode-switch rejection during hijack, monotonic event seqs, idle worker pruning
+### Bug B — `/api/sessions` Single-DO Scope (api/http_routes.py)
+Endpoint now returns a bare JSON array matching FastAPI's `list[SessionRuntimeStatus]` shape. All 12 `SessionStatus` TypeScript interface fields are present (with CF-appropriate defaults). `X-Sessions-Scope: local` header signals single-DO scope. `hijacked` is an additive CF-only field.
 
-**Category 2: REST Fuzzing** (5 tests, ~100 examples each)
-- Fuzz acquire (owner + lease), send (keys 0-10K), input_mode (random strings), worker_id paths, heartbeat lease values
-- All via TestClient with real FastAPI routing + pydantic validation
+### Bug C — `_run()` Exception Masking (state/store.py)
+The original `bare except Exception` swallowed real SQL errors and silently retried with a different calling convention. Fixed: first tries variadic-arg style (CF Workers API), falls back to tuple style (DB-API / sqlite3 for tests), and re-raises the **original** exception if both fail — so real SQL errors are never masked.
 
-**Category 3: Concurrent Stress** (4 async tests)
-- Race acquire/release, concurrent mode switch, disconnect-during-hijack, event seq monotonicity under concurrency
+### Fix 1 — `/api/sessions` Schema Parity
+Response now matches FastAPI `SessionRuntimeStatus` shape: `session_id`, `display_name`, `connector_type`, `lifecycle_state`, `input_mode`, `connected`, `auto_start`, `tags`, `recording_enabled`, `recording_path`, `last_error`. `lifecycle_state` is derived (`"running"` if worker connected, `"idle"` otherwise).
 
-### Dependencies added
-- `hypothesis==6.151.9` + `sortedcontainers==2.4.0` installed in project venv
+### Fix 2 — Duplicate Frontend Assets Eliminated
+Deleted `src/undef_terminal_cloudflare/ui/static/` entirely. `assets.py` falls back to `undef.terminal/frontend/`, which is the single source of truth. The local copies were silently shadowing updates to the main package.
 
----
+### Fix 3 — Hijack REST Response Schema Parity
+All four CF hijack endpoints now return `{ok, worker_id, hijack_id, ...}` matching FastAPI exactly:
+- `acquire` → `{ok, worker_id, hijack_id, lease_expires_at, owner}`
+- `heartbeat` → `{ok, worker_id, hijack_id, lease_expires_at}`
+- `step` → `{ok, worker_id, hijack_id, lease_expires_at}`
+- `release` → `{ok, worker_id, hijack_id}`
 
-## Previous Session — Shared Input Mode + Subpackage Restructure
+### Fix 4 — JWT Claim Keys Configurable
+`JwtConfig` gains `jwt_roles_claim` (default `"roles"`) and `jwt_scopes_claim` (default `"scope"`), configurable via `JWT_ROLES_CLAIM` / `JWT_SCOPES_CLAIM` env vars. Matches FastAPI `AuthConfig.jwt_roles_claim` / `jwt_scopes_claim`. Scope claim acts as fallback when roles claim is absent.
 
-### Step 0: Restructured hijack into subpackages
-- `hijack/hub.py` → `hijack/hub/__init__.py` (413 LOC) + `hijack/hub/ownership.py` (200 LOC)
-- `hijack/routes.py` → `hijack/routes/__init__.py` (re-exports)
-- `hijack/routes_ws.py` → `hijack/routes/websockets.py`
-- `hijack/routes_rest.py` → `hijack/routes/rest.py`
-- All import paths preserved (`from undef.terminal.hijack.hub import TermHub` etc.)
-- Old files removed (would conflict with package directories)
+### Alignment Mechanism (contracts.py + test_api_contracts.py)
+`contracts.py` now contains TypedDicts for all REST response shapes:
+- `SessionStatusItem` — `/api/sessions` item shape
+- `HijackAcquireResponse`, `HijackHeartbeatResponse`, `HijackStepResponse`, `HijackReleaseResponse`
 
-### Step 1-2: input_mode field + core logic
-- `WorkerTermState.input_mode: str = "hijack"` — `"hijack"` (default) or `"open"`
-- `InputModeRequest` pydantic model with pattern validation
-- `TermHub._set_input_mode()` — under lock, rejects if active hijack when → open
-- `TermHub._disconnect_worker()` — programmatic worker WS disconnect
-- `TermHub._can_send_input()` — open mode = any browser; hijack mode = owner only
-- `_broadcast_hijack_state` and `_hijack_state_msg_for` now include `input_mode`
+`tests/test_api_contracts.py` (25 tests) validates:
+- Every required key is present in each response using `get_type_hints()`
+- `lifecycle_state` / `connected` reflect actual runtime state
+- `X-Sessions-Scope: local` header is present
+- JWT `jwt_roles_claim` custom key works
+- JWT `jwt_scopes_claim` scope fallback works
+- Config reads `JWT_ROLES_CLAIM` / `JWT_SCOPES_CLAIM` from env
+- `ui/static/` is empty (prevents future accidental shadowing)
 
-### Step 3: WS routes — worker_hello + open-mode input
-- Worker handler: `worker_hello` message type in main loop sets `input_mode`
-- Browser hello: now includes `input_mode` field
-- Browser input: uses `_can_send_input()` — any browser in open mode, owner only in hijack
-- `hijack_request`: rejected with error in open mode
-
-### Step 4: REST endpoints
-- `POST /worker/{id}/input_mode` — switch mode (404 no worker, 409 active hijack)
-- `POST /worker/{id}/disconnect_worker` — force-disconnect worker WS (404 no worker)
-
-### Step 5: hijack.js — open-mode UI
-- Tracks `_inputMode` from hello, hijack_state, input_mode_changed messages
-- Sends input in open mode (keyboard, text field, mobile keys)
-- Hides Hijack/Step/Release buttons in open mode
-- Shows "Connected (shared)" status
-
-### Step 6: Tests (15 new)
-- `tests/test_hijack_shared.py` — worker_hello, open-mode input, hijack rejection, REST endpoints, broadcasts
-- Also fixed `_safe_int` import in `test_coverage_hub_routes.py` for new path
+**Rule**: when anyone adds a field to FastAPI `SessionRuntimeStatus` or a hijack route response, add it to the TypedDict in `contracts.py` and to `http_routes.py`. Contract tests catch omissions.
 
 ---
 
-## Backward Compatibility
-- Default `input_mode` is `"hijack"` — all existing behavior unchanged
-- `worker_hello` is optional — omitting it gets hijack mode
-- `hello` message gains additive `input_mode` field
-- All 637 original tests still pass
+## Uncommitted Changes (main package)
 
----
-
-## Architecture Notes
-- `worker_hello` is handled in the main message loop (not peeked) to avoid blocking
-- Open mode: no pause/resume control messages sent to worker
-- `_can_send_input` is checked under lock atomically with lease extension
-- `_disconnect_worker` closes WS outside lock, clears hijack state atomically
+Minor pre-existing changes in the main package — not from this session, safe to commit:
+- `hijack/hub/connections.py` — 2 docstrings added to `request_snapshot` / `request_analysis`
+- `hijack/hub/core.py` — docstrings added to `wait_for_snapshot` / `wait_for_prompt`
+- `hijack/routes/rest.py` — missing log lines for rate-limit warnings and send/step success
 
 ---
 
 ## Next Steps
-- [ ] uwarp integration: use TermHub open mode instead of custom TeeWriter/MergedReader
-- [ ] Consider: per-browser input filtering in open mode (e.g., role-based)
-- [ ] Coverage: remaining misses are reconnect-stale (ws:58-61,65-66), WS send fail (ws:286,323,386), TOCTOU (rest:312,368), task cancel (bridge:178)
+
+### 1. Fleet-Wide Session Registry (KV / D1)
+The single largest gap in the CF backend. `/api/sessions` currently only knows about its own DO. Fix:
+- Each `SessionRuntime` writes its `worker_id`, `connected` state, and metadata to a KV or D1 index on `webSocketOpen` / `webSocketClose`.
+- The `Default` Worker's `/api/sessions` handler queries the index instead of routing to a single DO.
+- Unlocks the full dashboard SPA against CF deployments.
+- Medium complexity, well-defined. Requires a new KV binding in `wrangler.toml`.
+
+### 2. Wrangler / Miniflare E2E Tests
+The CF package has no tests that run against a real Workers runtime. The main package has `test_e2e_live_hub_ws.py` etc. Options:
+- Miniflare-based pytest fixture (local emulation)
+- `wrangler dev` subprocess fixture with real HTTP client
+- Covers: WS hibernation lifecycle, SQLite persistence, DO routing
+
+### 3. Cloudflare Access / Zero Trust Integration
+Validate CF Access JWTs via `/cdn-cgi/access/certs` JWKS endpoint. The `_fetch_jwks` async path added in Bug A fix is directly ready for this. Just needs `JWT_JWKS_URL=https://<team>.cloudflareaccess.com/cdn-cgi/access/certs` in env.
+
+### 4. Alarm-Based Hijack Lease Expiry
+Currently leases expire passively (checked on access). CF Alarms could:
+- Actively expire leases at `lease_expires_at`
+- Broadcast `hijack_state` to browsers automatically
+- Append `hijack_expired` event to the SQLite event log without needing a poll
+
+### 5. `/hijack/{id}/snapshot` in CF
+FastAPI has this endpoint; CF does not. It returns a fresh terminal snapshot to the REST hijack owner. Prerequisite: CF needs a way to request and await a snapshot from the worker WS — either via a DO alarm or a short-poll with `asyncio.sleep`.
+
+### 6. Main Package `ty` Backlog
+`NEW_CHAT_CHECKLIST.md` documents remaining `ty` static type diagnostics to clear. These are pre-existing and non-blocking for the CF work, but are a CI quality gate for release.
+
+---
+
+## Accuracy Issues Found in Docs This Session
+
+- **`NEW_CHAT_CHECKLIST.md`**: References `AGENTS.md` which does not exist. Test count (662) is stale. `ty` backlog work may be partially done.
+- **`CHANGELOG.md` [0.1.0]**: Says "690+ tests / 100% coverage" — now 813 tests / ~99% coverage.
+- **`docs/protocol-matrix.md`**: Missing `/hijack/{id}/snapshot` (FastAPI has it, CF does not — a real gap, not just an omission). Missing `/hijack/{id}/events` (both backends have it). Fixed.
+- **`docs/production-readiness-pass2.md` Gate 1**: States "Cloudflare JWT requires sub, exp, iat, nbf" — accurate for CF, but FastAPI was reduced to `["sub", "exp"]` only (per CHANGELOG). This is a real JWT claims parity gap between backends. Fixed to note the discrepancy.

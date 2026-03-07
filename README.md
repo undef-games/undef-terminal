@@ -12,9 +12,10 @@ pip install undef-terminal
 
 | Extra | Installs | Required for |
 |---|---|---|
-| `[websocket]` | `fastapi` | `WsTerminalProxy`, `create_ws_terminal_router`, hijack hub |
+| `[websocket]` | `fastapi`, `websockets` | `WsTerminalProxy`, `create_ws_terminal_router`, hijack hub |
 | `[emulator]` | `pyte` | `TerminalEmulator` (screen state tracking) |
 | `[ssh]` | `asyncssh` | SSH transport, `undefterm proxy --transport ssh` |
+| `[server]` | `fastapi`, `uvicorn`, `pyjwt` | `undefterm-server` hosted reference server |
 | `[cli]` | `fastapi`, `uvicorn`, `websockets` | `undefterm` command-line tool |
 | `[all]` | everything above | Full feature set |
 

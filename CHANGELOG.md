@@ -237,7 +237,7 @@ Initial public release.
 - **Replay viewer** — JSONL session log playback with speed control and step mode.
 - **Frontend assets** — browser-side `hijack.js` client with configurable role and mode display.
 - **CLI entry points** — `undefterm` and `undefterm-server`.
-- **100% test coverage** — 690+ tests across unit, integration, property-based (Hypothesis),
+- **Test coverage** — 690+ tests across unit, integration, property-based (Hypothesis),
   and Playwright UI suites.
 
 ### Known Limitations
