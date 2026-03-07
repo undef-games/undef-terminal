@@ -597,6 +597,73 @@ def test_hijack_acquire_error_message_says_session_not_worker() -> None:
         assert "this worker" not in body["error"].lower()
 
 
+# --- Sixth-review regression tests ---
+
+
+def test_browser_handlers_error_message_says_session_not_worker() -> None:
+    """Browser WS hijack error messages must say 'for this session', not 'for this worker'."""
+    import undef.terminal.hijack.routes.browser_handlers as bh_module
+
+    source = bh_module.__file__
+    assert source is not None
+    text = Path(source).read_text(encoding="utf-8")
+    assert "for this worker" not in text, "browser_handlers.py still has 'for this worker' in error strings"
+
+
+async def test_runtime_stops_on_permanent_http_error() -> None:
+    """HostedSessionRuntime._run must stop retrying on permanent HTTP 401/403/404."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from undef.terminal.server.models import RecordingConfig, SessionDefinition
+    from undef.terminal.server.runtime import HostedSessionRuntime
+
+    session = SessionDefinition(session_id="s1", display_name="S1", connector_type="demo", auto_start=False)
+    runtime = HostedSessionRuntime(session, public_base_url="http://localhost:9999", recording=RecordingConfig())
+
+    class FakeStatusError(Exception):
+        status_code = 401
+
+    mock_connector = AsyncMock()
+    mock_connector.is_connected = MagicMock(return_value=True)
+    mock_connector.set_mode = AsyncMock(return_value=[])
+    mock_connector.get_snapshot = AsyncMock(return_value={"type": "snapshot", "screen": "", "ts": 0})
+    mock_connector.stop = AsyncMock()
+
+    class _FakeCtx:
+        async def __aenter__(self) -> None:
+            raise FakeStatusError("Unauthorized")
+
+        async def __aexit__(self, *_: object) -> None:
+            return None
+
+    fake_ws_mod = MagicMock()
+    fake_ws_mod.connect = MagicMock(return_value=_FakeCtx())
+
+    import sys
+
+    real_ws = sys.modules.pop("websockets", None)
+    sys.modules["websockets"] = fake_ws_mod
+    try:
+        with patch("undef.terminal.server.runtime.build_connector", return_value=mock_connector):
+            await runtime.start()
+            for _ in range(50):
+                await asyncio.sleep(0.02)
+                if runtime._state == "error" and (runtime._task is None or runtime._task.done()):
+                    break
+    finally:
+        if real_ws is not None:
+            sys.modules["websockets"] = real_ws
+        else:
+            sys.modules.pop("websockets", None)
+
+    # _run() always sets _state="stopped" on exit; verify the task exited early
+    # (permanent error) rather than looping, and that _last_error is populated.
+    assert runtime._task is not None and runtime._task.done(), (
+        "runtime task should have exited after permanent HTTP 401"
+    )
+    assert runtime._last_error is not None, "last_error should be set after a permanent HTTP failure"
+
+
 def test_pages_use_state_principal_not_double_resolved(monkeypatch: pytest.MonkeyPatch) -> None:
     """Page routes must use request.state.uterm_principal set by _require_authenticated
     and must not call resolve_http_principal a second time."""

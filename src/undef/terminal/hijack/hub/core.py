@@ -22,7 +22,7 @@ from contextlib import suppress
 from typing import Any
 
 try:
-    from fastapi import WebSocket
+    from fastapi import WebSocket, WebSocketException
 except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required for TermHub: pip install 'undef-terminal[websocket]'") from _e
 
@@ -156,6 +156,10 @@ class TermHub(_HijackOwnershipMixin, _ConnectionMixin):
                     logger.warning("resolve_browser_role_timeout worker_id=%s", worker_id)
                     raise BrowserRoleResolutionError(worker_id) from exc
         except BrowserRoleResolutionError:
+            raise
+        except WebSocketException:
+            # Re-raise directly so the caller receives the original close code
+            # (e.g. 1008 policy violation) rather than a generic 1011 error.
             raise
         except Exception as exc:
             logger.warning("resolve_browser_role_failed worker_id=%s error=%s", worker_id, exc)

@@ -275,6 +275,18 @@ class HostedSessionRuntime:
                 self._last_error = str(exc)
                 logger.warning("hosted_session_runtime_failed session_id=%s error=%s", self.definition.session_id, exc)
                 await self._log_event("runtime_error", {"error": str(exc)})
+                # Permanent HTTP failures (auth rejected, wrong endpoint) will
+                # never resolve on their own — stop retrying immediately.
+                _status = getattr(exc, "status_code", None) or getattr(
+                    getattr(exc, "response", None), "status_code", None
+                )
+                if _status in (401, 403, 404):
+                    logger.error(
+                        "hosted_session_runtime_permanent_http_error session_id=%s status=%s — stopping",
+                        self.definition.session_id,
+                        _status,
+                    )
+                    break
                 delay = backoff_s[min(attempt, len(backoff_s) - 1)]
                 attempt += 1
                 await asyncio.sleep(delay)

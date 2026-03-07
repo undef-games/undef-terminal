@@ -7,7 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Changed (sixth review)
+
+- **`HostedSessionRuntime` stops on permanent HTTP errors** — `_run()` now exits the retry
+  loop immediately when the TermHub WebSocket endpoint returns HTTP 401, 403, or 404 (same
+  fix applied to `TermBridge` in the fifth review but missed in `runtime.py`).
+- **`WebSocketException` no longer swallowed in `_resolve_role_for_browser`** — unauthorized
+  browser connections (raised as `WebSocketException` with code 1008) were previously caught
+  by the bare `except Exception` handler and re-raised as `BrowserRoleResolutionError`,
+  causing the client to receive code 1011 ("internal error") instead of 1008 ("policy
+  violation"). `WebSocketException` is now re-raised directly.
+- **`browser_handlers.py` error messages** — three `"No worker connected for this worker."`
+  strings corrected to `"for this session."`, completing the fix started in the fifth review
+  (which only updated `rest.py`).
+- **`CHANGELOG` `connector_config` wording** — prior entry incorrectly said "shallow-merge";
+  corrected to "full replacement" to match the actual implementation.
+
+### Tests (sixth review)
+
+- **Sixth-review regression suite** — 2 new tests: `browser_handlers.py` has no "for this
+  worker" strings, and `HostedSessionRuntime` task exits immediately on HTTP 401.
+
+---
+
+### Added (fifth review)
 
 - **`connector_type` validated at TOML config load time** — `config_from_mapping` now validates
   `connector_type` against `KNOWN_CONNECTOR_TYPES` for each `[[sessions]]` entry, raising
@@ -148,7 +171,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`_AUTO_START_DELAY_S` constant** — the auto-start delay in `server/app.py` is now a named
   module-level constant instead of a magic literal.
 - **`PATCH /sessions/{id}` documentation** — `connector_config` is now documented as a
-  shallow-merge (not replace) in the route handler.
+  full replacement (callers must send the complete desired config, not just changed keys).
 
 ### Security
 

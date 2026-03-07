@@ -90,7 +90,7 @@ async def handle_browser_message(
         )
         if not pause_sent:
             await ws.send_text(
-                json.dumps({"type": "error", "message": "No worker connected for this worker."}, ensure_ascii=True)
+                json.dumps({"type": "error", "message": "No worker connected for this session."}, ensure_ascii=True)
             )
             await ws.send_text(json.dumps(await hub.hijack_state_msg_for(worker_id, ws), ensure_ascii=True))
             return owned_hijack
@@ -107,7 +107,7 @@ async def handle_browser_message(
                     {"type": "control", "action": "resume", "owner": "dashboard", "lease_s": 0, "ts": time.time()},
                 )
             msg_text = (
-                "No worker connected for this worker." if err == "no_worker" else "Already hijacked by another client."
+                "No worker connected for this session." if err == "no_worker" else "Already hijacked by another client."
             )
             await ws.send_text(json.dumps({"type": "error", "message": msg_text}, ensure_ascii=True))
             await ws.send_text(json.dumps(await hub.hijack_state_msg_for(worker_id, ws), ensure_ascii=True))
@@ -126,7 +126,7 @@ async def handle_browser_message(
             )
             if not ok:
                 await ws.send_text(
-                    json.dumps({"type": "error", "message": "No worker connected for this worker."}, ensure_ascii=True)
+                    json.dumps({"type": "error", "message": "No worker connected for this session."}, ensure_ascii=True)
                 )
             else:
                 hub.metric("hijack_steps_total")
