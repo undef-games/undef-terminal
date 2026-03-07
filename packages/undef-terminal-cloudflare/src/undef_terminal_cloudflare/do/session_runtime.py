@@ -17,6 +17,7 @@ try:
     from undef_terminal_cloudflare.bridge.hijack import HijackCoordinator, HijackSession
     from undef_terminal_cloudflare.cf_types import DurableObject, Response
     from undef_terminal_cloudflare.config import CloudflareConfig
+    from undef_terminal_cloudflare.state.registry import update_kv_session
     from undef_terminal_cloudflare.state.store import LeaseRecord, SqliteStateStore
 except Exception:
     from api.http_routes import route_http  # type: ignore[import-not-found]
@@ -26,6 +27,7 @@ except Exception:
     from bridge.hijack import HijackCoordinator, HijackSession  # type: ignore[import-not-found]
     from cf_types import DurableObject, Response  # type: ignore[import-not-found]
     from config import CloudflareConfig  # type: ignore[import-not-found]
+    from state.registry import update_kv_session  # type: ignore[import-not-found]
     from state.store import LeaseRecord, SqliteStateStore  # type: ignore[import-not-found]
 
 logger = logging.getLogger(__name__)
@@ -287,6 +289,7 @@ class SessionRuntime(DurableObject):
             await self.broadcast_worker_frame(
                 {"type": "worker_connected", "worker_id": self.worker_id, "ts": time.time()}
             )
+            await update_kv_session(self.env, self.worker_id, connected=True, hijacked=self.hijack.session is not None)
         elif role == "raw":
             self.raw_sockets[ws_id] = ws
             if self.last_snapshot is not None and isinstance(self.last_snapshot.get("screen"), str):
@@ -347,14 +350,9 @@ class SessionRuntime(DurableObject):
             await self.broadcast_worker_frame(
                 {"type": "worker_disconnected", "worker_id": self.worker_id, "ts": time.time()}
             )
+            await update_kv_session(self.env, self.worker_id, connected=False)
 
     async def webSocketError(self, ws: Any, error: Any) -> None:  # noqa: N802
-        """Handle a network-level error on a hibernated socket.
-
-        Called by the Cloudflare DO runtime when a socket experiences an error
-        during hibernation. Cleans up the socket from all registries so stale
-        handles don't block future connections.
-        """
         logger.warning("ws_error worker_id=%s error=%s", self.worker_id, error)
         was_worker = ws is self.worker_ws
         self._remove_ws(ws)
