@@ -282,7 +282,9 @@ class TermBridge:
                     if data:
                         await self._send_keys(data)
                 elif mtype == "resize":
-                    await self._set_size(_safe_int(msg.get("cols"), 80), _safe_int(msg.get("rows"), 25))
+                    await self._set_size(
+                        _safe_int(msg.get("cols"), 80, min_val=1), _safe_int(msg.get("rows"), 25, min_val=1)
+                    )
         finally:
             # Ensure the worker is never left permanently paused if the connection
             # drops while a hijack was active.  The hub clears its own hijack

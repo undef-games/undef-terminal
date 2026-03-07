@@ -12,6 +12,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 from undef.terminal.hijack.bridge import TermBridge, _safe_int
+from undef.terminal.hijack.models import _safe_float
 
 
 class TestSafeInt:
@@ -26,6 +27,32 @@ class TestSafeInt:
 
     def test_valid_int_string(self) -> None:
         assert _safe_int("123", 0) == 123
+
+    def test_min_val_rejects_negative(self) -> None:
+        assert _safe_int(-1, 80, min_val=1) == 80
+
+    def test_min_val_rejects_zero(self) -> None:
+        assert _safe_int(0, 25, min_val=1) == 25
+
+    def test_min_val_allows_valid(self) -> None:
+        assert _safe_int(40, 80, min_val=1) == 40
+
+
+class TestSafeFloat:
+    def test_none_returns_default(self) -> None:
+        assert _safe_float(None, 1.5) == 1.5
+
+    def test_string_returns_default(self) -> None:
+        assert _safe_float("bad", 2.0) == 2.0
+
+    def test_valid_int_coerced(self) -> None:
+        assert _safe_float(5, 0.0) == 5.0
+
+    def test_valid_float_returned(self) -> None:
+        assert _safe_float(3.14, 0.0) == 3.14
+
+    def test_list_returns_default(self) -> None:
+        assert _safe_float([1], 9.9) == 9.9
 
 
 class TestSendLoopSerializationError:

@@ -24,7 +24,7 @@ except ImportError as _e:  # pragma: no cover
 
 import logging
 
-from undef.terminal.hijack.models import VALID_ROLES, _safe_int, extract_prompt_id
+from undef.terminal.hijack.models import VALID_ROLES, _safe_float, _safe_int, extract_prompt_id
 from undef.terminal.hijack.ratelimit import TokenBucket
 from undef.terminal.hijack.routes.browser_handlers import handle_browser_message
 
@@ -118,13 +118,13 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         "type": "snapshot",
                         "screen": msg.get("screen", ""),
                         "cursor": msg.get("cursor", {"x": 0, "y": 0}),
-                        "cols": _safe_int(msg.get("cols"), 80),
-                        "rows": _safe_int(msg.get("rows"), 25),
+                        "cols": _safe_int(msg.get("cols"), 80, min_val=1),
+                        "rows": _safe_int(msg.get("rows"), 25, min_val=1),
                         "screen_hash": msg.get("screen_hash", ""),
                         "cursor_at_end": bool(msg.get("cursor_at_end", True)),
                         "has_trailing_space": bool(msg.get("has_trailing_space", False)),
                         "prompt_detected": msg.get("prompt_detected"),
-                        "ts": msg.get("ts", time.time()),
+                        "ts": _safe_float(msg.get("ts"), time.time()),
                     }
                     await hub.update_last_snapshot(worker_id, snapshot)
                     await hub.broadcast(worker_id, snapshot)

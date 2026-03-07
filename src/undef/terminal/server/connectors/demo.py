@@ -17,6 +17,7 @@ from undef.terminal.server.connectors.base import SessionConnector
 
 _COLS = 80
 _ROWS = 25
+_VALID_CONFIG_KEYS: frozenset[str] = frozenset({"input_mode"})
 
 
 @dataclass(slots=True)
@@ -29,11 +30,15 @@ class _Entry:
 class DemoSessionConnector(SessionConnector):
     """Reference connector that behaves like a lightweight interactive session."""
 
-    def __init__(self, session_id: str, display_name: str) -> None:
+    def __init__(self, session_id: str, display_name: str, config: dict[str, Any] | None = None) -> None:
+        cfg = config or {}
+        unknown = set(cfg) - _VALID_CONFIG_KEYS
+        if unknown:
+            raise ValueError(f"unknown demo connector_config keys: {sorted(unknown)}")
         self._session_id = session_id
         self._display_name = display_name
         self._connected = False
-        self._input_mode = "open"
+        self._input_mode = str(cfg.get("input_mode", "open"))
         # Fields below are initialised by _reset_state(); declared here for type checkers.
         self._paused: bool
         self._turns: int

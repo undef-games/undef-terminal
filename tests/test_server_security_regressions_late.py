@@ -270,3 +270,44 @@ def test_pages_use_state_principal_not_double_resolved(monkeypatch: pytest.Monke
     assert call_count["n"] == 0, (
         f"resolve_http_principal called {call_count['n']} time(s) — expected 0 (state principal reused)"
     )
+
+
+# ---------------------------------------------------------------------------
+# Connector config validation — unknown keys rejected at __init__ time
+# ---------------------------------------------------------------------------
+
+
+class TestConnectorConfigValidation:
+    """Unknown connector_config keys raise ValueError at connector __init__ time."""
+
+    def test_demo_rejects_unknown_keys(self) -> None:
+        from undef.terminal.server.connectors.demo import DemoSessionConnector
+
+        with pytest.raises(ValueError, match="unknown demo connector_config keys"):
+            DemoSessionConnector("s1", "Demo", {"typo_key": "value"})
+
+    def test_demo_accepts_input_mode(self) -> None:
+        from undef.terminal.server.connectors.demo import DemoSessionConnector
+
+        connector = DemoSessionConnector("s1", "Demo", {"input_mode": "hijack"})
+        assert connector is not None
+
+    def test_telnet_rejects_unknown_keys(self) -> None:
+        from undef.terminal.server.connectors.telnet import TelnetSessionConnector
+
+        with pytest.raises(ValueError, match="unknown telnet connector_config keys"):
+            TelnetSessionConnector("s1", "Telnet", {"unknown_option": True})
+
+    def test_ssh_rejects_unknown_keys(self) -> None:
+        from undef.terminal.server.connectors.ssh import SshSessionConnector
+
+        with pytest.raises(ValueError, match="unknown ssh connector_config keys"):
+            SshSessionConnector(
+                "s1",
+                "SSH",
+                {
+                    "host": "127.0.0.1",
+                    "insecure_no_host_check": True,
+                    "totally_bogus_param": "oops",
+                },
+            )

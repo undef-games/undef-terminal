@@ -40,7 +40,7 @@ def build_connector(
 ) -> SessionConnector:
     """Instantiate a built-in connector by type."""
     if connector_type == "demo":
-        return DemoSessionConnector(session_id, display_name)
+        return DemoSessionConnector(session_id, display_name, config)
     if connector_type == "telnet":
         return TelnetSessionConnector(session_id, display_name, config)
     if connector_type == "ssh":

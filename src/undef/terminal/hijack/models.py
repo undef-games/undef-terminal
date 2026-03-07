@@ -12,10 +12,21 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-def _safe_int(val: Any, default: int) -> int:
-    """Coerce *val* to ``int``, returning *default* on failure or ``None``."""
+def _safe_int(val: Any, default: int, *, min_val: int | None = None) -> int:
+    """Coerce *val* to ``int``, returning *default* on failure, ``None``, or out-of-range."""
     try:
-        return int(default if val is None else val)
+        result = int(default if val is None else val)
+    except (ValueError, TypeError):
+        return default
+    if min_val is not None and result < min_val:
+        return default
+    return result
+
+
+def _safe_float(val: Any, default: float) -> float:
+    """Coerce *val* to ``float``, returning *default* on failure or ``None``."""
+    try:
+        return float(default if val is None else val)
     except (ValueError, TypeError):
         return default
 
