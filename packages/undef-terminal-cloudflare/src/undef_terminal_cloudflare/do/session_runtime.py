@@ -218,8 +218,10 @@ class SessionRuntime(DurableObject):
     def _socket_browser_role(self, ws: Any) -> str:
         """Return the JWT-resolved browser role from the socket attachment.
 
-        Defaults to ``"admin"`` when auth mode is ``none``/``dev`` or when the
-        attachment does not carry a role (legacy connections).
+        Defaults to ``"admin"`` in ``none``/``dev`` mode (open access).  In
+        ``jwt`` mode, falls back to ``"viewer"`` (fail-closed) when the
+        attachment cannot be read — e.g. after hibernation for a connection
+        whose ``serializeAttachment`` call raised at connect time.
         """
         try:
             attachment = ws.deserializeAttachment()
@@ -229,11 +231,14 @@ class SessionRuntime(DurableObject):
                     return parts[1]
         except Exception as exc:
             logger.debug("failed to deserialize browser role attachment: %s", exc)
-        # Instance-attribute fallback (set when serializeAttachment raises).
+        # Instance-attribute fallback (set in fetch() when serializeAttachment raises).
+        # This attribute is NOT preserved across hibernation, so it will be absent
+        # on hibernation-resume paths.
         role = getattr(ws, "_ut_browser_role", None)
         if isinstance(role, str) and role in {"admin", "operator", "viewer"}:
             return role
-        return "admin"
+        # Fail-closed: in jwt mode grant only viewer; in open-access modes grant admin.
+        return "admin" if self.config.jwt.mode in {"none", "dev"} else "viewer"
 
     def _register_socket(self, ws: Any, role: str) -> None:
         ws_id = self.ws_key(ws)
@@ -293,7 +298,13 @@ class SessionRuntime(DurableObject):
             await self.broadcast_worker_frame(
                 {"type": "worker_connected", "worker_id": self.worker_id, "ts": time.time()}
             )
-            await update_kv_session(self.env, self.worker_id, connected=True, hijacked=self.hijack.session is not None)
+            await update_kv_session(
+                self.env,
+                self.worker_id,
+                connected=True,
+                hijacked=self.hijack.session is not None,
+                input_mode=self.input_mode,
+            )
         elif role == "raw":
             self.raw_sockets[ws_id] = ws
             if self.last_snapshot is not None and isinstance(self.last_snapshot.get("screen"), str):
@@ -360,6 +371,7 @@ class SessionRuntime(DurableObject):
             await self.broadcast_worker_frame(
                 {"type": "worker_disconnected", "worker_id": self.worker_id, "ts": time.time()}
             )
+            await update_kv_session(self.env, self.worker_id, connected=False)
 
     # ------------------------------------------------------------------
     # Request helpers
@@ -491,7 +503,13 @@ class SessionRuntime(DurableObject):
                 await self.push_worker_control("resume", owner="lease_expired", lease_s=0)
             await self.broadcast_hijack_state()
         if self.worker_ws is not None:
-            await update_kv_session(self.env, self.worker_id, connected=True, hijacked=self.hijack.session is not None)
+            await update_kv_session(
+                self.env,
+                self.worker_id,
+                connected=True,
+                hijacked=self.hijack.session is not None,
+                input_mode=self.input_mode,
+            )
             if (_s := getattr(self.ctx, "storage", None)) is not None and callable(getattr(_s, "setAlarm", None)):
                 _s.setAlarm(int((now + KV_REFRESH_S) * 1000))
         elif self.hijack.session is not None:

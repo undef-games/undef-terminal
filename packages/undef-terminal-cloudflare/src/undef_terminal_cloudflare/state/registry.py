@@ -27,6 +27,7 @@ async def update_kv_session(
     *,
     connected: bool,
     hijacked: bool = False,
+    input_mode: str = "hijack",
 ) -> None:
     """Write (or delete) this DO's session entry in the KV registry.
 
@@ -48,7 +49,7 @@ async def update_kv_session(
         "display_name": worker_id,
         "connector_type": "unknown",
         "lifecycle_state": "running",
-        "input_mode": "hijack",
+        "input_mode": input_mode,
         "connected": True,
         "auto_start": False,
         "tags": [],
