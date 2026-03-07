@@ -239,7 +239,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
             return JSONResponse({"error": "Invalid or expired hijack session."}, status_code=404)
         await hub.append_event(worker_id, "hijack_heartbeat", {"hijack_id": hijack_id, "lease_s": lease_s})
         await hub.broadcast_hijack_state(worker_id)
-        return {"ok": True, "hijack_id": hijack_id, "lease_expires_at": new_expires}
+        return {"ok": True, "worker_id": worker_id, "hijack_id": hijack_id, "lease_expires_at": new_expires}
 
     @router.get("/worker/{worker_id}/hijack/{hijack_id}/snapshot")
     async def hijack_snapshot(

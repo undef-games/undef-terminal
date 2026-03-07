@@ -32,8 +32,10 @@ from undef_terminal_cloudflare.bridge.hijack import HijackCoordinator
 from undef_terminal_cloudflare.config import CloudflareConfig, JwtConfig
 from undef_terminal_cloudflare.contracts import (
     HijackAcquireResponse,
+    HijackEventsResponse,
     HijackHeartbeatResponse,
     HijackReleaseResponse,
+    HijackSendResponse,
     HijackSnapshotResponse,
     HijackStepResponse,
     SessionStatusItem,
@@ -66,6 +68,7 @@ class _Runtime:
         self._actions: list[tuple[str, str, int]] = []
         self.last_snapshot: dict | None = None
         self.browser_hijack_owner: dict[str, str] = {}
+        self.input_mode: str = "hijack"
 
     async def request_json(self, request: object) -> dict:
         return json.loads(getattr(request, "_body", "{}"))
@@ -94,6 +97,7 @@ class _Runtime:
         return SimpleNamespace(
             list_events_since=lambda *_args, **_kwargs: [],
             load_session=lambda *_args, **_kwargs: None,
+            current_event_seq=lambda *_args, **_kwargs: 0,
         )
 
 
@@ -285,6 +289,106 @@ async def test_snapshot_returns_in_memory_snapshot() -> None:
     resp = await route_http(runtime, req)
     payload = _parse(resp)
     assert payload["snapshot"] == {"type": "snapshot", "screen": "hello"}
+    assert "prompt_id" in payload
+    assert "lease_expires_at" in payload
+
+
+# ---------------------------------------------------------------------------
+# Contract: POST /worker/{id}/hijack/{hid}/send
+# ---------------------------------------------------------------------------
+
+
+async def test_send_response_has_contract_fields() -> None:
+    runtime = _Runtime(worker_ws=object())
+    acquired = runtime.hijack.acquire("grace", 60)
+    assert acquired.ok and acquired.session is not None
+    hid = acquired.session.hijack_id
+
+    req = _Req(f"https://example.invalid/worker/test-worker/hijack/{hid}/send", method="POST")
+    req._body = json.dumps({"keys": "hello"})
+    resp = await route_http(runtime, req)
+    assert resp.status == 200
+    payload = _parse(resp)
+    _check_keys(payload, HijackSendResponse)
+    assert payload["ok"] is True
+    assert payload["sent"] == "hello"
+    assert payload["worker_id"] == "test-worker"
+
+
+# ---------------------------------------------------------------------------
+# Contract: GET /worker/{id}/hijack/{hid}/events
+# ---------------------------------------------------------------------------
+
+
+async def test_events_response_has_contract_fields() -> None:
+    runtime = _Runtime()
+    acquired = runtime.hijack.acquire("harry", 60)
+    assert acquired.ok and acquired.session is not None
+    hid = acquired.session.hijack_id
+
+    req = _Req(f"https://example.invalid/worker/test-worker/hijack/{hid}/events")
+    resp = await route_http(runtime, req)
+    assert resp.status == 200
+    payload = _parse(resp)
+    _check_keys(payload, HijackEventsResponse)
+    assert payload["ok"] is True
+    assert isinstance(payload["events"], list)
+
+
+# ---------------------------------------------------------------------------
+# Contract: POST /worker/{id}/input_mode
+# ---------------------------------------------------------------------------
+
+
+async def test_input_mode_switches_to_open() -> None:
+    runtime = _Runtime()
+    req = _Req("https://example.invalid/worker/test-worker/input_mode", method="POST")
+    req._body = json.dumps({"input_mode": "open"})
+    resp = await route_http(runtime, req)
+    assert resp.status == 200
+    payload = _parse(resp)
+    assert payload["ok"] is True
+    assert payload["input_mode"] == "open"
+    assert runtime.input_mode == "open"
+
+
+async def test_input_mode_rejects_open_while_hijack_active() -> None:
+    runtime = _Runtime()
+    runtime.hijack.acquire("ivan", 60)
+    req = _Req("https://example.invalid/worker/test-worker/input_mode", method="POST")
+    req._body = json.dumps({"input_mode": "open"})
+    resp = await route_http(runtime, req)
+    assert resp.status == 409
+
+
+async def test_input_mode_rejects_invalid_value() -> None:
+    runtime = _Runtime()
+    req = _Req("https://example.invalid/worker/test-worker/input_mode", method="POST")
+    req._body = json.dumps({"input_mode": "invalid"})
+    resp = await route_http(runtime, req)
+    assert resp.status == 400
+
+
+# ---------------------------------------------------------------------------
+# Contract: POST /worker/{id}/disconnect_worker
+# ---------------------------------------------------------------------------
+
+
+async def test_disconnect_worker_returns_404_when_no_worker() -> None:
+    runtime = _Runtime(worker_ws=None)
+    req = _Req("https://example.invalid/worker/test-worker/disconnect_worker", method="POST")
+    resp = await route_http(runtime, req)
+    assert resp.status == 404
+
+
+async def test_disconnect_worker_returns_ok_when_worker_connected() -> None:
+    runtime = _Runtime(worker_ws=object())
+    req = _Req("https://example.invalid/worker/test-worker/disconnect_worker", method="POST")
+    resp = await route_http(runtime, req)
+    assert resp.status == 200
+    payload = _parse(resp)
+    assert payload["ok"] is True
+    assert payload["worker_id"] == "test-worker"
 
 
 # ---------------------------------------------------------------------------

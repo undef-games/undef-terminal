@@ -23,7 +23,8 @@ class SessionStatusItem(TypedDict):
     CF fields with synthetic defaults: ``display_name`` (= worker_id),
     ``connector_type`` ("unknown"), ``lifecycle_state`` ("running"/"idle"),
     ``auto_start`` (False), ``tags`` ([]), ``recording_enabled`` (False),
-    ``recording_path`` (None), ``last_error`` (None).
+    ``recording_available`` (False), ``owner`` (None), ``visibility`` ("public"),
+    ``last_error`` (None).
     """
 
     session_id: str
@@ -35,7 +36,9 @@ class SessionStatusItem(TypedDict):
     auto_start: bool
     tags: list
     recording_enabled: bool
-    recording_path: str | None
+    recording_available: bool
+    owner: str | None
+    visibility: str
     last_error: str | None
     # CF-specific extras (not in FastAPI schema; clients must tolerate them)
     hijacked: bool
@@ -74,6 +77,29 @@ class HijackSnapshotResponse(TypedDict):
     worker_id: str
     hijack_id: str
     snapshot: dict[str, object] | None
+    prompt_id: str | None
+    lease_expires_at: float | None
+
+
+class HijackSendResponse(TypedDict):
+    ok: bool
+    worker_id: str
+    hijack_id: str
+    sent: str
+    matched_prompt_id: str | None
+    lease_expires_at: float | None
+
+
+class HijackEventsResponse(TypedDict):
+    ok: bool
+    worker_id: str
+    hijack_id: str
+    after_seq: int
+    latest_seq: int
+    min_event_seq: int
+    has_more: bool
+    events: list
+    lease_expires_at: float | None
 
 
 FrameType = Literal[
@@ -193,6 +219,7 @@ def frame_json(frame_type: FrameType, **kwargs: Any) -> str:
 class RuntimeProtocol(Protocol):
     worker_ws: Any
     worker_id: str
+    input_mode: str
     hijack: Any  # HijackCoordinator
     config: Any  # CloudflareConfig
     store: Any  # SqliteStateStore

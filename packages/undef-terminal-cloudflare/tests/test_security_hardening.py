@@ -81,6 +81,7 @@ class _Runtime:
         self._role = "admin"
         self.last_snapshot: dict | None = None
         self.browser_hijack_owner: dict[str, str] = {}
+        self.input_mode: str = "hijack"
 
     async def request_json(self, request: object) -> dict[str, object]:
         return json.loads(getattr(request, "_body", "{}"))
@@ -110,6 +111,7 @@ class _Runtime:
         return SimpleNamespace(
             list_events_since=lambda *_args, **_kwargs: [],
             load_session=lambda *_args, **_kwargs: None,
+            current_event_seq=lambda *_args, **_kwargs: 0,
         )
 
 

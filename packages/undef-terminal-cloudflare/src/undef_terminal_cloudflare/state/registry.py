@@ -53,7 +53,9 @@ async def update_kv_session(
         "auto_start": False,
         "tags": [],
         "recording_enabled": False,
-        "recording_path": None,
+        "recording_available": False,
+        "owner": None,
+        "visibility": "public",
         "last_error": None,
         "hijacked": hijacked,
     }

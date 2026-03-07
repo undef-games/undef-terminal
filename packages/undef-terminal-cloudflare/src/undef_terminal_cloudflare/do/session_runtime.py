@@ -52,6 +52,7 @@ class SessionRuntime(DurableObject):
         self.raw_sockets: dict[str, Any] = {}
         self.browser_hijack_owner: dict[str, str] = {}
         self.last_snapshot: dict[str, Any] | None = None
+        self.input_mode: str = "hijack"
 
         self._restore_state()
 
@@ -305,7 +306,7 @@ class SessionRuntime(DurableObject):
                     "worker_online": self.worker_ws is not None,
                     # can_hijack and role reflect the JWT-resolved browser role.
                     "can_hijack": browser_role == "admin",
-                    "input_mode": "hijack",
+                    "input_mode": self.input_mode,
                     "role": browser_role,
                     "hijack_control": "rest",
                     "hijack_step_supported": True,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import re
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
@@ -35,6 +36,17 @@ def _parse_lease_s(payload: dict[str, object], *, default: int = 60) -> tuple[in
     return max(_MIN_LEASE_S, min(parsed, _MAX_LEASE_S)), None
 
 
+def _extract_prompt_id(snapshot: dict[str, object] | None) -> str | None:
+    if not snapshot:
+        return None
+    prompt = snapshot.get("prompt_detected")
+    if isinstance(prompt, dict):
+        value = prompt.get("prompt_id")
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
 async def route_http(runtime: RuntimeProtocol, request: object) -> Response:
     url = str(getattr(request, "url", ""))
     path = urlparse(url).path
@@ -44,23 +56,20 @@ async def route_http(runtime: RuntimeProtocol, request: object) -> Response:
         return json_response({"ok": True, "service": "undef-terminal-cloudflare"})
 
     if path == "/api/sessions":
-        # NOTE: This DO only knows about its own session. A fleet-wide listing
-        # requires a KV or D1 registry updated on worker connect/disconnect.
-        # The X-Sessions-Scope header signals to clients that the list is not
-        # exhaustive. Response shape mirrors FastAPI SessionRuntimeStatus so
-        # that the dashboard SPA works against either backend.
         connected = runtime.worker_ws is not None
         item: dict[str, object] = {
             "session_id": runtime.worker_id,
             "display_name": runtime.worker_id,
             "connector_type": "unknown",
             "lifecycle_state": "running" if connected else "idle",
-            "input_mode": "hijack",
+            "input_mode": runtime.input_mode,
             "connected": connected,
             "auto_start": False,
             "tags": [],
             "recording_enabled": False,
-            "recording_path": None,
+            "recording_available": False,
+            "owner": None,
+            "visibility": "public",
             "last_error": None,
             # CF-specific field — FastAPI clients must tolerate extra keys.
             "hijacked": runtime.hijack.session is not None,
@@ -165,7 +174,17 @@ async def route_http(runtime: RuntimeProtocol, request: object) -> Response:
         ok = await runtime.push_worker_input(data)
         if not ok:
             return json_response({"error": "no_worker"}, status=409)
-        return json_response({"sent": True})
+        session = runtime.hijack.session
+        return json_response(
+            {
+                "ok": True,
+                "worker_id": runtime.worker_id,
+                "hijack_id": hijack_id,
+                "sent": data,
+                "matched_prompt_id": _extract_prompt_id(runtime.last_snapshot),
+                "lease_expires_at": session.lease_expires_at if session is not None else None,
+            }
+        )
 
     if "/hijack/" in path and path.endswith("/snapshot") and method == "GET":
         if await runtime.browser_role_for_request(request) != "admin":
@@ -179,13 +198,60 @@ async def route_http(runtime: RuntimeProtocol, request: object) -> Response:
         if snapshot is None:
             row = runtime.store.load_session(runtime.worker_id)
             snapshot = row.get("last_snapshot") if row else None
-        return json_response({"ok": True, "worker_id": runtime.worker_id, "hijack_id": hijack_id, "snapshot": snapshot})
+        session = runtime.hijack.session
+        return json_response(
+            {
+                "ok": True,
+                "worker_id": runtime.worker_id,
+                "hijack_id": hijack_id,
+                "snapshot": snapshot,
+                "prompt_id": _extract_prompt_id(snapshot),
+                "lease_expires_at": session.lease_expires_at if session is not None else None,
+            }
+        )
 
     if "/hijack/" in path and path.endswith("/events") and method == "GET":
+        hijack_id = _extract_hijack_id(path)
+        if not hijack_id:
+            return json_response({"error": "not_found", "path": path}, status=404)
         try:
-            seq = int(parse_qs(urlparse(url).query).get("since", ["0"])[0])
+            after_seq = int(parse_qs(urlparse(url).query).get("after_seq", ["0"])[0])
         except (ValueError, IndexError):
-            seq = 0
-        return json_response({"events": runtime.store.list_events_since(runtime.worker_id, seq)})
+            after_seq = 0
+        limit = 100
+        rows = runtime.store.list_events_since(runtime.worker_id, after_seq, limit)
+        latest_seq = runtime.store.current_event_seq(runtime.worker_id)
+        min_event_seq = rows[0]["seq"] if rows else 0
+        session = runtime.hijack.session
+        return json_response(
+            {
+                "ok": True,
+                "worker_id": runtime.worker_id,
+                "hijack_id": hijack_id,
+                "after_seq": after_seq,
+                "latest_seq": latest_seq,
+                "min_event_seq": min_event_seq,
+                "has_more": len(rows) == limit,
+                "events": rows,
+                "lease_expires_at": session.lease_expires_at if session is not None else None,
+            }
+        )
+
+    if path.endswith("/input_mode") and method == "POST":
+        payload = await runtime.request_json(request)
+        mode = str(payload.get("input_mode") or "")
+        if mode not in {"hijack", "open"}:
+            return json_response({"error": "input_mode must be 'hijack' or 'open'"}, status=400)
+        if mode == "open" and runtime.hijack.session is not None:
+            return json_response({"error": "Cannot switch to open while hijack is active."}, status=409)
+        runtime.input_mode = mode  # type: ignore[misc]
+        return json_response({"ok": True, "input_mode": mode, "worker_id": runtime.worker_id})
+
+    if path.endswith("/disconnect_worker") and method == "POST":
+        if runtime.worker_ws is None:
+            return json_response({"error": "No worker connected."}, status=404)
+        with contextlib.suppress(Exception):
+            runtime.worker_ws.close(1001, "disconnected by operator")
+        return json_response({"ok": True, "worker_id": runtime.worker_id})
 
     return json_response({"error": "not_found", "path": path}, status=404)
