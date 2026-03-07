@@ -387,6 +387,9 @@ class SessionRuntime(DurableObject):
                 lease_expires_at=session.lease_expires_at,
             )
         )
+        _storage = getattr(self.ctx, "storage", None)
+        if _storage is not None and callable(getattr(_storage, "setAlarm", None)):
+            _storage.setAlarm(int(session.lease_expires_at * 1000))
 
     def clear_lease(self) -> None:
         self.store.clear_lease(self.worker_id)
@@ -479,3 +482,19 @@ class SessionRuntime(DurableObject):
                 await self._send_text(ws, text_payload)
             except Exception:
                 self.raw_sockets.pop(ws_id, None)
+
+    async def alarm(self) -> None:
+        session = self.hijack.session
+        if session is None:
+            return
+        if session.lease_expires_at > time.time():
+            _s = getattr(self.ctx, "storage", None)
+            if _s is not None and callable(getattr(_s, "setAlarm", None)):
+                _s.setAlarm(int(session.lease_expires_at * 1000))
+            return
+        logger.info("alarm: auto-releasing expired lease owner=%s", session.owner)
+        self.hijack.release(session.hijack_id)
+        self.clear_lease()
+        with contextlib.suppress(Exception):
+            await self.push_worker_control("resume", owner="lease_expired", lease_s=0)
+        await self.broadcast_hijack_state()

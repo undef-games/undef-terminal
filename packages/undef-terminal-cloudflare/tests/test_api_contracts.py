@@ -34,6 +34,7 @@ from undef_terminal_cloudflare.contracts import (
     HijackAcquireResponse,
     HijackHeartbeatResponse,
     HijackReleaseResponse,
+    HijackSnapshotResponse,
     HijackStepResponse,
     SessionStatusItem,
 )
@@ -63,6 +64,8 @@ class _Runtime:
         self._role = "admin"
         self._persisted: list[object] = []
         self._actions: list[tuple[str, str, int]] = []
+        self.last_snapshot: dict | None = None
+        self.browser_hijack_owner: dict[str, str] = {}
 
     async def request_json(self, request: object) -> dict:
         return json.loads(getattr(request, "_body", "{}"))
@@ -88,7 +91,10 @@ class _Runtime:
 
     @property
     def store(self) -> object:
-        return SimpleNamespace(list_events_since=lambda *_args, **_kwargs: [])
+        return SimpleNamespace(
+            list_events_since=lambda *_args, **_kwargs: [],
+            load_session=lambda *_args, **_kwargs: None,
+        )
 
 
 def _parse(resp: object) -> dict | list:
@@ -246,6 +252,39 @@ async def test_release_response_has_contract_fields() -> None:
     assert payload["ok"] is True
     assert payload["worker_id"] == "test-worker"
     assert payload["hijack_id"] == hid
+
+
+# ---------------------------------------------------------------------------
+# Contract: GET /worker/{id}/hijack/{hid}/snapshot
+# ---------------------------------------------------------------------------
+
+
+async def test_snapshot_returns_none_when_no_snapshot() -> None:
+    runtime = _Runtime()
+    acquired = runtime.hijack.acquire("eve", 60)
+    assert acquired.ok and acquired.session is not None
+    hid = acquired.session.hijack_id
+
+    req = _Req(f"https://example.invalid/worker/test-worker/hijack/{hid}/snapshot")
+    resp = await route_http(runtime, req)
+    assert resp.status == 200
+    payload = _parse(resp)
+    _check_keys(payload, HijackSnapshotResponse)
+    assert payload["ok"] is True
+    assert payload["snapshot"] is None
+
+
+async def test_snapshot_returns_in_memory_snapshot() -> None:
+    runtime = _Runtime()
+    runtime.last_snapshot = {"type": "snapshot", "screen": "hello"}
+    acquired = runtime.hijack.acquire("frank", 60)
+    assert acquired.ok and acquired.session is not None
+    hid = acquired.session.hijack_id
+
+    req = _Req(f"https://example.invalid/worker/test-worker/hijack/{hid}/snapshot")
+    resp = await route_http(runtime, req)
+    payload = _parse(resp)
+    assert payload["snapshot"] == {"type": "snapshot", "screen": "hello"}
 
 
 # ---------------------------------------------------------------------------

@@ -69,6 +69,13 @@ class HijackReleaseResponse(TypedDict):
     hijack_id: str
 
 
+class HijackSnapshotResponse(TypedDict):
+    ok: bool
+    worker_id: str
+    hijack_id: str
+    snapshot: dict[str, object] | None
+
+
 FrameType = Literal[
     "snapshot_req",
     "snapshot",

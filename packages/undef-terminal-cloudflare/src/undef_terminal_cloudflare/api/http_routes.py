@@ -167,6 +167,20 @@ async def route_http(runtime: RuntimeProtocol, request: object) -> Response:
             return json_response({"error": "no_worker"}, status=409)
         return json_response({"sent": True})
 
+    if "/hijack/" in path and path.endswith("/snapshot") and method == "GET":
+        if await runtime.browser_role_for_request(request) != "admin":
+            return json_response({"error": "admin role required"}, status=403)
+        hijack_id = _extract_hijack_id(path)
+        if not hijack_id:
+            return json_response({"error": "not_found", "path": path}, status=404)
+        # Prefer in-memory snapshot (most recent); fall back to store for DOs
+        # that resumed after hibernation and have not yet received a new snapshot.
+        snapshot: dict[str, object] | None = runtime.last_snapshot
+        if snapshot is None:
+            row = runtime.store.load_session(runtime.worker_id)
+            snapshot = row.get("last_snapshot") if row else None
+        return json_response({"ok": True, "worker_id": runtime.worker_id, "hijack_id": hijack_id, "snapshot": snapshot})
+
     if "/hijack/" in path and path.endswith("/events") and method == "GET":
         try:
             seq = int(parse_qs(urlparse(url).query).get("since", ["0"])[0])

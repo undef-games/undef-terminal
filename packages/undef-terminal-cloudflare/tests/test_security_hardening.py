@@ -79,6 +79,8 @@ class _Runtime:
         self.persisted: list[float] = []
         self.actions: list[tuple[str, str, int]] = []
         self._role = "admin"
+        self.last_snapshot: dict | None = None
+        self.browser_hijack_owner: dict[str, str] = {}
 
     async def request_json(self, request: object) -> dict[str, object]:
         return json.loads(getattr(request, "_body", "{}"))
@@ -105,7 +107,10 @@ class _Runtime:
 
     @property
     def store(self) -> object:
-        return SimpleNamespace(list_events_since=lambda *_args, **_kwargs: [])
+        return SimpleNamespace(
+            list_events_since=lambda *_args, **_kwargs: [],
+            load_session=lambda *_args, **_kwargs: None,
+        )
 
 
 @pytest.mark.asyncio
