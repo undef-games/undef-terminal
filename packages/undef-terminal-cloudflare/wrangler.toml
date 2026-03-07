@@ -21,8 +21,15 @@ AUTH_MODE = "dev"
 #   JWT_ALGORITHMS   = "RS256"
 #   JWT_DEFAULT_ROLE = "operator"   # role assigned to CF Access users (no roles claim by default)
 #
-# CF Access JWTs carry sub (email), aud (array), iss, iat, exp — but no roles.
-# JWT_DEFAULT_ROLE sets the role for those users (viewer / operator / admin).
+# CF Access JWTs carry sub (email), aud (array), iss, iat, exp — but no roles claim.
+# JWT_DEFAULT_ROLE sets the fallback role (viewer / operator / admin).
+#
+# For groups-based roles (finer-grained access control):
+#   1. Configure SCIM or CF Access identity groups in the Zero Trust dashboard.
+#   2. Add a custom claim (e.g. "groups") to your IdP's CF Access application.
+#   3. Set JWT_ROLES_CLAIM=groups so the worker reads roles from that claim.
+#      Members of "admin" → admin, "operator" → operator, others → viewer.
+#
 # Store secrets via: wrangler secret put AUTH_MODE  (or use .dev.vars for local dev)
 
 [[durable_objects.bindings]]

@@ -103,6 +103,7 @@ def session_page_html(
 
 def connect_page_html(title: str, assets_path: str, app_path: str, *, xterm_cdn: str = "", fonts_cdn: str = "") -> str:
     """Return a self-contained quick-connect form page."""
+    safe_app = escape(app_path)
     inline_script = f"""
 <script>
 (function () {{
@@ -133,6 +134,7 @@ def connect_page_html(title: str, assets_path: str, app_path: str, *, xterm_cdn:
     e.preventDefault();
     errorBox.textContent = '';
     submitBtn.disabled = true;
+    submitBtn.textContent = 'Connecting\u2026';
     var t = typeSelect.value;
     var payload = {{ connector_type: t }};
     var name = document.getElementById('connect-name').value.trim();
@@ -147,7 +149,7 @@ def connect_page_html(title: str, assets_path: str, app_path: str, *, xterm_cdn:
       if (user) payload.username = user;
       if (pass) payload.password = pass;
     }}
-    fetch('{escape(app_path)}/api/connect', {{
+    fetch('{safe_app}/api/connect', {{
       method: 'POST',
       headers: {{'Content-Type': 'application/json'}},
       body: JSON.stringify(payload),
@@ -155,27 +157,37 @@ def connect_page_html(title: str, assets_path: str, app_path: str, *, xterm_cdn:
       .then(function (r) {{ return r.json().then(function (d) {{ return {{ ok: r.ok, data: d }}; }}); }})
       .then(function (r) {{
         if (!r.ok) {{ throw new Error(r.data.detail || 'Connection failed'); }}
-        window.location = r.data.url;
+        window.location.href = r.data.url;
       }})
       .catch(function (err) {{
         errorBox.textContent = err.message;
         submitBtn.disabled = false;
+        submitBtn.textContent = 'Connect';
       }});
   }});
 }})();
 </script>"""
+    field_css = (
+        "<style>"
+        ".field{margin-bottom:1rem}"
+        ".field label{display:block;font-size:13px;color:var(--muted,#8a9bb0);margin-bottom:4px}"
+        "</style>"
+    )
     body = (
         "<body>"
         "<div class='page'>"
         "<div class='card' style='max-width:480px;margin:2rem auto'>"
-        f"<h2>Quick Connect</h2>"
+        f"<div class='small' style='margin-bottom:.75rem'>"
+        f"<a href='{safe_app}/'>← Dashboard</a>"
+        "</div>"
+        "<h2 style='margin-bottom:1.25rem'>Quick Connect</h2>"
         "<form id='connect-form'>"
         "<div class='field'>"
-        "<label for='connect-type'>Type</label>"
+        "<label for='connect-type'>Connection type</label>"
         "<select id='connect-type' name='connector_type'>"
         "<option value='ssh'>SSH</option>"
         "<option value='telnet'>Telnet</option>"
-        "<option value='shell'>Shell (demo)</option>"
+        "<option value='shell'>Local Shell</option>"
         "</select>"
         "</div>"
         "<div class='field'>"
@@ -198,11 +210,12 @@ def connect_page_html(title: str, assets_path: str, app_path: str, *, xterm_cdn:
         "<label for='connect-pass'>Password</label>"
         "<input id='connect-pass' type='password' placeholder='password'>"
         "</div>"
-        "<div id='connect-error' style='color:var(--color-error,#f66);margin:.5rem 0'></div>"
-        "<button id='connect-submit' type='submit'>Connect</button>"
+        "<div id='connect-error' style='color:var(--danger,#f66);margin:.5rem 0;font-size:13px'></div>"
+        "<button id='connect-submit' class='btn primary' type='submit' style='width:100%'>Connect</button>"
         "</form>"
         "</div>"
         "</div>"
+        f"{field_css}"
         f"{inline_script}"
         "</body>"
     )

@@ -94,8 +94,13 @@ Items 1, 4, 5 (fleet KV, alarm expiry, snapshot) pass against pywrangler dev. Te
 REAL_CF=1 REAL_CF_URL=https://undef-terminal-cloudflare.neurotic.workers.dev uv run pytest -m e2e -v
 ```
 
-### 2. CF Access JWT — Groups-Based Role Mapping
-`JWT_DEFAULT_ROLE` gives all CF Access users the same role. For fine-grained access, use CF Access identity groups mapped to JWT claims (requires SCIM or CF Access service tokens). No code changes needed — configure `JWT_ROLES_CLAIM` to match the group claim name.
+### 2. CF Access JWT — Groups-Based Role Mapping ✓ (documented)
+`JWT_DEFAULT_ROLE` gives all CF Access users the same role. For fine-grained access:
+1. Configure SCIM / CF Access identity groups in the Zero Trust dashboard
+2. Add a custom claim (e.g. `"groups"`) to the CF Access application
+3. Set `JWT_ROLES_CLAIM=groups` so the worker reads roles from that claim
+
+Documented in `wrangler.toml` comments. No code changes needed beyond existing `JWT_ROLES_CLAIM` env var support.
 
 ### 3. Quick-Connect UX Polish
 The `GET /connect` page is minimal (inline JS form). Could be enhanced with:
@@ -103,8 +108,12 @@ The `GET /connect` page is minimal (inline JS form). Could be enhanced with:
 - Display name / tag input
 - Auto-redirect to new session URL on creation
 
-### 4. Dashboard SPA — Fleet Sessions View
-`/api/sessions` now returns fleet-wide data from KV. The dashboard SPA (`frontend/`) should display all connected sessions, not just the demo session. Requires updating `hijack.js` to poll `/api/sessions` and render session list.
+### 4. Dashboard SPA — Fleet Sessions View ✓
+`/api/sessions` returns fleet-wide KV data. Dashboard now:
+- Auto-refreshes session list every 10s (`setInterval` in `dashboard-view.js`)
+- Shows last-updated time in status chip
+- Has "Quick Connect" button (primary) and "Refresh" button in header
+- Quick-connect page polished: `.field` CSS spacing, "Local Shell" label, back link, "Connecting…" state
 
 ### 5. Main Package `ty` Backlog
 `ty check src/undef/` passes clean as of last run. If new type errors appear, they are CI-blocking for release.

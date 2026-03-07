@@ -1,4 +1,5 @@
 import { loadDashboardState, summarizeSessions } from "../state.js";
+const _POLL_INTERVAL_MS = 10_000;
 function escapeHtml(value) {
     return value
         .replace(/&/g, "&amp;")
@@ -44,13 +45,36 @@ function sectionMarkup(title, sessions, appPath) {
     </section>
   `;
 }
+async function refreshSessions(content, status, appPath) {
+    try {
+        const sessions = await loadDashboardState();
+        const groups = summarizeSessions(sessions);
+        status.className = "status-chip ok";
+        status.textContent = `${sessions.length} session(s) · ${new Date().toLocaleTimeString()}`;
+        content.innerHTML = [
+            sectionMarkup("Running", groups.running, appPath),
+            sectionMarkup("Stopped", groups.stopped, appPath),
+            sectionMarkup("Degraded", groups.degraded, appPath),
+        ].join("");
+    }
+    catch (error) {
+        status.className = "status-chip error";
+        status.textContent = `Failed to load sessions: ${String(error)}`;
+        content.innerHTML = `<section class="card"><div class="small">Unable to load session state.</div></section>`;
+    }
+}
 export async function renderDashboard(root, bootstrap) {
     const safeTitle = escapeHtml(bootstrap.title);
+    const safeAppPath = escapeHtml(bootstrap.app_path);
     root.innerHTML = `
     <div class="page">
       <section class="card stack">
         <div class="small">Reference implementation</div>
         <h1>${safeTitle}</h1>
+        <div class="toolbar">
+          <a class="btn primary" href="${safeAppPath}/connect">Quick Connect</a>
+          <button id="dashboard-refresh" class="btn">Refresh</button>
+        </div>
         <div id="dashboard-status" class="status-chip info">Loading sessions…</div>
       </section>
       <div id="dashboard-content" class="page"></div>
@@ -58,22 +82,21 @@ export async function renderDashboard(root, bootstrap) {
   `;
     const status = root.querySelector("#dashboard-status");
     const content = root.querySelector("#dashboard-content");
-    if (!status || !content)
+    const refreshBtn = root.querySelector("#dashboard-refresh");
+    if (!status || !content || !refreshBtn)
         throw new Error("dashboard shell is incomplete");
-    try {
-        const sessions = await loadDashboardState();
-        const groups = summarizeSessions(sessions);
-        status.className = "status-chip ok";
-        status.textContent = `${sessions.length} session(s) loaded`;
-        content.innerHTML = [
-            sectionMarkup("Running", groups.running, bootstrap.app_path),
-            sectionMarkup("Stopped", groups.stopped, bootstrap.app_path),
-            sectionMarkup("Degraded", groups.degraded, bootstrap.app_path),
-        ].join("");
-    }
-    catch (error) {
-        status.className = "status-chip error";
-        status.textContent = `Dashboard failed to load: ${String(error)}`;
-        content.innerHTML = `<section class="card"><div class="small">Unable to load session state.</div></section>`;
-    }
+    await refreshSessions(content, status, bootstrap.app_path);
+    refreshBtn.addEventListener("click", () => {
+        status.className = "status-chip info";
+        status.textContent = "Refreshing…";
+        void refreshSessions(content, status, bootstrap.app_path);
+    });
+    const timer = setInterval(() => {
+        void refreshSessions(content, status, bootstrap.app_path);
+    }, _POLL_INTERVAL_MS);
+    // Stop polling when navigating away (handles SPA-style page transitions).
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden)
+            clearInterval(timer);
+    }, { once: true });
 }
