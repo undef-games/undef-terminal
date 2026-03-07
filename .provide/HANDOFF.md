@@ -2,12 +2,37 @@
 
 ## Current State
 
-- **Main package (`undef-terminal`)**: 813 tests passing. Pre-release quality. Pre-commit hooks active (ruff, mypy, ty, bandit).
-- **CF package (`undef-terminal-cloudflare`)**: 38 tests passing. Bugs fixed, API schemas aligned with FastAPI, contract tests in place.
+- **Main package (`undef-terminal`)**: 810+ tests passing. Pre-release quality. Pre-commit hooks active (ruff, mypy, ty, bandit).
+- **CF package (`undef-terminal-cloudflare`)**: 63 unit tests passing + 10 E2E tests (run with `-m e2e`). All items 1–5 complete.
 
 ---
 
-## Completed This Session — Cloudflare Package: Bug Fixes + API Alignment
+## Completed in Most Recent Sessions
+
+### Main Package
+- **Shell connector**: renamed `demo` → `shell` (`ShellSessionConnector`); `demo.py` removed
+- **Quick-connect**: `GET /connect` page + `POST /api/connect` endpoint for ephemeral sessions with open input mode; `SessionDefinition.ephemeral` field; auto-deleted on last browser disconnect (`on_worker_empty` callback)
+- **Playwright server tests**: updated heading references to "Interactive Shell Session"
+
+### CF Package — Items 1, 2, 4, 5 (all complete)
+- **Item 1 (Fleet KV)**: `update_kv_session` / `list_kv_sessions` in `state/registry.py`; DO writes to `SESSION_REGISTRY` KV on connect/disconnect; Default Worker serves `/api/sessions` (fleet scope, `X-Sessions-Scope: fleet`)
+- **Item 2 (E2E tests)**: `tests/test_e2e_ws.py` — 10 async tests covering worker connect/disconnect, browser hello, snapshot, hijack acquire/release/conflict/alarm-expiry, input_mode change, fleet registry; `conftest.py` supports `REAL_CF_URL` for testing against real deployment
+- **Item 3 (CF Access JWT)**: `jwt_default_role` field on `JwtConfig` (env var `JWT_DEFAULT_ROLE`, default `"viewer"`); assigned when JWT has no roles/scope claim; CF Access configuration documented in `wrangler.toml` comments
+- **Item 4 (Alarm expiry)**: `persist_lease()` calls `ctx.storage.setAlarm()`; `alarm()` auto-releases expired leases
+- **Item 5 (Snapshot endpoint)**: `GET /hijack/{id}/snapshot` implemented; returns `last_snapshot` from in-memory or store
+
+### CF Hibernation Bug Fixes (all committed)
+- `_lazy_init_worker_id()`: extracts real worker_id from URL path (CF always returns "default" from `ctx.id.name()`)
+- KV registration moved to `fetch()` before returning 101 (hibernation drops `webSocketOpen` async ops)
+- Browser hello frame sent synchronously from `fetch()` via `server.send()` before 101
+- `broadcast_to_browsers` uses `ctx.getWebSockets()` (not stale in-memory dict after DO wake)
+- `serializeAttachment` encodes `"role:browser_role:worker_id"` so close handlers recover identity after hibernation
+- KV `put` with `expirationTtl` removed (Pyodide can't map Python kwargs to JS options)
+- User-Agent header added to E2E HTTP helpers (CF Bot Fight Mode blocks default Python UA)
+
+---
+
+## Completed Earlier — Cloudflare Package: Bug Fixes + API Alignment
 
 ### Bug A — Blocking PyJWT JWKS Fetch (auth/jwt.py)
 `PyJWKClient.get_signing_key_from_jwt()` used `urllib.request.urlopen` synchronously, blocking the V8 isolate. Fixed by making `_resolve_signing_key` and `decode_jwt` async. JWKS is now fetched via `js.fetch` (CF Workers native async), with `urllib` fallback for tests/local dev. Cascading `async` propagated to `_resolve_principal`, `browser_role_for_request`, and all callers.
@@ -63,33 +88,26 @@ Minor pre-existing changes in the main package — not from this session, safe t
 
 ## Next Steps
 
-### 1. Fleet-Wide Session Registry (KV / D1)
-The single largest gap in the CF backend. `/api/sessions` currently only knows about its own DO. Fix:
-- Each `SessionRuntime` writes its `worker_id`, `connected` state, and metadata to a KV or D1 index on `webSocketOpen` / `webSocketClose`.
-- The `Default` Worker's `/api/sessions` handler queries the index instead of routing to a single DO.
-- Unlocks the full dashboard SPA against CF deployments.
-- Medium complexity, well-defined. Requires a new KV binding in `wrangler.toml`.
+### 1. CF Package — Real Deployment Test Coverage
+Items 1, 4, 5 (fleet KV, alarm expiry, snapshot) pass against pywrangler dev. Tests marked `real_cf` require a live CF deployment. Run with:
+```bash
+REAL_CF=1 REAL_CF_URL=https://undef-terminal-cloudflare.neurotic.workers.dev uv run pytest -m e2e -v
+```
 
-### 2. Wrangler / Miniflare E2E Tests
-The CF package has no tests that run against a real Workers runtime. The main package has `test_e2e_live_hub_ws.py` etc. Options:
-- Miniflare-based pytest fixture (local emulation)
-- `wrangler dev` subprocess fixture with real HTTP client
-- Covers: WS hibernation lifecycle, SQLite persistence, DO routing
+### 2. CF Access JWT — Groups-Based Role Mapping
+`JWT_DEFAULT_ROLE` gives all CF Access users the same role. For fine-grained access, use CF Access identity groups mapped to JWT claims (requires SCIM or CF Access service tokens). No code changes needed — configure `JWT_ROLES_CLAIM` to match the group claim name.
 
-### 3. Cloudflare Access / Zero Trust Integration
-Validate CF Access JWTs via `/cdn-cgi/access/certs` JWKS endpoint. The `_fetch_jwks` async path added in Bug A fix is directly ready for this. Just needs `JWT_JWKS_URL=https://<team>.cloudflareaccess.com/cdn-cgi/access/certs` in env.
+### 3. Quick-Connect UX Polish
+The `GET /connect` page is minimal (inline JS form). Could be enhanced with:
+- Session type selection (shell / telnet / SSH)
+- Display name / tag input
+- Auto-redirect to new session URL on creation
 
-### 4. Alarm-Based Hijack Lease Expiry
-Currently leases expire passively (checked on access). CF Alarms could:
-- Actively expire leases at `lease_expires_at`
-- Broadcast `hijack_state` to browsers automatically
-- Append `hijack_expired` event to the SQLite event log without needing a poll
+### 4. Dashboard SPA — Fleet Sessions View
+`/api/sessions` now returns fleet-wide data from KV. The dashboard SPA (`frontend/`) should display all connected sessions, not just the demo session. Requires updating `hijack.js` to poll `/api/sessions` and render session list.
 
-### 5. `/hijack/{id}/snapshot` in CF
-FastAPI has this endpoint; CF does not. It returns a fresh terminal snapshot to the REST hijack owner. Prerequisite: CF needs a way to request and await a snapshot from the worker WS — either via a DO alarm or a short-poll with `asyncio.sleep`.
-
-### 6. Main Package `ty` Backlog
-`NEW_CHAT_CHECKLIST.md` documents remaining `ty` static type diagnostics to clear. These are pre-existing and non-blocking for the CF work, but are a CI quality gate for release.
+### 5. Main Package `ty` Backlog
+`ty check src/undef/` passes clean as of last run. If new type errors appear, they are CI-blocking for release.
 
 ---
 
