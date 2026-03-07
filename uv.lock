@@ -1702,7 +1702,7 @@ wheels = [
 
 [[package]]
 name = "undef-terminal"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1802,7 +1802,7 @@ dev = [
 
 [[package]]
 name = "undef-terminal-cloudflare"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/undef-terminal-cloudflare" }
 dependencies = [
     { name = "pyjwt" },

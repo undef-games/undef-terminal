@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.2.0] — 2026-03-07
+
+### Fixed
+
+- **`SessionLogger` concurrent write/flush race** — `_write_event` now holds `asyncio.Lock`
+  for the entire write + flush operation. Previously the lock was released before
+  `run_in_executor(flush)` completed, allowing a concurrent `write()` call to race with the
+  in-flight flush and potentially block the event loop when the C-level `BufferedWriter._lock`
+  was contended. `start()` and `stop()` adopt the same pattern.
+
 ### Changed (sixth review)
 
 - **`HostedSessionRuntime` stops on permanent HTTP errors** — `_run()` now exits the retry
