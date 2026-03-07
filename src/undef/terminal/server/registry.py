@@ -10,10 +10,10 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import time
 from collections import deque
 from typing import TYPE_CHECKING, Any
 
+from undef.terminal.server.connectors import KNOWN_CONNECTOR_TYPES
 from undef.terminal.server.models import RecordingConfig, SessionDefinition, SessionRuntimeStatus
 from undef.terminal.server.runtime import HostedSessionRuntime
 
@@ -104,6 +104,11 @@ class SessionRegistry:
         session_id = str(payload["session_id"])
         if not re.match(r"^[\w\-]+$", session_id):
             raise SessionValidationError(f"session_id must match ^[\\w\\-]+$, got: {session_id!r}")
+        connector_type_raw = str(payload.get("connector_type", "demo"))
+        if connector_type_raw not in KNOWN_CONNECTOR_TYPES:
+            raise SessionValidationError(
+                f"connector_type must be one of {sorted(KNOWN_CONNECTOR_TYPES)}, got: {connector_type_raw!r}"
+            )
         input_mode_raw = str(payload.get("input_mode", "open"))
         if input_mode_raw not in {"open", "hijack"}:
             raise SessionValidationError(f"input_mode must be 'open' or 'hijack', got: {input_mode_raw!r}")
@@ -115,7 +120,7 @@ class SessionRegistry:
         session = SessionDefinition(
             session_id=session_id,
             display_name=str(payload.get("display_name", session_id)),
-            connector_type=str(payload.get("connector_type", "demo")),
+            connector_type=connector_type_raw,
             connector_config=dict(payload.get("connector_config", {})),
             input_mode=input_mode_raw,  # type: ignore[arg-type]
             auto_start=bool(payload.get("auto_start", False)),
@@ -125,7 +130,6 @@ class SessionRegistry:
             ),
             owner=(None if payload.get("owner") is None else str(payload.get("owner"))),
             visibility=visibility_raw,  # type: ignore[arg-type]
-            last_active_at=time.time(),
         )
         async with self._lock:
             if session.session_id in self._sessions:
@@ -159,7 +163,6 @@ class SessionRegistry:
                 session.recording_enabled = bool(payload["recording_enabled"])
             if "connector_config" in payload:
                 session.connector_config = dict(payload["connector_config"])
-            session.last_active_at = time.time()
             runtime = self._runtime_for(session)
         if "input_mode" in payload:
             await runtime.set_mode(session.input_mode)
@@ -175,7 +178,6 @@ class SessionRegistry:
     async def start_session(self, session_id: str) -> SessionRuntimeStatus:
         async with self._lock:
             session = self._require_session(session_id)
-            session.last_active_at = time.time()
             runtime = self._runtime_for(session)
         await runtime.start()
         return runtime.status()
@@ -183,7 +185,6 @@ class SessionRegistry:
     async def stop_session(self, session_id: str) -> SessionRuntimeStatus:
         async with self._lock:
             session = self._require_session(session_id)
-            session.last_active_at = time.time()
             runtime = self._runtime_for(session)
         await runtime.stop()
         return runtime.status()
@@ -191,7 +192,6 @@ class SessionRegistry:
     async def restart_session(self, session_id: str) -> SessionRuntimeStatus:
         async with self._lock:
             session = self._require_session(session_id)
-            session.last_active_at = time.time()
             runtime = self._runtime_for(session)
         await runtime.restart()
         return runtime.status()
@@ -200,7 +200,6 @@ class SessionRegistry:
         async with self._lock:
             session = self._require_session(session_id)
             session.input_mode = mode  # type: ignore[assignment]
-            session.last_active_at = time.time()
             runtime = self._runtime_for(session)
         if mode == "open":
             await self._force_release_hijack(session_id)
@@ -210,7 +209,6 @@ class SessionRegistry:
     async def clear_session(self, session_id: str) -> SessionRuntimeStatus:
         async with self._lock:
             session = self._require_session(session_id)
-            session.last_active_at = time.time()
             runtime = self._runtime_for(session)
         await runtime.clear()
         return runtime.status()
@@ -218,7 +216,6 @@ class SessionRegistry:
     async def analyze_session(self, session_id: str) -> str:
         async with self._lock:
             session = self._require_session(session_id)
-            session.last_active_at = time.time()
             runtime = self._runtime_for(session)
         return await runtime.analyze()
 

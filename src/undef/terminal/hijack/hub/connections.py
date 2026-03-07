@@ -63,14 +63,6 @@ class _ConnectionMixin:
 
     # -- Rate limiting ---------------------------------------------------------
 
-    def allow_rest_acquire(self) -> bool:
-        """Return True if the global REST acquire rate limit allows this request."""
-        return self._rest_acquire_bucket.allow()
-
-    def allow_rest_send(self) -> bool:
-        """Return True if the global REST send/step rate limit allows this request."""
-        return self._rest_send_bucket.allow()
-
     def allow_rest_acquire_for(self, client_id: str) -> bool:
         """Per-client REST acquire rate limit (also checks the global bucket).
 

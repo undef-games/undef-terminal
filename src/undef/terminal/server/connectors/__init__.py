@@ -14,11 +14,17 @@ from undef.terminal.server.connectors.demo import DemoSessionConnector
 from undef.terminal.server.connectors.telnet import TelnetSessionConnector
 
 __all__ = [
+    "KNOWN_CONNECTOR_TYPES",
     "DemoSessionConnector",
     "SessionConnector",
     "TelnetSessionConnector",
     "build_connector",
 ]
+
+# Connector types recognised by build_connector().  Used by the registry to
+# validate connector_type at session-creation time so callers get a 422 instead
+# of discovering the error asynchronously via lifecycle_state == "error".
+KNOWN_CONNECTOR_TYPES: frozenset[str] = frozenset({"demo", "telnet", "ssh"})
 
 
 def build_connector(

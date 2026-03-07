@@ -38,7 +38,7 @@ def replay_log(
 
     Args:
         log_path: Path to the JSONL session log.
-        speed: Playback speed multiplier (1.0 = real time, 2.0 = double speed).
+        speed: Playback speed multiplier (1.0 = real time, 2.0 = double speed, max 100.0).
         step: If ``True``, pause between frames waiting for Enter.
         events: Event names to render (default: ``["read", "screen"]``).
         output: File-like object to write to (default: ``sys.stdout``).
@@ -64,7 +64,7 @@ def replay_log(
             if screen is None:
                 continue
             if last_ts is not None and not step:
-                delta = (record.get("ts", last_ts) - last_ts) / max(speed, 0.01)
+                delta = (record.get("ts", last_ts) - last_ts) / min(max(speed, 0.01), 100.0)
                 if delta > 0:
                     time.sleep(delta)
             _render_screen(screen, out)

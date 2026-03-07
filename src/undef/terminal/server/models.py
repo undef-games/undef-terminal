@@ -82,7 +82,6 @@ class SessionDefinition:
     tags: list[str] = field(default_factory=list)
     recording_enabled: bool | None = None
     created_at: float = field(default_factory=time.time)
-    last_active_at: float | None = None
     owner: str | None = None
     visibility: Literal["public", "operator", "private"] = "public"
 

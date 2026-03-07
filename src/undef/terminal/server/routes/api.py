@@ -206,7 +206,7 @@ def create_api_router() -> APIRouter:
             raise HTTPException(status_code=403, detail="insufficient privileges")
         mode = str(payload.get("input_mode", "")).strip()
         if mode not in {"open", "hijack"}:
-            raise HTTPException(status_code=400, detail="input_mode must be 'open' or 'hijack'")
+            raise HTTPException(status_code=422, detail="input_mode must be 'open' or 'hijack'")
         try:
             session = await _registry(request).set_mode(session_id, mode)
         except KeyError:
@@ -305,7 +305,7 @@ def create_api_router() -> APIRouter:
         if path is None or not path.exists():
             raise HTTPException(status_code=404, detail="recording not available")
         recording_cfg = getattr(getattr(request.app.state, "uterm_config", None), "recording", None)
-        if recording_cfg is not None and not path.resolve().is_relative_to(recording_cfg.directory.resolve()):
+        if recording_cfg is None or not path.resolve().is_relative_to(recording_cfg.directory.resolve()):
             raise HTTPException(status_code=404, detail="recording not available")
         return FileResponse(path, filename=path.name, media_type="application/json")
 

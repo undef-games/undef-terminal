@@ -385,6 +385,90 @@ def test_ssh_connector_raises_without_known_hosts() -> None:
         SshSessionConnector("sess1", "Session 1", {"host": "localhost"})
 
 
+# ---------------------------------------------------------------------------
+# Fourth-review regression tests
+# ---------------------------------------------------------------------------
+
+
+def test_create_session_rejects_unknown_connector_type() -> None:
+    """POST /api/sessions with an unsupported connector_type must return 422."""
+    config = default_server_config()
+    app = create_server_app(config)
+    with TestClient(app) as client:
+        r = client.post(
+            "/api/sessions",
+            json={"session_id": "bad-type", "display_name": "Bad", "connector_type": "bogus"},
+        )
+        assert r.status_code == 422
+
+
+def test_telnet_client_connect_timeout_parameter() -> None:
+    """TelnetClient must accept a connect_timeout parameter."""
+    from undef.terminal.transports.telnet import TelnetClient
+
+    client = TelnetClient("127.0.0.1", 9, connect_timeout=5.0)
+    assert client._connect_timeout == 5.0
+
+
+def test_set_mode_invalid_value_returns_422() -> None:
+    """POST /api/sessions/{id}/mode with invalid input_mode must return 422, not 400."""
+    config = default_server_config()
+    app = create_server_app(config)
+    with TestClient(app) as client:
+        r = client.post("/api/sessions/demo-session/mode", json={"input_mode": "garbage"})
+        assert r.status_code == 422
+
+
+def test_recording_download_denied_when_config_absent() -> None:
+    """Recording download must return 404 when uterm_config is not set on app state."""
+    from pathlib import Path
+
+    config = default_server_config()
+    config.recording.directory = Path(".uterm-recordings")
+    app = create_server_app(config)
+
+    async def _fake_path(session_id: str) -> Path:
+        return config.recording.directory / f"{session_id}.jsonl"
+
+    # Remove uterm_config from state so the containment guard has no reference dir.
+    with TestClient(app) as client:
+        del app.state.uterm_config
+        app.state.uterm_registry.recording_path = _fake_path
+        r = client.get("/api/sessions/demo-session/recording/download")
+        assert r.status_code == 404
+
+
+def test_replay_log_speed_clamps_to_maximum(tmp_path: Path) -> None:
+    """replay_log speed is clamped to 100.0; absurdly large values don't loop infinitely."""
+    import io
+    import time
+
+    from undef.terminal.replay.viewer import replay_log
+
+    log = tmp_path / "session.jsonl"
+    now = time.time()
+    log.write_text(
+        f'{{"event": "read", "ts": {now}, "data": {{"screen": "A"}}}}\n'
+        f'{{"event": "read", "ts": {now + 60.0}, "data": {{"screen": "B"}}}}\n',
+        encoding="utf-8",
+    )
+    buf = io.StringIO()
+    start = time.monotonic()
+    replay_log(log, speed=1_000_000.0, output=buf)
+    elapsed = time.monotonic() - start
+    # At 100× max clamp, a 60 s gap becomes 0.6 s — well under 5 s.
+    assert elapsed < 5.0
+    assert "B" in buf.getvalue()
+
+
+def test_session_definition_has_no_last_active_at_field() -> None:
+    """SessionDefinition must not expose last_active_at (field removed in fourth review)."""
+    from undef.terminal.server.models import SessionDefinition
+
+    sd = SessionDefinition(session_id="s1", display_name="S1", connector_type="demo")
+    assert not hasattr(sd, "last_active_at")
+
+
 def test_ssh_connector_allows_insecure_no_host_check_flag() -> None:
     """insecure_no_host_check=True must bypass the known_hosts requirement with a warning."""
     pytest.importorskip("asyncssh", reason="asyncssh not installed")

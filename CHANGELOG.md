@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`connector_type` validated at session-creation time** — `POST /api/sessions` now returns
+  HTTP 422 immediately when `connector_type` is not one of the built-in types (`demo`,
+  `telnet`, `ssh`), rather than returning 200 and only surfacing the error later via
+  `lifecycle_state == "error"`.
+- **`TelnetClient` connect timeout** — `TelnetClient.__init__` now accepts a
+  `connect_timeout` keyword argument (default 30 s). `connect()` wraps
+  `asyncio.open_connection` in `asyncio.wait_for`, preventing indefinite hangs when
+  connecting to unreachable hosts.
+- **`replay_log` speed upper bound** — `speed` is now clamped to `[0.01, 100.0]`, preventing
+  arbitrarily large multipliers from being passed silently.
+
+### Changed
+
+- **`POST /sessions/{id}/mode` returns 422 for invalid `input_mode`** — previously returned
+  HTTP 400; changed to 422 to be consistent with all other validation failures in the API.
+- **Recording download is fail-closed when config is absent** — the path-containment guard in
+  `GET /api/sessions/{id}/recording/download` now returns 404 if `uterm_config` is absent from
+  app state (previously skipped the check silently).
+
+### Removed
+
+- **`SessionDefinition.last_active_at` field removed** — the field was set on create/update
+  but never read by any eviction policy, metrics counter, or log field. Removed to keep the
+  model honest.
+- **Dead methods `allow_rest_acquire()` / `allow_rest_send()`** — two unreachable methods in
+  `_ConnectionMixin` that were not in `TermHubProtocol` and not called from any route handler
+  (only the `allow_rest_acquire_for(client_id)` / `allow_rest_send_for(client_id)` variants
+  are used). Deleted to remove confusing surface area.
+
+### Tests
+
+- **Fourth-review regression suite** — 7 new tests added to
+  `tests/test_server_security_regressions.py`: unknown `connector_type` → 422,
+  `TelnetClient` timeout parameter accepted, `POST /mode` invalid value → 422, recording
+  download denied when config absent → 404, `replay_log` speed upper-clamp, and
+  `SessionDefinition` has no `last_active_at` field.
+
+### Added (continued — prior releases)
+
 - **Permanent-failure detection** — `HostedSessionRuntime` now distinguishes
   `ValueError` (e.g. unsupported `connector_type`, missing SSH `known_hosts`) as a
   permanent configuration error; the retry loop stops immediately and sets
