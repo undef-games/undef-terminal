@@ -33,3 +33,6 @@ packages = ["src/undef_terminal_cloudflare"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+    "e2e: end-to-end tests against a live pywrangler dev server (skipped by default; use -m e2e or E2E=1)",
+]
