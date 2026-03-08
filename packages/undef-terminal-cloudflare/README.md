@@ -55,6 +55,22 @@ uterm-cf build               # build only
 uterm-cf deploy --env production
 ```
 
+### Docker alternative
+
+```bash
+# Build and run from repo root
+docker build -f docker/Dockerfile.cf -t undef-terminal-cf .
+docker run --rm -p 8788:8788 undef-terminal-cf
+
+# JWT auth test
+docker run --rm -p 8788:8788 \
+  -e AUTH_MODE=jwt \
+  -e JWT_JWKS_URL=https://<team>.cloudflareaccess.com/cdn-cgi/access/certs \
+  -e JWT_ISSUER=https://<team>.cloudflareaccess.com \
+  -e JWT_AUDIENCE=<aud-tag> \
+  undef-terminal-cf
+```
+
 ## Tests
 
 Unit tests (no network required):

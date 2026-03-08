@@ -2,7 +2,7 @@
 
 Shared terminal I/O primitives and WebSocket proxy infrastructure for the undef ecosystem.
 
-**Highlights:** WebSocket ↔ telnet/SSH proxy · hijack/observe control plane · browser role system (viewer/operator/admin) · open/shared input mode · quick-connect ephemeral sessions (`GET /connect`) · `ShellSessionConnector` for in-process shell sessions · JWT auth · 1082+ tests at 99% server coverage
+**Highlights:** WebSocket ↔ telnet/SSH proxy · hijack/observe control plane · browser role system (viewer/operator/admin) · open/shared input mode · quick-connect ephemeral sessions (`GET /connect`) · `ShellSessionConnector` for in-process shell sessions · JWT auth · 1096+ tests at 99% server coverage
 
 For Cloudflare Workers deployment, see [`undef-terminal-cloudflare`](packages/undef-terminal-cloudflare/README.md) — a companion package that runs the control plane on Durable Objects with CF Access JWT support.
 
@@ -303,6 +303,49 @@ uterm listen wss://warp.undef.games/ws/terminal --port 2112 --ssh-port 2222
 # With host key (SSH)
 uterm listen wss://warp.undef.games/ws/terminal --server-key /etc/host_key
 ```
+
+---
+
+## Docker
+
+Pre-built Docker targets are provided for local testing of both backends.
+
+### FastAPI reference server
+
+```bash
+# Build (from repo root)
+docker build -f docker/Dockerfile.server -t undef-terminal-server .
+
+# Run — dashboard at http://localhost:8780/app/
+docker run --rm -p 8780:8780 undef-terminal-server
+
+# Custom config
+docker run --rm -p 8780:8780 \
+  -v /path/to/my.toml:/config/server.toml:ro \
+  undef-terminal-server
+```
+
+The default config (`docker/server.toml`) starts in `dev` auth mode with one pre-configured shell session. Mount a custom TOML to add JWT, real connectors, or additional sessions — see `scripts/uterm-server.jwt.example.toml` for a full JWT example.
+
+### Cloudflare Worker (pywrangler dev)
+
+```bash
+# Build (requires Docker Buildx; Node 20 + Python 3.11 image)
+docker build -f docker/Dockerfile.cf -t undef-terminal-cf .
+
+# Run — worker at http://localhost:8788/api/health
+docker run --rm -p 8788:8788 undef-terminal-cf
+```
+
+Runs `pywrangler dev` inside the container with `AUTH_MODE=dev`. Pass `-e AUTH_MODE=jwt -e JWT_JWKS_URL=...` etc. to test JWT auth. KV/DO state is local (SQLite in `/tmp`) — not written to Cloudflare.
+
+### Both backends together
+
+```bash
+docker compose -f docker/docker-compose.yml up
+```
+
+FastAPI on `:8780`, CF worker on `:8788`.
 
 ---
 
