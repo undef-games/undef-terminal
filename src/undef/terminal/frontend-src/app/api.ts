@@ -105,6 +105,26 @@ export async function fetchRecordingEntries(
   return normalizeRecordingEntries(result);
 }
 
+export interface QuickConnectPayload {
+  connector_type: string;
+  display_name?: string;
+  input_mode?: string;
+  tags?: string[];
+  host?: string;
+  port?: number;
+  username?: string;
+  password?: string;
+}
+
+export interface QuickConnectResult {
+  session_id: string;
+  url: string;
+}
+
+export async function quickConnect(payload: QuickConnectPayload): Promise<QuickConnectResult> {
+  return apiJson<QuickConnectResult>("/api/connect", "POST", payload);
+}
+
 export function widgetSurface(surface: SessionSurface | undefined): { showAnalysis: boolean; mobileKeys: boolean } {
   const isOperator = surface === "operator";
   return {

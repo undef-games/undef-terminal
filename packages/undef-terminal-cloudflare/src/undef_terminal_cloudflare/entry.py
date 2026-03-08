@@ -50,6 +50,25 @@ class Default(WorkerEntrypoint):
             )
 
         if path == "/api/sessions":
+            # Require JWT auth in jwt mode — fleet-wide session list is sensitive.
+            if config.jwt.mode == "jwt":
+                try:
+                    auth_header = str(request.headers.get("Authorization") or "")
+                except Exception:
+                    auth_header = ""
+                if not auth_header.lower().startswith("bearer "):
+                    return json_response({"error": "authentication required"}, status=401)
+                token = auth_header[7:].strip()
+                if not token:
+                    return json_response({"error": "authentication required"}, status=401)
+                try:
+                    from undef_terminal_cloudflare.auth.jwt import JwtValidationError, decode_jwt
+                except Exception:
+                    from auth.jwt import JwtValidationError, decode_jwt  # type: ignore[import-not-found]
+                try:
+                    await decode_jwt(token, config.jwt)
+                except JwtValidationError as exc:
+                    return json_response({"error": "invalid token", "detail": str(exc)}, status=401)
             # Fleet-wide list: query KV registry populated by each DO on connect/disconnect.
             # Falls back to empty list when SESSION_REGISTRY KV binding is not configured.
             kv_configured = getattr(self.env, "SESSION_REGISTRY", None) is not None

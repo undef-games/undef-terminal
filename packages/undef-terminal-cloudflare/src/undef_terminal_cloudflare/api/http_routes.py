@@ -89,7 +89,11 @@ async def route_http(runtime: RuntimeProtocol, request: object) -> Response:
         if not result.ok:
             return json_response({"error": result.error}, status=409)
         runtime.persist_lease(result.session)
-        await runtime.push_worker_control("pause", owner=owner, lease_s=lease_s)
+        # Only send pause on a fresh acquisition; a same-owner renewal leaves the
+        # worker already paused and a redundant pause frame could confuse workers
+        # that track pause/resume counts or that need to acknowledge a new hijack_id.
+        if not result.is_renewal:
+            await runtime.push_worker_control("pause", owner=owner, lease_s=lease_s)
         await runtime.broadcast_hijack_state()
         return json_response(
             {
@@ -213,9 +217,14 @@ async def route_http(runtime: RuntimeProtocol, request: object) -> Response:
         )
 
     if "/hijack/" in path and path.endswith("/events") and method == "GET":
+        if await runtime.browser_role_for_request(request) != "admin":
+            return json_response({"error": "admin role required"}, status=403)
         hijack_id = _extract_hijack_id(path)
         if not hijack_id:
             return json_response({"error": "not_found", "path": path}, status=404)
+        session = runtime.hijack.session
+        if session is None or session.hijack_id != hijack_id:
+            return json_response({"error": "invalid or expired hijack session"}, status=404)
         try:
             after_seq = int(parse_qs(urlparse(url).query).get("after_seq", ["0"])[0])
         except (ValueError, IndexError):
@@ -224,7 +233,6 @@ async def route_http(runtime: RuntimeProtocol, request: object) -> Response:
         rows = runtime.store.list_events_since(runtime.worker_id, after_seq, limit)
         latest_seq = runtime.store.current_event_seq(runtime.worker_id)
         min_event_seq = runtime.store.min_event_seq(runtime.worker_id)
-        session = runtime.hijack.session
         return json_response(
             {
                 "ok": True,
@@ -235,7 +243,7 @@ async def route_http(runtime: RuntimeProtocol, request: object) -> Response:
                 "min_event_seq": min_event_seq,
                 "has_more": len(rows) == limit,
                 "events": rows,
-                "lease_expires_at": session.lease_expires_at if session is not None else None,
+                "lease_expires_at": session.lease_expires_at,
             }
         )
 

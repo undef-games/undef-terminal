@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import jwt
 from jwt import InvalidTokenError
+
+# Module-level JWKS cache: url → (fetched_at, jwks_dict).
+# Avoids a network round-trip on every authenticated request within the same
+# V8 isolate lifetime.  The cache is per-isolate (not shared across requests
+# in different isolates), so the TTL only matters within a single long-lived isolate.
+_JWKS_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_JWKS_CACHE_TTL_S: float = 60.0
 
 if TYPE_CHECKING:
     from undef_terminal_cloudflare.config import JwtConfig
@@ -23,23 +31,35 @@ class Principal:
 
 
 async def _fetch_jwks(url: str) -> dict[str, Any]:
-    """Fetch JWKS data using the runtime's async HTTP client.
+    """Fetch JWKS data, with a per-isolate in-memory TTL cache.
 
     In Cloudflare Workers, uses the native ``js.fetch`` (async, non-blocking).
     Outside CF (tests / local dev), falls back to ``urllib`` as a last resort.
+    The cache avoids a network round-trip on every authenticated request within
+    the same isolate lifetime.
     """
+    now = time.time()
+    cached = _JWKS_CACHE.get(url)
+    if cached is not None:
+        fetched_at, jwks_dict = cached
+        if now - fetched_at < _JWKS_CACHE_TTL_S:
+            return jwks_dict
+
     try:
         from js import fetch as _js_fetch  # type: ignore[import-not-found]  # CF Workers native async fetch
 
         response = await _js_fetch(url)
-        return (await response.json()).to_py()  # type: ignore[no-any-return]
+        result: dict[str, Any] = (await response.json()).to_py()
     except ImportError:
-        pass
-    import json
-    import urllib.request
+        import json
+        import urllib.request
 
-    with urllib.request.urlopen(url) as resp:  # noqa: S310
-        return json.loads(resp.read())  # type: ignore[no-any-return]
+        _req = urllib.request.Request(url, headers={"User-Agent": "undef-terminal/1.0"})  # noqa: S310
+        with urllib.request.urlopen(_req) as resp:  # noqa: S310
+            result = json.loads(resp.read())
+
+    _JWKS_CACHE[url] = (now, result)
+    return result
 
 
 async def _resolve_signing_key(token: str, config: JwtConfig) -> Any:
@@ -50,7 +70,10 @@ async def _resolve_signing_key(token: str, config: JwtConfig) -> Any:
     """
     if config.jwks_url:
         jwks_data = await _fetch_jwks(config.jwks_url)
-        jwks = jwt.PyJWKSet.from_dict(jwks_data)
+        try:
+            jwks = jwt.PyJWKSet.from_dict(jwks_data)
+        except Exception as exc:
+            raise JwtValidationError(f"no matching key found in JWKS: {exc}") from exc
         headers = jwt.get_unverified_header(token)
         kid = headers.get("kid")
         alg = headers.get("alg")
@@ -122,6 +145,12 @@ async def decode_jwt(token: str, config: JwtConfig) -> Principal:
         raw_scope = claims.get(scopes_claim, "")
         if isinstance(raw_scope, str) and raw_scope:
             roles = tuple(part.strip() for part in raw_scope.split() if part.strip())
+
+    # Apply group→role mapping when configured (e.g. JWT_ROLE_MAP={"engineering":"admin"}).
+    # Each role value is looked up in the map; unrecognised values pass through unchanged.
+    role_map: dict[str, str] = getattr(config, "jwt_role_map", {}) or {}
+    if role_map:
+        roles = tuple(role_map.get(r, r) for r in roles)
 
     # If still no roles (e.g. CF Access JWTs which omit roles by default),
     # assign the configured default role so operators don't end up as viewers.

@@ -72,6 +72,7 @@ class ServerBindConfig:
     public_base_url: str = "http://127.0.0.1:8780"
     title: str = "undef-terminal-server"
     allowed_origins: list[str] = field(default_factory=list)
+    max_sessions: int | None = None
 
 
 @dataclass(slots=True)

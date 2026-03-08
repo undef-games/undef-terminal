@@ -30,11 +30,12 @@ class _Req:
 
 
 class _Runtime:
-    def __init__(self, *, role: str = "admin", worker_ws: object | None = None) -> None:
+    def __init__(self, *, role: str = "admin", worker_ws: object | None = None, browser_role: str = "admin") -> None:
         self.worker_id = "test-worker"
         self.worker_ws = worker_ws
         self.hijack = HijackCoordinator()
         self._role = role
+        self._browser_role = browser_role
         self.last_snapshot: dict | None = None
         self.input_mode: str = "hijack"
 
@@ -58,6 +59,9 @@ class _Runtime:
 
     async def push_worker_input(self, data: str) -> bool:
         return self.worker_ws is not None
+
+    def _socket_browser_role(self, ws: object) -> str:
+        return self._browser_role
 
     @property
     def store(self) -> object:
@@ -370,6 +374,50 @@ async def test_events_bad_after_seq_defaults_to_zero() -> None:
     assert resp.status == 200
     data = _body(resp)
     assert data["after_seq"] == 0
+
+
+# ---------------------------------------------------------------------------
+# GET /hijack/{id}/events — 403 (non-admin) and 404 (no active session)
+# ---------------------------------------------------------------------------
+
+
+async def test_events_403_non_admin() -> None:
+    """Line 221: non-admin role → 403 for /events."""
+    # Acquire with admin, then check events as viewer
+    runtime = _Runtime()
+    r1 = await route_http(
+        runtime,
+        _Req("https://x/worker/w/hijack/acquire", method="POST").with_body({"owner": "a", "lease_s": 60}),
+    )
+    hid = _body(r1)["hijack_id"]
+    runtime._role = "viewer"
+    resp = await route_http(runtime, _Req(f"https://x/worker/w/hijack/{hid}/events"))
+    assert resp.status == 403
+
+
+async def test_events_404_no_active_session() -> None:
+    """Line 227: valid hijack_id in path but no active session → 404."""
+    runtime = _Runtime()
+    # No acquire — hijack.session is None
+    resp = await route_http(
+        runtime,
+        _Req("https://x/worker/w/hijack/aaaaaaaa-0000-0000-0000-000000000000/events"),
+    )
+    assert resp.status == 404
+
+
+async def test_events_404_wrong_hijack_id() -> None:
+    """Line 227: active session exists but path hijack_id doesn't match → 404."""
+    runtime = _Runtime()
+    await route_http(
+        runtime,
+        _Req("https://x/worker/w/hijack/acquire", method="POST").with_body({"owner": "a", "lease_s": 60}),
+    )
+    resp = await route_http(
+        runtime,
+        _Req("https://x/worker/w/hijack/aaaaaaaa-0000-0000-0000-000000000000/events"),
+    )
+    assert resp.status == 404
 
 
 # ---------------------------------------------------------------------------

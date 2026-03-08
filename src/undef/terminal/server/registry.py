@@ -40,11 +40,13 @@ class SessionRegistry:
         public_base_url: str,
         recording: RecordingConfig,
         worker_bearer_token: str | None = None,
+        max_sessions: int | None = None,
     ) -> None:
         self._hub = hub
         self._recording = recording
         self._public_base_url = public_base_url
         self._worker_bearer_token = worker_bearer_token
+        self._max_sessions = max_sessions
         self._lock = asyncio.Lock()
         self._sessions: dict[str, SessionDefinition] = {session.session_id: session for session in sessions}
         self._runtimes: dict[str, HostedSessionRuntime] = {}
@@ -144,6 +146,8 @@ class SessionRegistry:
             ephemeral=bool(payload.get("ephemeral", False)),
         )
         async with self._lock:
+            if self._max_sessions is not None and len(self._sessions) >= self._max_sessions:
+                raise ValueError(f"session limit reached: max_sessions={self._max_sessions}")
             if session.session_id in self._sessions:
                 raise ValueError(f"session already exists: {session.session_id}")
             self._sessions[session.session_id] = session

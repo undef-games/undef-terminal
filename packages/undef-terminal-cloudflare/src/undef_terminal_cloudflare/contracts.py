@@ -113,6 +113,8 @@ FrameType = Literal[
     "error",
     "worker_connected",
     "worker_disconnected",
+    # Worker-originated lifecycle frame carrying input_mode.
+    "worker_hello",
     # Browser-originated frames (heartbeat/ping keepalives, WS-level hijack requests).
     # The CF backend routes hijack through REST; these arrive via WS from hijack.js.
     "heartbeat",
@@ -139,6 +141,7 @@ class Frame(TypedDict, total=False):
     lease_expires_at: float | None
     formatted: str
     message: str
+    mode: str  # worker_hello: input_mode value ("hijack" or "open")
 
 
 @dataclass(slots=True)
@@ -182,6 +185,10 @@ def parse_frame(raw: str, *, limits: MessageLimits | None = None) -> Frame:
         normalized["owner"] = str(value.get("owner", "")) if value.get("owner") is not None else None
         lease_expires_at = value.get("lease_expires_at")
         normalized["lease_expires_at"] = float(lease_expires_at) if lease_expires_at is not None else None
+    elif frame_type == "worker_hello":
+        mode = value.get("input_mode")
+        if mode in {"hijack", "open"}:
+            normalized["mode"] = mode
     elif frame_type in {
         "snapshot_req",
         "error",
@@ -236,3 +243,4 @@ class RuntimeProtocol(Protocol):
     async def send_ws(self, ws: object, frame: dict[str, object]) -> None: ...
     async def broadcast_worker_frame(self, frame: object) -> None: ...
     def ws_key(self, ws: object) -> str: ...
+    def _socket_browser_role(self, ws: object) -> str: ...

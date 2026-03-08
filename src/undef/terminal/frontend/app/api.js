@@ -82,6 +82,9 @@ export async function fetchRecordingEntries(sessionId, filter, limit) {
     const result = await apiJson(`/api/sessions/${encodeURIComponent(sessionId)}/recording/entries?${params.toString()}`);
     return normalizeRecordingEntries(result);
 }
+export async function quickConnect(payload) {
+    return apiJson("/api/connect", "POST", payload);
+}
 export function widgetSurface(surface) {
     const isOperator = surface === "operator";
     return {

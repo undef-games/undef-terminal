@@ -120,3 +120,21 @@ textarea {
 .replay-entry {
   text-align: left;
 }
+
+.field {
+  margin-bottom: 1rem;
+}
+
+.field label {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.field-error {
+  font-size: 13px;
+  color: var(--danger);
+  margin: 0.5rem 0;
+  min-height: 1.2em;
+}

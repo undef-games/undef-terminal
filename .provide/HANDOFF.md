@@ -2,8 +2,8 @@
 
 ## Current State
 
-- **Main package (`undef-terminal`)**: 1082+ tests passing. `undef.terminal.server` at **99% coverage**. Pre-commit hooks active (ruff, mypy, ty, bandit).
-- **CF package (`undef-terminal-cloudflare`)**: **208 unit tests passing** + E2E tests (`-m e2e`). Package at **79% total coverage**. Key module coverage: `bridge/hijack.py` 100%, `state/registry.py` 100%, `api/http_routes.py` 99%, `do/session_runtime.py` 82%, `entry.py` 89%.
+- **Main package (`undef-terminal`)**: **1096 tests passing**. `undef.terminal.server` at **99% coverage**. Pre-commit hooks active. `ty check src/undef/` passes clean.
+- **CF package (`undef-terminal-cloudflare`)**: **298 unit tests passing** + E2E tests (`-m e2e`). Total: **1394**. Package at **88% total coverage**. Key module coverage: `contracts.py` 100%, `config.py` 100%, `api/ws_routes.py` 95%, `api/http_routes.py` 99%, `auth/jwt.py` 98%, `entry.py` 89%.
 
 ---
 
@@ -93,28 +93,19 @@ REAL_CF=1 SLOW=1 REAL_CF_URL=https://... uv run pytest tests/test_e2e_full_stack
 
 ## Next Steps
 
-### 1. Release Prep
-- **CHANGELOG.md**: Update test count (1082 main + 82 CF = 1164+ total) and coverage (99% server)
-- **README.md**: Update feature list to include quick-connect, shell connector, CF Access JWT
-- **Version bump**: Set `pyproject.toml` version to `0.1.0` and publish to PyPI
+### 1. Frontend TS Source
+- `frontend-src/` is now canonical for TypeScript source. Run `npm run build:frontend` to compile to `frontend/app/`.
+- `connect-view.ts` added in `frontend-src/app/views/`; corresponding `connect-view.js` in `frontend/app/views/`.
 
-### 2. CF Package — Remaining Coverage
-- `do/session_runtime.py` (82%) — remaining 18% = CF-runtime-only paths (WebSocketPair import, JS fetch, fallback imports). No unit test path.
-- `entry.py` (89%) — remaining 11% = CF-runtime-only fallback imports (lines 12-17).
-- `state/store.py` (74%) — remaining gaps are SQLite-level error branches (connection errors, malformed rows).
-- `api/http_routes.py` (**99%**) — fully covered by unit tests.
-
-### 3. Quick-Connect UX Polish
-The `GET /connect` page is minimal (inline JS form). Could be enhanced with:
-- Session type selection (shell / telnet / SSH)
-- Display name / tag input
-- Auto-redirect to new session URL on creation
-
-### 4. CF Access JWT — Groups-Based Role Mapping
+### 2. CF Access JWT — Groups-Based Role Mapping
 `JWT_DEFAULT_ROLE` gives all CF Access users the same role. For fine-grained access:
 1. Configure SCIM / CF Access identity groups in Zero Trust dashboard
 2. Add a custom claim (e.g. `"groups"`) to the CF Access application
 3. Set `JWT_ROLES_CLAIM=groups` so the worker reads roles from that claim
 
-### 5. Main Package `ty` Backlog
-`ty check src/undef/` passes clean. If new type errors appear, they are CI-blocking for release.
+### 3. CF Package — Remaining Coverage
+Remaining gaps are all CF-runtime-only (unreachable in unit tests):
+- `do/session_runtime.py` (85%) — WebSocketPair, JS fetch, fallback imports
+- `do/ws_helpers.py` (83%) — hibernation attachment parsing edge cases
+- `entry.py` (89%) — fallback imports (lines 12-17, 66-67)
+- `ui/assets.py` (23%) — CF static asset serving
