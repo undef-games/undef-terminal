@@ -3,7 +3,7 @@
 ## Current State
 
 - **Main package (`undef-terminal`)**: 1082+ tests passing. `undef.terminal.server` at **99% coverage**. Pre-commit hooks active (ruff, mypy, ty, bandit).
-- **CF package (`undef-terminal-cloudflare`)**: 82 unit tests passing + E2E tests (`-m e2e`). `bridge/hijack.py` and `state/registry.py` at 100% coverage.
+- **CF package (`undef-terminal-cloudflare`)**: **208 unit tests passing** + E2E tests (`-m e2e`). Package at **79% total coverage**. Key module coverage: `bridge/hijack.py` 100%, `state/registry.py` 100%, `api/http_routes.py` 99%, `do/session_runtime.py` 82%, `entry.py` 89%.
 
 ---
 
@@ -99,9 +99,10 @@ REAL_CF=1 SLOW=1 REAL_CF_URL=https://... uv run pytest tests/test_e2e_full_stack
 - **Version bump**: Set `pyproject.toml` version to `0.1.0` and publish to PyPI
 
 ### 2. CF Package — Remaining Coverage
-- `do/session_runtime.py` (23%) and `entry.py` (38%) only testable via E2E. No unit test path.
-- `api/http_routes.py` (82%) — 30 missing lines, mostly route handler glue that requires full DO context
-- Could add mock-based unit tests for `http_routes.py` by mocking `ctx` and `env`
+- `do/session_runtime.py` (82%) — remaining 18% = CF-runtime-only paths (WebSocketPair import, JS fetch, fallback imports). No unit test path.
+- `entry.py` (89%) — remaining 11% = CF-runtime-only fallback imports (lines 12-17).
+- `state/store.py` (74%) — remaining gaps are SQLite-level error branches (connection errors, malformed rows).
+- `api/http_routes.py` (**99%**) — fully covered by unit tests.
 
 ### 3. Quick-Connect UX Polish
 The `GET /connect` page is minimal (inline JS form). Could be enhanced with:
