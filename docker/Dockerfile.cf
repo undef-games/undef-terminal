@@ -27,7 +27,7 @@ FROM node:20-slim
 
 # Install Python 3.11 and uv
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3.11 python3.11-dev curl \
+        python3.11 python3.11-dev curl ca-certificates \
     && curl -LsSf https://astral.sh/uv/install.sh | sh \
     && rm -rf /var/lib/apt/lists/*
 
@@ -35,7 +35,7 @@ ENV PATH="/root/.local/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
 # Install wrangler CLI (required by pywrangler)
-RUN npm install -g wrangler@3
+RUN npm install -g wrangler@latest
 
 WORKDIR /app
 
@@ -46,8 +46,8 @@ COPY packages/undef-terminal-cloudflare/ packages/undef-terminal-cloudflare/
 
 WORKDIR /app/packages/undef-terminal-cloudflare
 
-# Install CF package dev dependencies (includes workers-py which provides pywrangler)
-RUN uv sync --dev
+# Install CF package dependencies including dev extras (workers-py provides pywrangler)
+RUN uv sync --extra dev
 
 EXPOSE 8788
 
