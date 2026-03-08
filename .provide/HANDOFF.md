@@ -94,8 +94,10 @@ REAL_CF=1 SLOW=1 REAL_CF_URL=https://... uv run pytest tests/test_e2e_full_stack
 ## Next Steps
 
 ### 1. Frontend TS Source
-- `frontend-src/` is now canonical for TypeScript source. Run `npm run build:frontend` to compile to `frontend/app/`.
-- `connect-view.ts` added in `frontend-src/app/views/`; corresponding `connect-view.js` in `frontend/app/views/`.
+- Moved to `packages/undef-terminal-frontend/src/` (npm workspace package).
+- Root `package.json` is now workspace root (`undef-terminal-root`); delegates via `--workspace=`.
+- Run `npm run build:frontend` from repo root to compile to `src/undef/terminal/frontend/`.
+- `biome.json` and `.pre-commit-config.yaml` updated to new paths.
 
 ### 2. Docker Containers
 - `docker/Dockerfile.server` — FastAPI reference server (`docker build -f docker/Dockerfile.server .`)

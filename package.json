@@ -1,15 +1,11 @@
 {
-  "name": "undef-terminal-frontend",
+  "name": "undef-terminal-root",
   "private": true,
-  "type": "module",
+  "workspaces": ["packages/undef-terminal-frontend"],
   "scripts": {
-    "build:frontend": "tsc -p tsconfig.frontend.json",
-    "typecheck:frontend": "tsc -p tsconfig.frontend.json --noEmit",
-    "lint:frontend": "biome ci src/undef/terminal/frontend-src/",
-    "fix:frontend": "biome check --write --unsafe src/undef/terminal/frontend-src/"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.4.6",
-    "typescript": "^5.9.2"
+    "build:frontend": "npm run build --workspace=packages/undef-terminal-frontend",
+    "typecheck:frontend": "npm run typecheck --workspace=packages/undef-terminal-frontend",
+    "lint:frontend": "npm run lint --workspace=packages/undef-terminal-frontend",
+    "fix:frontend": "npm run fix --workspace=packages/undef-terminal-frontend"
   }
 }

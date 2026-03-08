@@ -54,11 +54,16 @@ function sectionMarkup(title: string, sessions: SessionSummary[], appPath: strin
 
 export async function renderDashboard(root: HTMLElement, bootstrap: AppBootstrap): Promise<void> {
   const safeTitle = escapeHtml(bootstrap.title);
+  const safeAppPath = escapeHtml(bootstrap.app_path);
   root.innerHTML = `
     <div class="page">
       <section class="card stack">
         <div class="small">Reference implementation</div>
         <h1>${safeTitle}</h1>
+        <div class="toolbar">
+          <a class="btn" href="${safeAppPath}/connect">Quick Connect</a>
+          <button id="dashboard-refresh" class="btn">Refresh</button>
+        </div>
         <div id="dashboard-status" class="status-chip info">Loading sessions…</div>
       </section>
       <div id="dashboard-content" class="page"></div>
@@ -67,19 +72,25 @@ export async function renderDashboard(root: HTMLElement, bootstrap: AppBootstrap
   const status = root.querySelector<HTMLElement>("#dashboard-status");
   const content = root.querySelector<HTMLElement>("#dashboard-content");
   if (!status || !content) throw new Error("dashboard shell is incomplete");
-  try {
-    const sessions = await loadDashboardState();
-    const groups = summarizeSessions(sessions);
-    status.className = "status-chip ok";
-    status.textContent = `${sessions.length} session(s) loaded`;
-    content.innerHTML = [
-      sectionMarkup("Running", groups.running, bootstrap.app_path),
-      sectionMarkup("Stopped", groups.stopped, bootstrap.app_path),
-      sectionMarkup("Degraded", groups.degraded, bootstrap.app_path),
-    ].join("");
-  } catch (error) {
-    status.className = "status-chip error";
-    status.textContent = `Dashboard failed to load: ${String(error)}`;
-    content.innerHTML = `<section class="card"><div class="small">Unable to load session state.</div></section>`;
+  async function loadSessions(statusEl: HTMLElement, contentEl: HTMLElement): Promise<void> {
+    try {
+      const sessions = await loadDashboardState();
+      const groups = summarizeSessions(sessions);
+      statusEl.className = "status-chip ok";
+      statusEl.textContent = `${sessions.length} session(s) loaded`;
+      contentEl.innerHTML = [
+        sectionMarkup("Running", groups.running, bootstrap.app_path),
+        sectionMarkup("Stopped", groups.stopped, bootstrap.app_path),
+        sectionMarkup("Degraded", groups.degraded, bootstrap.app_path),
+      ].join("");
+    } catch (error) {
+      statusEl.className = "status-chip error";
+      statusEl.textContent = `Dashboard failed to load: ${String(error)}`;
+      contentEl.innerHTML = `<section class="card"><div class="small">Unable to load session state.</div></section>`;
+    }
   }
+  root.querySelector<HTMLButtonElement>("#dashboard-refresh")?.addEventListener("click", () => {
+    void loadSessions(status, content);
+  });
+  await loadSessions(status, content);
 }
