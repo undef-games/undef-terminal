@@ -355,6 +355,50 @@ class TestBridgeSession:
         await rt._bridge_session(ws)
         mock_logger.log_send.assert_called_with("typed text")
 
+    async def test_bridge_session_timeout_continue(self) -> None:
+        """Line 202: continue when asyncio.wait times out with no tasks completing."""
+        rt = _make_runtime()
+        rt._queue = asyncio.Queue()
+        rt._stop = asyncio.Event()
+        connector = _make_connector()
+
+        recv_calls = 0
+
+        async def _timed_recv() -> str:
+            nonlocal recv_calls
+            recv_calls += 1
+            if recv_calls == 1:
+                # First call: slower than 0.5s timeout → will be cancelled
+                await asyncio.sleep(1.0)
+                return ""
+            # Second call: set stop then block (will be cancelled by outer _run cleanup)
+            rt._stop.set()
+            await asyncio.sleep(100)
+            return ""
+
+        poll_calls = 0
+
+        async def _timed_poll() -> list[dict[str, Any]]:
+            nonlocal poll_calls
+            poll_calls += 1
+            if poll_calls == 1:
+                # First call: slower than 0.5s timeout → will be cancelled
+                await asyncio.sleep(1.0)
+            return []
+
+        connector.poll_messages = _timed_poll
+        rt._connector = connector
+
+        ws = MagicMock()
+        ws.recv = _timed_recv
+        ws.send = AsyncMock()
+
+        await rt._bridge_session(ws)
+
+        # Both timed out on iteration 1 (line 202 hit); iteration 2 exited via _stop
+        assert recv_calls >= 2
+        assert poll_calls >= 2
+
     async def test_poll_task_results_forwarded_to_browser(self) -> None:
         """Results from poll_task (connector outbound data) are sent to the browser."""
         rt = _make_runtime()

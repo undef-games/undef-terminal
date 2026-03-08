@@ -228,6 +228,15 @@ class TestKeyErrorPaths:
             r = app_client.get("/api/sessions/race-rd/recording/download")
         assert r.status_code == 404
 
+    def test_patch_session_key_error_returns_404(self, app_client: TestClient) -> None:
+        app_client.post(
+            "/api/sessions",
+            json={"session_id": "race-patch", "connector_type": "shell", "owner": "local-dev"},
+        )
+        with self._patch_registry(app_client, "update_session"):
+            r = app_client.patch("/api/sessions/race-patch", json={"display_name": "x"})
+        assert r.status_code == 404
+
 
 # ---------------------------------------------------------------------------
 # SessionValidationError in PATCH → 422 (lines 141-142)
@@ -258,31 +267,12 @@ class TestPatchValidationError:
 
 
 class TestQuickConnectConflict:
-    def test_quick_connect_duplicate_id_409(self, app_client: TestClient) -> None:
-        # Patch uuid to produce a deterministic ID so we can force a conflict
-        with patch("undef.terminal.server.routes.api.uuid.uuid4") as mock_uuid:
-            mock_uuid.return_value.hex = "aabbccddeeff0011223344556677"
-
-            # First call succeeds
-            r1 = app_client.post("/api/connect", json={"connector_type": "shell"})
-            assert r1.status_code == 200
-
-            # Pre-insert same session_id to force conflict on second call
-            session_id = r1.json()["session_id"]
-            # The session was already created — post again with same id via /api/sessions
-            app_client.post(
-                "/api/sessions",
-                json={"session_id": session_id, "connector_type": "shell"},
-            )
-            # Either 200 (if unique) or 409 (if conflict); just test the 409 path in registry
-            # by directly calling create_session with a known duplicate
-
-        # Verify the ValueError → 409 path via direct duplicate in /api/sessions
-        r3 = app_client.post(
-            "/api/sessions",
-            json={"session_id": session_id, "connector_type": "shell"},
-        )
-        assert r3.status_code == 409
+    def test_quick_connect_registry_conflict_returns_409(self, app_client: TestClient) -> None:
+        """POST /api/connect where registry raises ValueError → 409 (lines 338-339)."""
+        registry = app_client.app.state.uterm_registry  # type: ignore[attr-defined]
+        with patch.object(registry, "create_session", side_effect=ValueError("session already exists")):
+            r = app_client.post("/api/connect", json={"connector_type": "shell"})
+        assert r.status_code == 409
 
 
 # ---------------------------------------------------------------------------

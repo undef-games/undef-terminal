@@ -231,6 +231,34 @@ class TestResolveJwtKey:
             _resolve_jwt_key("some_token", auth)
             assert mock_cls.call_count == 1  # second call uses cache
 
+    def test_jwks_client_cache_cleared_when_full(self) -> None:
+        from undef.terminal.server.auth import _JWKS_CLIENT_CACHE, _JWKS_CLIENT_CACHE_MAX, _resolve_jwt_key
+        from undef.terminal.server.models import AuthConfig
+
+        _JWKS_CLIENT_CACHE.clear()
+        mock_signing_key = MagicMock()
+        mock_signing_key.key = _TEST_KEY
+        mock_client = MagicMock()
+        mock_client.get_signing_key_from_jwt.return_value = mock_signing_key
+
+        # Fill cache to max with dummy entries
+        for i in range(_JWKS_CLIENT_CACHE_MAX):
+            _JWKS_CLIENT_CACHE[f"https://dummy-{i}.example.com/jwks"] = mock_client
+
+        auth = AuthConfig(
+            mode="jwt",
+            jwt_jwks_url="https://new.example.com/.well-known/jwks.json",
+            worker_bearer_token=_make_token(),
+        )
+
+        with patch("jwt.PyJWKClient", return_value=mock_client):
+            key = _resolve_jwt_key("some_token", auth)
+
+        assert key == _TEST_KEY
+        # Cache was cleared before adding the new entry → only 1 entry remains
+        assert len(_JWKS_CLIENT_CACHE) == 1
+        _JWKS_CLIENT_CACHE.clear()
+
 
 class TestPrincipalFromJwtToken:
     def test_valid_token_returns_principal(self) -> None:

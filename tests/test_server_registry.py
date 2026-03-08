@@ -357,3 +357,27 @@ class TestRecordingEntries:
         result = await reg.recording_entries("s1", offset=0, event="screen")
         assert len(result) == 2
         assert all(e["event"] == "screen" for e in result)
+
+    async def test_blank_lines_skipped_in_offset_mode(self, tmp_path: Path) -> None:
+        recording = RecordingConfig(directory=tmp_path)
+        reg = _make_registry([_session("s1")], recording=recording)
+        path = tmp_path / "s1.jsonl"
+        path.write_text('{"event": "a"}\n\n{"event": "b"}\n')
+
+        runtime = reg._runtime_for(reg._sessions["s1"])
+        runtime._recording_path = path
+
+        result = await reg.recording_entries("s1", offset=0)
+        assert len(result) == 2
+
+    async def test_blank_lines_skipped_in_tail_mode(self, tmp_path: Path) -> None:
+        recording = RecordingConfig(directory=tmp_path)
+        reg = _make_registry([_session("s1")], recording=recording)
+        path = tmp_path / "s1.jsonl"
+        path.write_text('{"event": "a"}\n\n{"event": "b"}\n')
+
+        runtime = reg._runtime_for(reg._sessions["s1"])
+        runtime._recording_path = path
+
+        result = await reg.recording_entries("s1")
+        assert len(result) == 2
