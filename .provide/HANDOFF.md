@@ -3,7 +3,7 @@
 ## Current State
 
 - **Main package (`undef-terminal`)**: **1096 tests passing**. `undef.terminal.server` at **99% coverage**. Pre-commit hooks active. `ty check src/undef/` passes clean.
-- **CF package (`undef-terminal-cloudflare`)**: **333 unit tests passing** + E2E tests (`-m e2e`). Total: **1429**. Key coverage: `ws_helpers.py` 100%, `ui/assets.py` 94%, `contracts.py` 100%, `config.py` 100%, `api/ws_routes.py` 95%, `api/http_routes.py` 99%, `auth/jwt.py` 98%, `entry.py` 89%.
+- **CF package (`undef-terminal-cloudflare`)**: **342 unit tests passing** + E2E tests (`-m e2e`). Total: **1438**. Key coverage: `ws_helpers.py` 100%, `ui/assets.py` 94%, `contracts.py` 100%, `config.py` 100%, `api/ws_routes.py` 95%, `api/http_routes.py` 99%, `auth/jwt.py` 98%, `entry.py` 89%, `do/session_runtime.py` 96%.
 
 ---
 
@@ -111,7 +111,7 @@ Config already supports this — no code changes needed.
 
 ### 4. CF Package — Remaining Coverage Gaps
 All remaining gaps are CF-runtime-only (unreachable in unit tests):
-- `do/session_runtime.py` (85%) — WebSocketPair, JS fetch, fallback imports
+- `do/session_runtime.py` (96%) — lines 21-31: CF-runtime import fallbacks only
 - `entry.py` (89%) — fallback imports (lines 12-17, 66-67)
 - `ui/assets.py` (94%) — lines 8-9: CF runtime import fallback
 
