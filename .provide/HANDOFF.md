@@ -2,7 +2,7 @@
 
 ## Current State
 
-- **Main package (`undef-terminal`)**: **1096 tests passing**. `undef.terminal.server` at **99% coverage**. Pre-commit hooks active. `ty check src/undef/` passes clean.
+- **Main package (`undef-terminal`)**: **1097 tests passing**. `undef.terminal.server` at **99% coverage**. Pre-commit hooks active. `ty check src/undef/` passes clean.
 - **CF package (`undef-terminal-cloudflare`)**: **346 unit tests passing** + E2E tests (`-m e2e`). Total: **1442**. Overall: **94% coverage**. All reachable lines at 100%: `session_runtime.py`, `entry.py`, `ui/assets.py`, `ws_helpers.py`, `contracts.py`, `config.py`, `state/store.py`, `state/registry.py`, `bridge/hijack.py`.
 
 ---
@@ -105,6 +105,7 @@ REAL_CF=1 SLOW=1 REAL_CF_URL=https://... uv run pytest tests/test_e2e_full_stack
 - `docker/docker-compose.yml` — brings up both on ports 8780 + 8788
 - `docker/server.toml` — default dev config (shell session, no JWT)
 - 12 CF E2E tests pass against the containerized CF worker (`REAL_CF_URL=http://localhost:8788 REAL_CF=1`)
+- xterm.js terminal renders correctly in session/operator views (Playwright MCP verified screenshot)
 
 ### 3. CF Access JWT — Groups-Based Role Mapping
 Config already supports this — no code changes needed.
