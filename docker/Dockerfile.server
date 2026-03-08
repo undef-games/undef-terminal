@@ -35,7 +35,7 @@ COPY pyproject.toml README.md ./
 COPY src/ src/
 
 # Install the server extras (FastAPI, uvicorn, pyjwt)
-RUN uv pip install --system ".[server]"
+RUN uv pip install --system ".[server,websocket]"
 
 # Default dev config: no sessions, no JWT, open access.
 # Override via: -v /path/to/config.toml:/config/server.toml:ro

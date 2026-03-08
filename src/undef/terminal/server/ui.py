@@ -23,6 +23,7 @@ def _shell(
     extra_css: tuple[str, ...] = (),
     scripts: tuple[str, ...] = (),
     xterm_cdn: str = "",
+    fitaddon_cdn: str = "",
     fonts_cdn: str = "",
 ) -> str:
     css_links = "".join(f"<link rel='stylesheet' href='{escape(assets_path)}/{escape(name)}'>" for name in extra_css)
@@ -30,6 +31,8 @@ def _shell(
         f"<script type='module' src='{escape(assets_path)}/{escape(name)}'></script>" for name in scripts
     )
     xterm_css = f"<link rel='stylesheet' href='{escape(xterm_cdn)}/css/xterm.css'>" if xterm_cdn else ""
+    xterm_js = f"<script src='{escape(xterm_cdn)}/lib/xterm.js'></script>" if xterm_cdn else ""
+    fitaddon_js = f"<script src='{escape(fitaddon_cdn)}/lib/addon-fit.js'></script>" if fitaddon_cdn else ""
     fonts_link = f"<link href='{escape(fonts_cdn)}' rel='stylesheet'>" if fonts_cdn else ""
     return (
         "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
@@ -40,6 +43,7 @@ def _shell(
         f"<link rel='stylesheet' href='{escape(assets_path)}/server-app-components.css'>"
         f"<link rel='stylesheet' href='{escape(assets_path)}/server-app-views.css'>"
         f"{css_links}{xterm_css}{fonts_link}"
+        f"{xterm_js}{fitaddon_js}"
         f"{body}{script_tags}</html>"
     )
 
@@ -50,7 +54,7 @@ def _bootstrap_tag(payload: Mapping[str, object]) -> str:
 
 
 def operator_dashboard_html(
-    title: str, app_path: str, assets_path: str, xterm_cdn: str = "", fonts_cdn: str = ""
+    title: str, app_path: str, assets_path: str, xterm_cdn: str = "", fitaddon_cdn: str = "", fonts_cdn: str = ""
 ) -> str:
     bootstrap = {
         "page_kind": "dashboard",
@@ -66,7 +70,13 @@ def operator_dashboard_html(
         "</body>"
     )
     return _shell(
-        title, assets_path, body, scripts=("server-session-page.js",), xterm_cdn=xterm_cdn, fonts_cdn=fonts_cdn
+        title,
+        assets_path,
+        body,
+        scripts=("server-session-page.js",),
+        xterm_cdn=xterm_cdn,
+        fitaddon_cdn=fitaddon_cdn,
+        fonts_cdn=fonts_cdn,
     )
 
 
@@ -78,6 +88,7 @@ def session_page_html(
     operator: bool,
     app_path: str,
     xterm_cdn: str = "",
+    fitaddon_cdn: str = "",
     fonts_cdn: str = "",
 ) -> str:
     bootstrap = {
@@ -97,11 +108,19 @@ def session_page_html(
         "</body>"
     )
     return _shell(
-        title, assets_path, body, scripts=("server-session-page.js",), xterm_cdn=xterm_cdn, fonts_cdn=fonts_cdn
+        title,
+        assets_path,
+        body,
+        scripts=("server-session-page.js",),
+        xterm_cdn=xterm_cdn,
+        fitaddon_cdn=fitaddon_cdn,
+        fonts_cdn=fonts_cdn,
     )
 
 
-def connect_page_html(title: str, assets_path: str, app_path: str, *, xterm_cdn: str = "", fonts_cdn: str = "") -> str:
+def connect_page_html(
+    title: str, assets_path: str, app_path: str, *, xterm_cdn: str = "", fitaddon_cdn: str = "", fonts_cdn: str = ""
+) -> str:
     """Return the quick-connect page, rendered by the frontend connect-view."""
     bootstrap = {
         "page_kind": "connect",
@@ -117,12 +136,25 @@ def connect_page_html(title: str, assets_path: str, app_path: str, *, xterm_cdn:
         "</body>"
     )
     return _shell(
-        title, assets_path, body, scripts=("server-session-page.js",), xterm_cdn=xterm_cdn, fonts_cdn=fonts_cdn
+        title,
+        assets_path,
+        body,
+        scripts=("server-session-page.js",),
+        xterm_cdn=xterm_cdn,
+        fitaddon_cdn=fitaddon_cdn,
+        fonts_cdn=fonts_cdn,
     )
 
 
 def replay_page_html(
-    title: str, assets_path: str, session_id: str, *, app_path: str, xterm_cdn: str = "", fonts_cdn: str = ""
+    title: str,
+    assets_path: str,
+    session_id: str,
+    *,
+    app_path: str,
+    xterm_cdn: str = "",
+    fitaddon_cdn: str = "",
+    fonts_cdn: str = "",
 ) -> str:
     bootstrap = {
         "page_kind": "replay",
@@ -145,5 +177,6 @@ def replay_page_html(
         body,
         scripts=("server-replay-page.js",),
         xterm_cdn=xterm_cdn,
+        fitaddon_cdn=fitaddon_cdn,
         fonts_cdn=fonts_cdn,
     )

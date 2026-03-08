@@ -20,6 +20,7 @@ SessionLifecycle = Literal["stopped", "starting", "running", "error"]
 # via UIConfig.xterm_cdn / UIConfig.fonts_cdn to point to self-hosted copies,
 # or add SRI attributes by customising the UI template.
 XTERM_CDN_DEFAULT = "https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0"
+FITADDON_CDN_DEFAULT = "https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.11.0"
 FONTS_CDN_DEFAULT = "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&display=swap"
 
 
@@ -51,6 +52,7 @@ class UiConfig:
     app_path: str = "/app"
     assets_path: str = "/_terminal"
     xterm_cdn: str = XTERM_CDN_DEFAULT
+    fitaddon_cdn: str = FITADDON_CDN_DEFAULT
     fonts_cdn: str = FONTS_CDN_DEFAULT
 
 
