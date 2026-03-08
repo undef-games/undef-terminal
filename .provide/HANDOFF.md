@@ -99,11 +99,12 @@ REAL_CF=1 SLOW=1 REAL_CF_URL=https://... uv run pytest tests/test_e2e_full_stack
 - Run `npm run build:frontend` from repo root to compile to `src/undef/terminal/frontend/`.
 - `biome.json` and `.pre-commit-config.yaml` updated to new paths.
 
-### 2. Docker Containers
-- `docker/Dockerfile.server` — FastAPI reference server (`docker build -f docker/Dockerfile.server .`)
-- `docker/Dockerfile.cf` — pywrangler dev server, Node 20 + Python 3.11 (`docker build -f docker/Dockerfile.cf .`)
+### 2. Docker Containers ✓ (verified working)
+- `docker/Dockerfile.server` — FastAPI reference server; builds and passes health/sessions/dashboard checks
+- `docker/Dockerfile.cf` — pywrangler dev server (Node 20 + Python 3.11); fixed: `ca-certificates`, `wrangler@latest`, `uv sync --extra dev`
 - `docker/docker-compose.yml` — brings up both on ports 8780 + 8788
 - `docker/server.toml` — default dev config (shell session, no JWT)
+- 12 CF E2E tests pass against the containerized CF worker (`REAL_CF_URL=http://localhost:8788 REAL_CF=1`)
 
 ### 3. CF Access JWT — Groups-Based Role Mapping
 Config already supports this — no code changes needed.
