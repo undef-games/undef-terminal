@@ -1,0 +1,55 @@
+#
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# undef-terminal-cloudflare — pywrangler dev server
+#
+# Build (from repo root):
+#   docker build -f docker/Dockerfile.cf -t undef-terminal-cf .
+#
+# Run (dev mode, AUTH_MODE=dev):
+#   docker run --rm -p 8788:8788 undef-terminal-cf
+#
+# Run with a .dev.vars override:
+#   docker run --rm -p 8788:8788 \
+#     -v /path/to/.dev.vars:/app/packages/undef-terminal-cloudflare/.dev.vars:ro \
+#     undef-terminal-cf
+#
+# The worker dev server binds on 0.0.0.0:8788 inside the container.
+# Health:   http://localhost:8788/api/health
+# Sessions: http://localhost:8788/api/sessions
+#
+# NOTE: wrangler dev performs KV/DO isolation using local SQLite storage.
+# State persists in the container's /tmp — it is NOT written to Cloudflare.
+#
+
+FROM node:20-slim
+
+# Install Python 3.11 and uv
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 python3.11-dev curl \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/root/.local/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+
+# Install wrangler CLI (required by pywrangler)
+RUN npm install -g wrangler@3
+
+WORKDIR /app
+
+# Copy full workspace so uv can resolve the lockfile
+COPY pyproject.toml uv.lock README.md ./
+COPY src/ src/
+COPY packages/undef-terminal-cloudflare/ packages/undef-terminal-cloudflare/
+
+WORKDIR /app/packages/undef-terminal-cloudflare
+
+# Install CF package dev dependencies (includes workers-py which provides pywrangler)
+RUN uv sync --dev
+
+EXPOSE 8788
+
+# pywrangler dev: syncs vendor deps then starts wrangler dev
+CMD ["uv", "run", "pywrangler", "dev", "--port", "8788", "--ip", "0.0.0.0"]

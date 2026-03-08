@@ -3,7 +3,7 @@
 ## Current State
 
 - **Main package (`undef-terminal`)**: **1096 tests passing**. `undef.terminal.server` at **99% coverage**. Pre-commit hooks active. `ty check src/undef/` passes clean.
-- **CF package (`undef-terminal-cloudflare`)**: **298 unit tests passing** + E2E tests (`-m e2e`). Total: **1394**. Package at **88% total coverage**. Key module coverage: `contracts.py` 100%, `config.py` 100%, `api/ws_routes.py` 95%, `api/http_routes.py` 99%, `auth/jwt.py` 98%, `entry.py` 89%.
+- **CF package (`undef-terminal-cloudflare`)**: **333 unit tests passing** + E2E tests (`-m e2e`). Total: **1429**. Key coverage: `ws_helpers.py` 100%, `ui/assets.py` 94%, `contracts.py` 100%, `config.py` 100%, `api/ws_routes.py` 95%, `api/http_routes.py` 99%, `auth/jwt.py` 98%, `entry.py` 89%.
 
 ---
 
@@ -97,15 +97,23 @@ REAL_CF=1 SLOW=1 REAL_CF_URL=https://... uv run pytest tests/test_e2e_full_stack
 - `frontend-src/` is now canonical for TypeScript source. Run `npm run build:frontend` to compile to `frontend/app/`.
 - `connect-view.ts` added in `frontend-src/app/views/`; corresponding `connect-view.js` in `frontend/app/views/`.
 
-### 2. CF Access JWT — Groups-Based Role Mapping
-`JWT_DEFAULT_ROLE` gives all CF Access users the same role. For fine-grained access:
+### 2. Docker Containers
+- `docker/Dockerfile.server` — FastAPI reference server (`docker build -f docker/Dockerfile.server .`)
+- `docker/Dockerfile.cf` — pywrangler dev server, Node 20 + Python 3.11 (`docker build -f docker/Dockerfile.cf .`)
+- `docker/docker-compose.yml` — brings up both on ports 8780 + 8788
+- `docker/server.toml` — default dev config (shell session, no JWT)
+
+### 3. CF Access JWT — Groups-Based Role Mapping
+Config already supports this — no code changes needed.
 1. Configure SCIM / CF Access identity groups in Zero Trust dashboard
 2. Add a custom claim (e.g. `"groups"`) to the CF Access application
 3. Set `JWT_ROLES_CLAIM=groups` so the worker reads roles from that claim
 
-### 3. CF Package — Remaining Coverage
-Remaining gaps are all CF-runtime-only (unreachable in unit tests):
+### 4. CF Package — Remaining Coverage Gaps
+All remaining gaps are CF-runtime-only (unreachable in unit tests):
 - `do/session_runtime.py` (85%) — WebSocketPair, JS fetch, fallback imports
-- `do/ws_helpers.py` (83%) — hibernation attachment parsing edge cases
 - `entry.py` (89%) — fallback imports (lines 12-17, 66-67)
-- `ui/assets.py` (23%) — CF static asset serving
+- `ui/assets.py` (94%) — lines 8-9: CF runtime import fallback
+
+### 5. Publish to PyPI
+Versions set (`0.2.0` / `0.3.0`), metadata complete. Run `uv publish` from repo root.
