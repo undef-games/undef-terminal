@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "undef-terminal-cloudflare"
-version = "0.2.0"
+version = "0.3.0"
 description = "Cloudflare Workers runtime for undef-terminal control plane"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.3.0] — 2026-03-07
+
 ### Added
 
 - **CF Access / Zero Trust JWT support** — `JwtConfig.jwt_default_role` (env var
@@ -23,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CF Access groups-based role mapping** — documented in `wrangler.toml`: configure SCIM
   identity groups in the Zero Trust dashboard, add a custom JWT claim (e.g. `"groups"`), and
   set `JWT_ROLES_CLAIM=groups` to map group membership to viewer/operator/admin roles.
+- **Full-stack E2E tests** — `tests/test_e2e_full_stack.py` tests the complete proxy chain:
+  `HostedSessionRuntime` (Python) → CF DO (WebSocket) → browser WS. Covers connect/appear,
+  snapshot delivery, hijack cycle, two-browser broadcast, and post-hibernation state persistence.
+- **Unit test coverage expansions** — `tests/test_coverage2.py` brings `bridge/hijack.py` to
+  100%, `state/registry.py` to 100%, and extends `auth/jwt.py` and `state/store.py` coverage
+  with edge-case branches. `tests/test_http_routes_coverage.py` brings `api/http_routes.py`
+  to 99% (all route handlers: 403/404/400/409 paths).
 
 ### Fixed
 
