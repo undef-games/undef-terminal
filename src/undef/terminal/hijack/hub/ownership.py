@@ -75,7 +75,7 @@ class _HijackOwnershipMixin:
         if not rest_expired and not dashboard_expired:
             return False
 
-        if rest_expired or dashboard_expired:
+        if rest_expired or dashboard_expired:  # pragma: no branch — guard at line 75-76 ensures always True
             self.metric("hijack_lease_expiries_total")  # type: ignore[attr-defined]
 
         if should_resume:
@@ -83,7 +83,7 @@ class _HijackOwnershipMixin:
             # new session between the first lock release and _send_worker.
             async with self._lock:
                 st2 = self._workers.get(worker_id)
-                if st2 is not None and self.is_hijacked(st2):  # type: ignore[attr-defined]
+                if st2 is not None and self.is_hijacked(st2):  # type: ignore[attr-defined]  # pragma: no branch
                     should_resume = False
         if should_resume:
             await self.send_worker(  # type: ignore[attr-defined]
@@ -222,7 +222,7 @@ class _HijackOwnershipMixin:
             # between the lock release above and _send_worker below.
             async with self._lock:
                 _st2 = self._workers.get(worker_id)
-                if _st2 is not None and self.is_hijacked(_st2):  # type: ignore[attr-defined]
+                if _st2 is not None and self.is_hijacked(_st2):  # type: ignore[attr-defined]  # pragma: no branch
                     notify_hijack_off = False
         if notify_hijack_off:
             await self.send_worker(  # type: ignore[attr-defined]

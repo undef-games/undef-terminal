@@ -2,12 +2,105 @@
 
 ## Current State
 
-- **Main package (`undef-terminal`)**: **1134 tests passing** (all Playwright included). Pre-commit hooks active. `ty check src/undef/` passes clean.
-- **CF package (`undef-terminal-cloudflare`)**: **369 unit tests passing** + 5 skipped + E2E tests (`-m e2e`). Overall: **99% coverage** (all reachable lines at 100%).
+- **Main package (`undef-terminal`)**: **1225 tests passing** (excl. Playwright). **100% branch coverage** (4540 stmts, 1262 branches, 0 missing). Pre-commit hooks active.
+- **CF package (`undef-terminal-cloudflare`)**: **402 unit tests passing** + 5 skipped + E2E tests (`-m e2e`). Overall: **100% coverage** (1523 stmts, 0 missing).
 
 ---
 
 ## Completed in Most Recent Session
+
+### VERSION standardization + quality gate parity (plan implemented)
+
+**VERSION files:**
+- `undef-terminal/VERSION` → `0.3.0` (new file)
+- `undef-terminal/packages/undef-terminal-cloudflare/VERSION` → `0.3.0` (new file; setuptools restricts cross-dir `../../VERSION` refs)
+- `undef-telemetry/VERSION` → `0.1.0` (new file)
+- All pyproject.toml files now use `dynamic = ["version"]` + `[tool.setuptools.dynamic]`
+
+**CF package: hatchling → setuptools** (`packages/undef-terminal-cloudflare/pyproject.toml`):
+- Build backend switched; `[tool.hatch.build.targets.wheel]` removed; `[tool.setuptools.packages.find]` added
+
+**Coverage enforcement added (both packages):**
+- addopts: `--cov-branch`, `--cov-report=term-missing`, `--cov-fail-under=100`
+- `[tool.coverage.run]` branch = true; `[tool.coverage.report]` fail_under = 100
+
+**100% branch coverage achieved** (was 97.59% for main, 100% stmt but ~99% branch for CF):
+- Main package: 4540 stmts, 1262 branches — 0 missing
+- CF package: 1536 stmts, 524 branches — 0 missing
+- Tests: 1225 (main) + 425 (CF) = 1650 total
+
+**New dev dependencies (undef-terminal):**
+- `mutmut>=3.3.1`, `pip-audit>=2.7.0`, `pytest-randomly>=3.15.0`, `vulture>=2.14`, `xenon>=0.9.3`
+- `[tool.vulture]`, `[tool.xenon]`, `[tool.mutmut]` sections added
+
+**pytest-randomly:** added `--randomly-dont-reorganize` to addopts (preserves zzz_ Playwright ordering)
+Both Playwright test files excluded from default addopts run (`--ignore=tests/test_zzz_*.py`).
+
+**New coverage gap tests (main package):**
+- `tests/test_coverage_gaps2.py` — 20+ tests for branch gaps across hub, routes, bridge, ansi, telnet
+- Various additions to `test_session_logger.py`, `test_ssh_transport.py`, `test_telnet_transport*.py`, `test_server_connectors.py`
+- `# pragma: no branch` annotations in `ownership.py`, `ansi.py`, `telnet.py`
+
+**New coverage gap tests (CF package):**
+- `tests/test_branch_coverage.py` — 20 tests for branch gaps across http_routes, auth/jwt, cli, config, session_runtime, ws_helpers, state/registry, ui/assets
+
+---
+
+### Main Package — 100% Branch Coverage (items from previous session)
+
+Filled all remaining branch coverage gaps (10 missing arcs → 0). Changes:
+
+**Pragma annotations** (unreachable/dead branches):
+- `src/undef/terminal/ansi.py` line 329: `# pragma: no branch` on `if seq:` inside `_handle_tilde_codes` (all `_TILDE_MAP` entries have valid color chars, so `seq` is always truthy)
+- `src/undef/terminal/hijack/routes/websockets.py` line 215: changed to `# pragma: no cover` on body of `if role not in VALID_ROLES:` (dead code — `resolve_role_for_browser` always returns valid role)
+- `src/undef/terminal/transports/telnet.py` lines 394, 416: `# pragma: no branch` on final `elif cmd == WONT:` in `_negotiate()` (exhaustive chain — cmd is always one of DO/DONT/WILL/WONT when called)
+
+**New tests** covering previously-missing arcs:
+- `tests/test_coverage_gaps2.py::TestAnsiTildeCodeNotInMap` — `_handle_tilde_codes` with unknown code (`~Z`) → `326->333` False branch
+- `tests/test_coverage_gaps2.py::TestAnsiTwgsTokenInvalidPolarity` — fixed: `{xR}` (4-char TWGS token) not `{xRG}` → `345->351` False branch
+- `tests/test_coverage_gaps2.py::TestBridgeInvalidUriFixed` — fixed: `await bridge.start()` (was called without await) → covers `214-220` (InvalidURI stops reconnect)
+- `tests/test_coverage_gaps2.py::TestBridgeSessionUnknownMtypeRecvWins` — fixed: 2nd mock_recv sets `_stop` then returns valid JSON (not raises CancelledError) → covers `runtime.py 233->237`
+- `tests/test_server_connectors.py::TestSshSessionConnector::test_stop_with_stdin_none_skips_write_eof` — `164->167` False branch (stdin=None at stop time)
+- `tests/test_server_connectors.py::TestSshSessionConnector::test_stop_with_conn_none_skips_close` — `170->exit` False branch (conn=None at stop time)
+- `tests/test_ssh_transport.py::TestSSHStreamReaderUnknownType` — line 57 (non-str/bytes return → `b""`)
+- `tests/test_ssh_transport.py::TestSSHStreamWriterDoubleClose` — `87->exit` False branch (close when already closed)
+- `tests/test_telnet_transport.py::TestTelnetClientCloseWhenNotConnected` — `91->exit` False branch (close when writer=None)
+- `tests/test_telnet_transport_branches.py::TestConsumeRxBufferZeroConsumed` — `248->250` False branch (incomplete IAC → consumed=0)
+
+Result: **100% branch coverage** (4540 stmts, 1262 branches, 0 missing, 0 failing).
+
+---
+
+### CF Endpoint Parity + 100% Coverage
+
+Added all FastAPI endpoints that were missing from the CF package:
+
+**New CF routes** (`packages/undef-terminal-cloudflare/src/undef_terminal_cloudflare/api/http_routes.py`):
+- `GET /api/sessions/{id}` — single session status (uses `_session_status_item` DRY helper)
+- `GET /api/sessions/{id}/snapshot` — snapshot without hijack lease
+- `GET /api/sessions/{id}/events` — event history with `?limit=` and `?after_seq=` params
+- `POST /api/sessions/{id}/mode` — set input mode (admin only)
+- `POST /api/sessions/{id}/clear` — clear snapshot + request fresh snapshot (operator/admin)
+- `POST /api/sessions/{id}/analyze` — trigger analysis + poll result (operator/admin)
+- Prompt guards in `/hijack/{hid}/send`: `expect_prompt_id`, `expect_regex`, `timeout_ms`, `poll_interval_ms`
+- Fixed hardcoded `limit=100` in `/hijack/{hid}/events` to use `?limit=` query param
+
+**Supporting changes:**
+- `ws_routes.py`: analysis frames from worker stored in `runtime.last_analysis`
+- `do/session_runtime.py`: added `self.last_analysis: str | None = None`
+- `entry.py`: added `/api/sessions/{id}[/sub]` to `_WORKER_ROUTE_PATTERNS`
+- `contracts.py`: added `last_analysis` to `RuntimeProtocol` + TypedDicts for new endpoints
+- `cf_types.py`: dead-code fallback in `json_response` marked `pragma: no cover`
+
+**Tests (56 new):**
+- `test_http_routes_coverage.py`: 43 new tests for all new endpoints + auth branches
+- `test_http_routes_coverage2.py`: 9 tests for timeout/fallback paths (`_wait_for_prompt`, `_wait_for_analysis`, bad params)
+- `test_ws_routes.py`: 2 tests for analysis frame handling
+- `test_cf_cli.py`: 2 tests for `_run()` helper and `__main__` import
+
+Result: 402 tests passing (up from 369), **100% coverage** (up from 99%).
+
+---
 
 ### Code Review Fixes + DRY Refactors
 
@@ -107,21 +200,29 @@ Added 5 new test files covering `undef.terminal.server`:
 ## Test Commands
 
 ```bash
-# Main package (all non-playwright)
-uv run pytest tests/ --ignore=tests/test_zzz_playwright_hijack.py -q
+# Main package (all non-playwright, non-e2e) — coverage enforced via addopts
+uv run pytest tests/ --ignore=tests/test_e2e_live_hub_ws.py --ignore=tests/test_e2e_ssh_gateway.py --ignore=tests/test_e2e_telnet_gateway.py -q
 
-# Main package coverage
-uv run pytest tests/ --ignore=tests/test_zzz_playwright_hijack.py --cov=undef.terminal.server --cov-report=term-missing -q
-
-# CF package unit tests
+# CF package unit tests — coverage enforced via addopts
 cd packages/undef-terminal-cloudflare
 uv run pytest tests/ --ignore=tests/test_e2e_ws.py --ignore=tests/test_e2e_full_stack.py -q
+
+# Skip coverage for quick runs
+uv run pytest tests/ --no-cov -q
 
 # CF E2E (pywrangler dev, ~90s startup)
 E2E=1 uv run pytest tests/ -m e2e -v
 
 # CF E2E (real CF deployment)
 REAL_CF=1 REAL_CF_URL=https://undef-terminal-cloudflare.neurotic.workers.dev uv run pytest tests/ -m e2e -v
+
+# Mutation testing (slow, run pre-release)
+uv run mutmut run
+
+# Dead code / complexity / CVE scan
+uv run vulture src/
+uv run xenon --max-absolute C --max-modules B --average A src/
+uv run pip-audit
 
 # Build frontend JS
 npm run build:frontend   # from repo root
@@ -131,17 +232,5 @@ npm run build:frontend   # from repo root
 
 ## Next Steps
 
-### 1. Frontend TS Source ✓ (complete)
-- Source: `packages/undef-terminal-frontend/src/`
-- Output: `src/undef/terminal/frontend/` (Python package-data)
-- `tsconfig.json` outDir: `../../src/undef/terminal/frontend` (2 levels up from package dir)
-- Run `npm run build:frontend` from repo root
-
-### 2. Publish to PyPI
-Both packages at version `0.3.0`, metadata complete. Run `uv publish` from repo root.
-
-### 3. CF Access JWT — Groups-Based Role Mapping
-Config already supports this — no code changes needed.
-1. Configure SCIM / CF Access identity groups in Zero Trust dashboard
-2. Add a custom claim (e.g. `"groups"`) to the CF Access application
-3. Set `JWT_ROLES_CLAIM=groups` so the worker reads roles from that claim
+### 1. Publish to PyPI
+Both packages at version `0.3.0`, metadata complete. Both at 100% coverage. Run `uv publish` from repo root.

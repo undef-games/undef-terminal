@@ -26,6 +26,7 @@ _MAX_INPUT_CHARS = 10_000  # must match main package TermHub.max_input_chars def
 _SESSION_ROUTE_RE = re.compile(r"^/api/sessions/([a-zA-Z0-9_-]{1,64})(?:/([a-z]+))?$")
 _MAX_TIMEOUT_MS = 30_000
 _MAX_PROMPT_POLL_S = 30.0
+_MAX_REGEX_LEN = 500  # guard against ReDoS via pathological regex patterns
 
 
 def _extract_hijack_id(path: str) -> str | None:
@@ -57,11 +58,16 @@ async def _wait_for_prompt(
     runtime: RuntimeProtocol,
     *,
     expect_prompt_id: str | None,
-    expect_regex: str | None,
+    expect_regex: re.Pattern[str] | None,
     timeout_ms: int,
     poll_interval_ms: int,
 ) -> dict[str, object] | None:
-    """Poll last_snapshot until a prompt guard matches or the timeout expires."""
+    """Poll last_snapshot until a prompt guard matches or the timeout expires.
+
+    ``expect_regex`` must be a pre-compiled pattern (or None) — callers are
+    responsible for compilation so that ``re.error`` is raised before the poll
+    loop begins, enabling a clean 400 response to the client.
+    """
     timeout_s = max(0.1, min(timeout_ms / 1000, _MAX_PROMPT_POLL_S))
     interval_s = max(0.05, min(poll_interval_ms / 1000, 5.0))
     deadline = time.monotonic() + timeout_s
@@ -70,7 +76,7 @@ async def _wait_for_prompt(
         if snapshot:
             if expect_prompt_id and _extract_prompt_id(snapshot) == expect_prompt_id:
                 return snapshot
-            if expect_regex and re.search(expect_regex, str(snapshot.get("screen", ""))):
+            if expect_regex and expect_regex.search(str(snapshot.get("screen", ""))):
                 return snapshot
         await asyncio.sleep(interval_s)
     return runtime.last_snapshot
@@ -227,9 +233,20 @@ async def route_http(runtime: RuntimeProtocol, request: object) -> Response:
             return json_response({"error": "no_worker"}, status=409)
         # Optional prompt guards — wait for screen to match before returning.
         expect_prompt_id = str(payload.get("expect_prompt_id") or "") or None
-        expect_regex = str(payload.get("expect_regex") or "") or None
+        expect_regex_raw = str(payload.get("expect_regex") or "") or None
         matched_snapshot = runtime.last_snapshot
-        if expect_prompt_id or expect_regex:
+        if expect_prompt_id or expect_regex_raw:
+            # Pre-compile the regex before entering the poll loop so that a
+            # malformed or pathological pattern raises re.error immediately,
+            # enabling a clean 400 response (avoids ReDoS in the polling loop).
+            expect_regex_obj: re.Pattern[str] | None = None
+            if expect_regex_raw:
+                if len(expect_regex_raw) > _MAX_REGEX_LEN:
+                    return json_response({"error": "expect_regex too long", "max": _MAX_REGEX_LEN}, status=400)
+                try:
+                    expect_regex_obj = re.compile(expect_regex_raw)
+                except re.error as exc:
+                    return json_response({"error": f"invalid expect_regex: {exc}"}, status=400)
             try:
                 timeout_ms = max(100, min(int(payload.get("timeout_ms") or 5_000), _MAX_TIMEOUT_MS))
                 poll_interval_ms = max(50, min(int(payload.get("poll_interval_ms") or 200), 5_000))
@@ -238,7 +255,7 @@ async def route_http(runtime: RuntimeProtocol, request: object) -> Response:
             matched_snapshot = await _wait_for_prompt(
                 runtime,
                 expect_prompt_id=expect_prompt_id,
-                expect_regex=expect_regex,
+                expect_regex=expect_regex_obj,
                 timeout_ms=timeout_ms,
                 poll_interval_ms=poll_interval_ms,
             )
