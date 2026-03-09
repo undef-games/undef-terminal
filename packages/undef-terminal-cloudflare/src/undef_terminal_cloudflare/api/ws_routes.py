@@ -16,8 +16,13 @@ from __future__ import annotations
 
 try:
     from undef_terminal_cloudflare.contracts import MessageLimits, ProtocolError, RuntimeProtocol, parse_frame
-except Exception:
-    from contracts import MessageLimits, ProtocolError, RuntimeProtocol, parse_frame  # type: ignore[import-not-found]
+except Exception:  # pragma: no cover
+    from contracts import (  # type: ignore[import-not-found]  # pragma: no cover
+        MessageLimits,
+        ProtocolError,
+        RuntimeProtocol,
+        parse_frame,
+    )
 
 
 async def handle_socket_message(runtime: RuntimeProtocol, ws: object, raw: str, *, is_worker: bool) -> None:

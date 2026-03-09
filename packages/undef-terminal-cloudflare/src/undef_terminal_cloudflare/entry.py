@@ -4,13 +4,13 @@ import re
 from urllib.parse import urlparse
 
 try:
-    from undef_terminal_cloudflare.cf_types import WorkerEntrypoint, json_response
+    from undef_terminal_cloudflare.cf_types import Response, WorkerEntrypoint, json_response
     from undef_terminal_cloudflare.config import CloudflareConfig
     from undef_terminal_cloudflare.do.session_runtime import SessionRuntime
     from undef_terminal_cloudflare.state.registry import list_kv_sessions
     from undef_terminal_cloudflare.ui.assets import serve_asset
 except Exception:
-    from cf_types import WorkerEntrypoint, json_response  # type: ignore[import-not-found]
+    from cf_types import Response, WorkerEntrypoint, json_response  # type: ignore[import-not-found]
     from config import CloudflareConfig  # type: ignore[import-not-found]
     from do.session_runtime import SessionRuntime  # type: ignore[import-not-found]
     from state.registry import list_kv_sessions  # type: ignore[import-not-found]
@@ -84,7 +84,11 @@ class Default(WorkerEntrypoint):
         worker_id = _extract_worker_id(path)
         if worker_id is None:
             if path in {"/app", "/app/"}:
-                return serve_asset("terminal.html")
+                resp = serve_asset("terminal.html")
+                if resp.status == 200:
+                    body = (resp.body or "").replace("<head>", '<head><base href="/assets/">', 1)
+                    return Response(body, status=200, headers={"content-type": "text/html; charset=utf-8"})
+                return resp
             if path == "/":
                 return serve_asset("hijack.html")
             return json_response({"error": "not_found", "path": path}, status=404)

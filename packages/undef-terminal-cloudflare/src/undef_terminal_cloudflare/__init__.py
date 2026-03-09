@@ -2,8 +2,8 @@ from importlib.metadata import PackageNotFoundError, version
 
 try:
     __version__ = version("undef-terminal-cloudflare")
-except PackageNotFoundError:
-    __version__ = "0.0.0"
+except PackageNotFoundError:  # pragma: no cover
+    __version__ = "0.0.0"  # pragma: no cover
 
 from .config import CloudflareConfig
 

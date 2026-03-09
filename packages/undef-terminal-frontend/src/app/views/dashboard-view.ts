@@ -1,3 +1,4 @@
+import { restartSession } from "../api.js";
 import { loadDashboardState, summarizeSessions } from "../state.js";
 import type { AppBootstrap, SessionSummary } from "../types.js";
 
@@ -27,21 +28,32 @@ function sectionMarkup(title: string, sessions: SessionSummary[], appPath: strin
         ${sessions
           .map(
             (session) => `
-          <article class="session-card ${session.connected ? "live" : ""} ${session.lastError ? "error" : ""}">
+          <article class="session-card ${session.connected ? "live" : ""} ${session.lastError ? "error" : ""}" data-session-id="${escapeHtml(session.sessionId)}">
             <div class="session-header">
               <div>
                 <div class="session-title">${escapeHtml(session.displayName)}</div>
                 <div class="small">${escapeHtml(session.sessionId)} • ${escapeHtml(session.connectorType)}</div>
               </div>
-              <span class="status-chip ${session.connected ? "ok" : session.lastError ? "error" : "info"}">${
-                session.connected ? "Live" : session.lastError ? "Error" : "Stopped"
-              }</span>
+              <div class="session-badges">
+                ${session.visibility !== "public" ? `<span class="badge badge-visibility">${escapeHtml(session.visibility)}</span>` : ""}
+                ${session.recordingEnabled ? `<span class="badge badge-rec">⏺ rec</span>` : ""}
+                ${session.recordingAvailable && !session.recordingEnabled ? `<span class="badge badge-rec-avail">⏺ saved</span>` : ""}
+                <span class="status-chip ${session.connected ? "ok" : session.lastError ? "error" : "info"}">${
+                  session.connected ? "Live" : session.lastError ? "Error" : "Stopped"
+                }</span>
+              </div>
             </div>
             <div class="small">Mode: ${escapeHtml(session.inputMode)} • State: ${escapeHtml(session.lifecycleState)}</div>
+            ${
+              session.tags.length > 0
+                ? `<div class="tag-list">${session.tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join("")}</div>`
+                : ""
+            }
             <div class="toolbar">
               <a class="btn" href="${safeAppPath}/operator/${encodeURIComponent(session.sessionId)}">Operator</a>
               <a class="btn" href="${safeAppPath}/session/${encodeURIComponent(session.sessionId)}">User view</a>
               <a class="btn" href="${safeAppPath}/replay/${encodeURIComponent(session.sessionId)}">Replay</a>
+              <button class="btn btn-restart" data-session-id="${escapeHtml(session.sessionId)}">Restart</button>
             </div>
           </article>
         `,
@@ -91,6 +103,22 @@ export async function renderDashboard(root: HTMLElement, bootstrap: AppBootstrap
   }
   root.querySelector<HTMLButtonElement>("#dashboard-refresh")?.addEventListener("click", () => {
     void loadSessions(status, content);
+  });
+  content.addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".btn-restart");
+    if (!btn) return;
+    const sid = btn.dataset.sessionId;
+    if (!sid) return;
+    btn.disabled = true;
+    btn.textContent = "…";
+    void restartSession(sid)
+      .then(() => loadSessions(status, content))
+      .catch((err: unknown) => {
+        btn.disabled = false;
+        btn.textContent = "Restart";
+        status.className = "status-chip error";
+        status.textContent = `Restart failed: ${String(err)}`;
+      });
   });
   await loadSessions(status, content);
 }

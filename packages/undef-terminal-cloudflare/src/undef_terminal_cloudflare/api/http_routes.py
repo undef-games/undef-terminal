@@ -7,8 +7,8 @@ from urllib.parse import parse_qs, urlparse
 
 try:
     from undef_terminal_cloudflare.cf_types import Response, json_response
-except Exception:
-    from cf_types import Response, json_response  # type: ignore[import-not-found]
+except Exception:  # pragma: no cover
+    from cf_types import Response, json_response  # type: ignore[import-not-found]  # pragma: no cover
 
 if TYPE_CHECKING:
     try:

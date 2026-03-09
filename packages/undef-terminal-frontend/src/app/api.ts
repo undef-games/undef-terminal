@@ -86,6 +86,12 @@ export async function clearSession(sessionId: string): Promise<SessionSummary> {
   );
 }
 
+export async function restartSession(sessionId: string): Promise<SessionSummary> {
+  return normalizeSessionStatus(
+    await apiJson<SessionStatus>(`/api/sessions/${encodeURIComponent(sessionId)}/restart`, "POST"),
+  );
+}
+
 export async function analyzeSession(sessionId: string): Promise<string> {
   const result = await apiJson<AnalysisResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/analyze`, "POST");
   return result.analysis;

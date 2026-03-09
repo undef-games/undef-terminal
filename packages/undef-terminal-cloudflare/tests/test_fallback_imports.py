@@ -98,12 +98,13 @@ def test_ui_assets_cf_types_fallback() -> None:
 def test_entry_module_level_fallback() -> None:
     """entry.py module-level imports fall back to bare module names."""
     from undef_terminal_cloudflare import config as real_config
-    from undef_terminal_cloudflare.cf_types import WorkerEntrypoint, json_response
+    from undef_terminal_cloudflare.cf_types import Response, WorkerEntrypoint, json_response
     from undef_terminal_cloudflare.do import session_runtime as real_sr_mod
     from undef_terminal_cloudflare.state import registry as real_reg
     from undef_terminal_cloudflare.ui import assets as real_assets
 
     cf = ModuleType("cf_types")
+    cf.Response = Response  # type: ignore[attr-defined]
     cf.WorkerEntrypoint = WorkerEntrypoint  # type: ignore[attr-defined]
     cf.json_response = json_response  # type: ignore[attr-defined]
 

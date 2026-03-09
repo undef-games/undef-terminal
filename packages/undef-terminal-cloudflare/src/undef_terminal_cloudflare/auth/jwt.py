@@ -46,10 +46,12 @@ async def _fetch_jwks(url: str) -> dict[str, Any]:
             return jwks_dict
 
     try:
-        from js import fetch as _js_fetch  # type: ignore[import-not-found]  # CF Workers native async fetch
+        from js import (
+            fetch as _js_fetch,  # type: ignore[import-not-found]  # CF Workers native async fetch  # pragma: no cover
+        )
 
-        response = await _js_fetch(url)
-        result: dict[str, Any] = (await response.json()).to_py()
+        response = await _js_fetch(url)  # pragma: no cover
+        result: dict[str, Any] = (await response.json()).to_py()  # pragma: no cover
     except ImportError:
         import json
         import urllib.request
