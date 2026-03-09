@@ -18,6 +18,34 @@ _MIME = {
 _LOCAL_STATIC = Path(__file__).parent / "static"
 
 
+def read_asset_text(path: str) -> str | None:
+    """Return the raw text content of an asset, or None if not found."""
+    rel = path.lstrip("/")
+    if ".." in rel.split("/"):
+        return None
+    try:
+        local_root = importlib.resources.files("undef_terminal_cloudflare.ui") / "static"
+        local_target = local_root / rel
+        if local_target.is_file():
+            return local_target.read_text(encoding="utf-8")
+    except (ModuleNotFoundError, TypeError):
+        pass
+    try:
+        local_target2 = _LOCAL_STATIC / rel
+        if local_target2.is_file():
+            return local_target2.read_text(encoding="utf-8")
+    except OSError:
+        pass
+    try:
+        frontend_root = importlib.resources.files("undef.terminal") / "frontend"
+        target = frontend_root / rel
+        if target.is_file():
+            return target.read_text(encoding="utf-8")
+    except (ModuleNotFoundError, TypeError):
+        pass
+    return None
+
+
 def serve_asset(path: str) -> Response:
     rel = path.lstrip("/")
     if ".." in rel.split("/"):

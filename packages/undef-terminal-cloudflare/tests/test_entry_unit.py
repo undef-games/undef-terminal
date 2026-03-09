@@ -164,22 +164,35 @@ async def test_default_fetch_worker_route_with_binding_calls_stub() -> None:
 
 
 async def test_default_fetch_app_path() -> None:
-    """Lines 67-68: /app → serve_asset('terminal.html')."""
+    """/app → read_asset_text('terminal.html') with <base href="/assets/"> injected."""
     d = _make_default()
-    mock_resp = Response(body="terminal", status=200)
-    with patch("undef_terminal_cloudflare.entry.serve_asset", return_value=mock_resp) as mock_sa:
+    with patch("undef_terminal_cloudflare.entry.read_asset_text", return_value="<head><title>T</title>") as mock_rat:
         resp = await d.fetch(_req("/app"))
-    mock_sa.assert_called_once_with("terminal.html")
+    mock_rat.assert_called_once_with("terminal.html")
     assert resp.status == 200
+    assert '<base href="/assets/">' in str(resp.body)
 
 
 async def test_default_fetch_app_slash_path() -> None:
-    """Lines 67-68: /app/ → serve_asset('terminal.html')."""
+    """/app/ → same base-tag injection as /app."""
+    d = _make_default()
+    with patch("undef_terminal_cloudflare.entry.read_asset_text", return_value="<head><title>T</title>") as mock_rat:
+        resp = await d.fetch(_req("/app/"))
+    mock_rat.assert_called_once_with("terminal.html")
+    assert resp.status == 200
+
+
+async def test_default_fetch_app_path_fallback() -> None:
+    """/app falls back to serve_asset when read_asset_text returns None."""
     d = _make_default()
     mock_resp = Response(body="terminal", status=200)
-    with patch("undef_terminal_cloudflare.entry.serve_asset", return_value=mock_resp) as mock_sa:
-        await d.fetch(_req("/app/"))
+    with (
+        patch("undef_terminal_cloudflare.entry.read_asset_text", return_value=None),
+        patch("undef_terminal_cloudflare.entry.serve_asset", return_value=mock_resp) as mock_sa,
+    ):
+        resp = await d.fetch(_req("/app"))
     mock_sa.assert_called_once_with("terminal.html")
+    assert resp.status == 200
 
 
 async def test_default_fetch_root_path() -> None:

@@ -99,7 +99,7 @@ class SessionRuntime(_WsHelperMixin, DurableObject):
     # ------------------------------------------------------------------
 
     def _extract_token(self, request: object) -> str | None:
-        """Extract a token from Authorization header and optional query params."""
+        """Extract a token from Authorization header, CF_Authorization cookie, or query params."""
         try:
             auth_header = str(request.headers.get("Authorization") or "")  # type: ignore[attr-defined]
         except Exception:
@@ -108,6 +108,17 @@ class SessionRuntime(_WsHelperMixin, DurableObject):
             token = auth_header[7:].strip()
             if token:
                 return token
+        # CF Access sets a CF_Authorization cookie containing the JWT.
+        # Browser WebSockets cannot set custom headers, so the cookie is the
+        # only mechanism available for authenticating WS upgrade requests.
+        try:
+            cookie_header = str(request.headers.get("Cookie") or "")  # type: ignore[attr-defined]
+            for part in cookie_header.split(";"):
+                name, _, value = part.strip().partition("=")
+                if name.strip() == "CF_Authorization" and value.strip():
+                    return value.strip()
+        except Exception:  # noqa: S110
+            pass
         if not self.config.jwt.allow_query_token:
             return None
         try:

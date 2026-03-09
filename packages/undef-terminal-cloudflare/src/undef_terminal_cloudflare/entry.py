@@ -8,13 +8,13 @@ try:
     from undef_terminal_cloudflare.config import CloudflareConfig
     from undef_terminal_cloudflare.do.session_runtime import SessionRuntime
     from undef_terminal_cloudflare.state.registry import list_kv_sessions
-    from undef_terminal_cloudflare.ui.assets import serve_asset
+    from undef_terminal_cloudflare.ui.assets import read_asset_text, serve_asset
 except Exception:
     from cf_types import Response, WorkerEntrypoint, json_response  # type: ignore[import-not-found]
     from config import CloudflareConfig  # type: ignore[import-not-found]
     from do.session_runtime import SessionRuntime  # type: ignore[import-not-found]
     from state.registry import list_kv_sessions  # type: ignore[import-not-found]
-    from ui.assets import serve_asset  # type: ignore[import-not-found]
+    from ui.assets import read_asset_text, serve_asset  # type: ignore[import-not-found]
 
 __all__ = ["Default", "SessionRuntime", "UndefTerminalCloudflareWorker"]
 
@@ -26,6 +26,27 @@ _WORKER_ROUTE_PATTERNS = (
     re.compile(r"^/worker/(?P<worker_id>[a-zA-Z0-9_-]{1,64})/(?:input_mode|disconnect_worker)$"),
 )
 _STATIC_ASSET_PATH = re.compile(r"^/[a-zA-Z0-9._/-]+\.(?:html|css|js)$")
+
+
+def _extract_bearer_or_cookie(request: object) -> str | None:
+    """Return a JWT token from Authorization header or CF_Authorization cookie."""
+    try:
+        auth_header = str(request.headers.get("Authorization") or "")  # type: ignore[attr-defined]
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
+            if token:
+                return token
+    except Exception:  # noqa: S110
+        pass
+    try:
+        cookie_header = str(request.headers.get("Cookie") or "")  # type: ignore[attr-defined]
+        for part in cookie_header.split(";"):
+            name, _, value = part.strip().partition("=")
+            if name.strip() == "CF_Authorization" and value.strip():
+                return value.strip()
+    except Exception:  # noqa: S110
+        pass
+    return None
 
 
 class Default(WorkerEntrypoint):
@@ -52,13 +73,7 @@ class Default(WorkerEntrypoint):
         if path == "/api/sessions":
             # Require JWT auth in jwt mode — fleet-wide session list is sensitive.
             if config.jwt.mode == "jwt":
-                try:
-                    auth_header = str(request.headers.get("Authorization") or "")
-                except Exception:
-                    auth_header = ""
-                if not auth_header.lower().startswith("bearer "):
-                    return json_response({"error": "authentication required"}, status=401)
-                token = auth_header[7:].strip()
+                token = _extract_bearer_or_cookie(request)
                 if not token:
                     return json_response({"error": "authentication required"}, status=401)
                 try:
@@ -84,11 +99,11 @@ class Default(WorkerEntrypoint):
         worker_id = _extract_worker_id(path)
         if worker_id is None:
             if path in {"/app", "/app/"}:
-                resp = serve_asset("terminal.html")
-                if resp.status == 200:
-                    body = (resp.body or "").replace("<head>", '<head><base href="/assets/">', 1)
+                body = read_asset_text("terminal.html")
+                if body is not None:
+                    body = body.replace("<head>", '<head><base href="/assets/">', 1)
                     return Response(body, status=200, headers={"content-type": "text/html; charset=utf-8"})
-                return resp
+                return serve_asset("terminal.html")
             if path == "/":
                 return serve_asset("hijack.html")
             return json_response({"error": "not_found", "path": path}, status=404)
