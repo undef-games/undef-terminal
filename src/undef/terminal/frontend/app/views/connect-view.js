@@ -17,7 +17,7 @@ function updateFieldVisibility(form) {
         el.style.display = type === "ssh" ? "" : "none";
     }
     const portEl = form.querySelector("#connect-port");
-    if (portEl && !portEl.dataset["userEdited"]) {
+    if (portEl && !portEl.dataset.userEdited) {
         portEl.value = type === "telnet" ? "23" : "22";
     }
 }
@@ -34,30 +34,29 @@ async function handleSubmit(form, errorEl, submitBtn) {
     const payload = { connector_type: type };
     const name = form.querySelector("#connect-name").value.trim();
     if (name)
-        payload["display_name"] = name;
+        payload.display_name = name;
     const mode = form.querySelector("#connect-mode").value;
     if (mode)
-        payload["input_mode"] = mode;
+        payload.input_mode = mode;
     const tagsRaw = form.querySelector("#connect-tags").value.trim();
     if (tagsRaw) {
-        payload["tags"] = tagsRaw
+        payload.tags = tagsRaw
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean);
     }
     if (type === "ssh" || type === "telnet") {
-        payload["host"] = host;
-        payload["port"] =
-            parseInt(form.querySelector("#connect-port").value, 10) ||
-                (type === "telnet" ? 23 : 22);
+        payload.host = host;
+        payload.port =
+            parseInt(form.querySelector("#connect-port").value, 10) || (type === "telnet" ? 23 : 22);
     }
     if (type === "ssh") {
         const user = form.querySelector("#connect-user").value.trim();
         const pass = form.querySelector("#connect-pass").value;
         if (user)
-            payload["username"] = user;
+            payload.username = user;
         if (pass)
-            payload["password"] = pass;
+            payload.password = pass;
     }
     try {
         const result = await quickConnect(payload);
@@ -134,7 +133,7 @@ export function renderConnect(root, bootstrap) {
     updateFieldVisibility(form);
     typeSelect.addEventListener("change", () => updateFieldVisibility(form));
     portEl.addEventListener("input", function () {
-        this.dataset["userEdited"] = "1";
+        this.dataset.userEdited = "1";
     });
     form.addEventListener("submit", (e) => {
         e.preventDefault();

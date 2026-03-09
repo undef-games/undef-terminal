@@ -15,7 +15,7 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "rootDir": "src",
-    "outDir": "../../../src/undef/terminal/frontend"
+    "outDir": "../../src/undef/terminal/frontend"
   },
   "include": ["src/**/*"]
 }

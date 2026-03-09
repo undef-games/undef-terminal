@@ -70,6 +70,9 @@ export async function setSessionMode(sessionId, inputMode) {
 export async function clearSession(sessionId) {
     return normalizeSessionStatus(await apiJson(`/api/sessions/${encodeURIComponent(sessionId)}/clear`, "POST"));
 }
+export async function restartSession(sessionId) {
+    return normalizeSessionStatus(await apiJson(`/api/sessions/${encodeURIComponent(sessionId)}/restart`, "POST"));
+}
 export async function analyzeSession(sessionId) {
     const result = await apiJson(`/api/sessions/${encodeURIComponent(sessionId)}/analyze`, "POST");
     return result.analysis;
