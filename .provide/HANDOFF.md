@@ -58,11 +58,14 @@ Added 5 new test files covering `undef.terminal.server`:
 | `tests/test_server_registry.py` | `registry.py`: `_require_session`, `list_sessions`, recording entries | 88% → 99% |
 | `tests/test_server_coverage2.py` | `routes/api.py`: 403/404/409/422 paths; `app.py`: CORS, 5xx metric | 88% → 99% |
 
-### Docker Containers ✓ (fully verified)
-- `docker/Dockerfile.server` — FastAPI server; xterm.js + addon-fit.js injected (fitaddon_cdn); terminal renders correctly
+### Docker Containers ✓ (fully verified, ports updated)
+- `docker/Dockerfile.server` — FastAPI server; xterm.js + addon-fit.js injected; terminal renders correctly
 - `docker/Dockerfile.cf` — pywrangler dev server; copies compiled frontend into `ui/static/`; wrangler.toml `[[rules]]` bundles JS/CSS; hijack demo page renders
-- `docker/docker-compose.yml` — brings up both on ports 8780 + 8788
-- 12 CF E2E tests pass against containerized CF worker (`REAL_CF_URL=http://localhost:8788 REAL_CF=1`)
+- `docker/docker-compose.yml` — brings up both: FastAPI on **:27780**, CF worker on **:27788** (project-unique ports)
+- 15 CF E2E tests pass against containerized CF worker (`REAL_CF_URL=http://localhost:27788 REAL_CF=1 -p no:xdist`)
+- 15 CF E2E tests pass against production (`REAL_CF_URL=https://undef-terminal-cloudflare.neurotic.workers.dev REAL_CF=1 -p no:xdist`)
+- 25 Playwright tests pass (hijack + terminal proxy + frontend coverage)
+- Note: run e2e_ws + full_stack with `-p no:xdist` — xdist causes asyncio loop conflicts
 
 ### CF Package — All Items Complete (earlier sessions)
 - Item 1 (Fleet KV), Item 2 (E2E), Item 3 (CF Access JWT), Item 4 (Alarm expiry), Item 5 (Snapshot endpoint)
