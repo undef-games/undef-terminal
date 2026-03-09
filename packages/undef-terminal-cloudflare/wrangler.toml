@@ -16,9 +16,11 @@ fallthrough = true
 port = 8788
 
 [vars]
-# Set AUTH_MODE=dev for the test deployment (no JWT required).
-# Change to AUTH_MODE=jwt (and configure JWT_JWKS_URL) for production.
-AUTH_MODE = "dev"
+AUTH_MODE = "jwt"
+JWT_JWKS_URL = "https://neurotic.cloudflareaccess.com/cdn-cgi/access/certs"
+JWT_ISSUER = "https://neurotic.cloudflareaccess.com"
+JWT_ALGORITHMS = "RS256"
+JWT_DEFAULT_ROLE = "operator"
 
 # Cloudflare Access / Zero Trust JWT configuration (production example):
 #
