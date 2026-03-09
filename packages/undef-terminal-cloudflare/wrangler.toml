@@ -12,6 +12,9 @@ type = "Text"
 globs = ["**/*.js", "**/*.css"]
 fallthrough = true
 
+[build]
+command = "cp -r ../../src/undef/terminal/frontend/. src/undef_terminal_cloudflare/ui/static/"
+
 [dev]
 port = 8788
 
