@@ -297,6 +297,22 @@ async def test_send_400_empty_keys() -> None:
     assert resp.status == 400
 
 
+async def test_send_400_keys_too_long() -> None:
+    """Line 180: keys payload exceeds _MAX_INPUT_CHARS → 400."""
+    runtime = _Runtime()
+    r1 = await route_http(
+        runtime,
+        _Req("https://x/worker/w/hijack/acquire", method="POST").with_body({"owner": "a", "lease_s": 60}),
+    )
+    hid = _body(r1)["hijack_id"]
+    resp = await route_http(
+        runtime,
+        _Req(f"https://x/worker/w/hijack/{hid}/send", method="POST").with_body({"keys": "x" * 10_001}),
+    )
+    assert resp.status == 400
+    assert _body(resp)["error"] == "keys too long"
+
+
 async def test_send_403_not_owner() -> None:
     """Line 175: send with wrong hijack_id (not owner) → 403."""
     runtime = _Runtime()

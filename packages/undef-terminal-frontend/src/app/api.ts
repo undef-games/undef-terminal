@@ -1,22 +1,6 @@
 import type { AnalysisResponse, RecordingEntry, SessionStatus, SnapshotPayload } from "../server-common.js";
+import { apiJson } from "../server-common.js";
 import type { RecordingEntryView, SessionDetails, SessionSummary, SessionSurface } from "./types.js";
-
-async function apiJson<T>(path: string, method: "GET" | "POST" = "GET", body: unknown = null): Promise<T> {
-  const init: RequestInit = {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-    },
-  };
-  if (body !== null) {
-    init.body = JSON.stringify(body);
-  }
-  const response = await fetch(path, init);
-  if (!response.ok) {
-    throw new Error(`${response.status}`);
-  }
-  return (await response.json()) as T;
-}
 
 function normalizeMode(value: string): "open" | "hijack" {
   return value === "hijack" ? "hijack" : "open";

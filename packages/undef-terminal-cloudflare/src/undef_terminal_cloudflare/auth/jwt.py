@@ -170,3 +170,30 @@ def resolve_role(principal: Principal) -> str:
     if "operator" in role_set:
         return "operator"
     return "viewer"
+
+
+def extract_bearer_or_cookie(request: object) -> str | None:
+    """Extract a JWT from the Authorization: Bearer header or CF_Authorization cookie.
+
+    Used by both the Default worker (entry.py) and the SessionRuntime DO
+    (session_runtime.py).  Browser WebSockets cannot send custom headers, so
+    the CF_Authorization cookie is the only auth mechanism available for WS
+    upgrade requests protected by Cloudflare Access.
+    """
+    try:
+        auth_header = str(request.headers.get("Authorization") or "")  # type: ignore[attr-defined]
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
+            if token:
+                return token
+    except Exception:  # noqa: S110
+        pass
+    try:
+        cookie_header = str(request.headers.get("Cookie") or "")  # type: ignore[attr-defined]
+        for part in cookie_header.split(";"):
+            name, _, value = part.strip().partition("=")
+            if name.strip() == "CF_Authorization" and value.strip():
+                return value.strip()
+    except Exception:  # noqa: S110
+        pass
+    return None

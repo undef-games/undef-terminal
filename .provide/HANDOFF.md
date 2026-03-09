@@ -2,12 +2,43 @@
 
 ## Current State
 
-- **Main package (`undef-terminal`)**: **1114 tests passing**. `undef.terminal.server` at **99% coverage** (config.py, pages.py, ui.py, models.py all 100%). Pre-commit hooks active. `ty check src/undef/` passes clean.
-- **CF package (`undef-terminal-cloudflare`)**: **359 unit tests passing** + E2E tests (`-m e2e`). Total: **1473**. Overall: **94% coverage**. All reachable lines at 100%.
+- **Main package (`undef-terminal`)**: **1134 tests passing** (all Playwright included). Pre-commit hooks active. `ty check src/undef/` passes clean.
+- **CF package (`undef-terminal-cloudflare`)**: **369 unit tests passing** + 5 skipped + E2E tests (`-m e2e`). Overall: **99% coverage** (all reachable lines at 100%).
 
 ---
 
 ## Completed in Most Recent Session
+
+### Code Review Fixes + DRY Refactors
+
+**Security:**
+- `src/undef/terminal/hijack/routes/websockets.py`: `secrets.compare_digest` for timing-safe worker token check
+
+**Bug fixes:**
+- `src/undef/terminal/hijack/hub/core.py`: `min_event_seq` updated AFTER append (not before); added `browser_count()` async method
+- `src/undef/terminal/server/registry.py`: `_on_worker_empty` has 5-second grace period before deleting ephemeral sessions; calls `hub.browser_count()`
+
+**DRY:**
+- `packages/undef-terminal-cloudflare/src/undef_terminal_cloudflare/auth/jwt.py`: added shared `extract_bearer_or_cookie()` function
+- `packages/undef-terminal-cloudflare/src/undef_terminal_cloudflare/entry.py`: removed local `_extract_bearer_or_cookie`, uses shared one
+- `packages/undef-terminal-cloudflare/src/undef_terminal_cloudflare/do/session_runtime.py`: `_extract_token` delegates to shared `extract_bearer_or_cookie`
+- `packages/undef-terminal-frontend/src/app/api.ts`: removed duplicate local `apiJson`, imports from `server-common.js`
+- `packages/undef-terminal-frontend/src/hijack-page.ts`: uses standard `/api/sessions/` routes instead of `/demo/session/` routes
+
+**Input size limit:**
+- `packages/undef-terminal-cloudflare/src/undef_terminal_cloudflare/api/http_routes.py`: `_MAX_INPUT_CHARS = 10_000`, returns 400 if exceeded
+
+**Hibernation warning:**
+- `packages/undef-terminal-cloudflare/src/undef_terminal_cloudflare/do/session_runtime.py`: WARNING log when `serializeAttachment` fails
+- `packages/undef-terminal-cloudflare/src/undef_terminal_cloudflare/do/ws_helpers.py`: WARNING log when post-hibernation role fallback triggers in jwt mode
+
+**Demo server + tests:**
+- `scripts/demo_server.py`: added `/api/sessions/` routes (GET status, POST mode, POST restart) returning `SessionStatus`-compatible format
+- `packages/undef-terminal-cloudflare/tests/test_fallback_imports.py`: mock `auth.jwt` modules now include `extract_bearer_or_cookie`
+- `packages/undef-terminal-cloudflare/tests/test_http_routes_coverage.py`: `test_send_400_keys_too_long` covering new size check
+- `tests/test_server_registry.py`: `_make_hub()` includes `browser_count = AsyncMock(return_value=0)`
+
+---
 
 ### Dashboard Expansion (items 1, 2, 3, 5, 6)
 

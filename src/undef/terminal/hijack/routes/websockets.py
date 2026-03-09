@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import secrets
 import time
 from contextlib import suppress
 from typing import TYPE_CHECKING, Annotated, Any
@@ -56,7 +57,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         if worker_token is not None:
             auth_header = websocket.headers.get("authorization", "")
             provided = auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer ") else ""
-            if provided != worker_token:
+            if not secrets.compare_digest(provided, worker_token):
                 await websocket.close(code=1008, reason="authentication required")
                 return
         await websocket.accept()

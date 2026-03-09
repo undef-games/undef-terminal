@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 _HIJACK_ID_RE = re.compile(r"/hijack/([0-9a-fA-F\-]{1,64})/")
 _MIN_LEASE_S = 1
 _MAX_LEASE_S = 3600
+_MAX_INPUT_CHARS = 10_000  # must match main package TermHub.max_input_chars default
 
 
 def _extract_hijack_id(path: str) -> str | None:
@@ -175,6 +176,8 @@ async def route_http(runtime: RuntimeProtocol, request: object) -> Response:
         data = str(payload.get("keys") or "")
         if not data:
             return json_response({"error": "keys must be non-empty"}, status=400)
+        if len(data) > _MAX_INPUT_CHARS:
+            return json_response({"error": "keys too long", "max": _MAX_INPUT_CHARS}, status=400)
         if not runtime.hijack.can_send_input(hijack_id):
             return json_response({"error": "not_hijack_owner"}, status=403)
         ok = await runtime.push_worker_input(data)

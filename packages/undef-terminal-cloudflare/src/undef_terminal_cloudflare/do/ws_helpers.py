@@ -98,6 +98,9 @@ class _WsHelperMixin:
         if isinstance(role, str) and role in {"admin", "operator", "viewer"}:
             return role
         # Fail-closed: in jwt mode grant only viewer; in open-access modes grant admin.
+        # Warn in jwt mode — this path means the role was not recoverable post-hibernation.
+        if self.config.jwt.mode not in {"none", "dev"}:  # type: ignore[attr-defined]
+            logger.warning("browser role unavailable (post-hibernation fallback), defaulting to viewer")
         return "admin" if self.config.jwt.mode in {"none", "dev"} else "viewer"  # type: ignore[attr-defined]
 
     def _socket_worker_id(self, ws: Any) -> str:

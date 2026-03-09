@@ -4,12 +4,24 @@ import re
 from urllib.parse import urlparse
 
 try:
+    from undef_terminal_cloudflare.auth.jwt import (
+        JwtValidationError,
+        decode_jwt,
+        extract_bearer_or_cookie,
+        resolve_role,
+    )
     from undef_terminal_cloudflare.cf_types import Response, WorkerEntrypoint, json_response
     from undef_terminal_cloudflare.config import CloudflareConfig
     from undef_terminal_cloudflare.do.session_runtime import SessionRuntime
     from undef_terminal_cloudflare.state.registry import list_kv_sessions
     from undef_terminal_cloudflare.ui.assets import read_asset_text, serve_asset
 except Exception:
+    from auth.jwt import (  # type: ignore[import-not-found]
+        JwtValidationError,
+        decode_jwt,
+        extract_bearer_or_cookie,
+        resolve_role,
+    )
     from cf_types import Response, WorkerEntrypoint, json_response  # type: ignore[import-not-found]
     from config import CloudflareConfig  # type: ignore[import-not-found]
     from do.session_runtime import SessionRuntime  # type: ignore[import-not-found]
@@ -26,27 +38,6 @@ _WORKER_ROUTE_PATTERNS = (
     re.compile(r"^/worker/(?P<worker_id>[a-zA-Z0-9_-]{1,64})/(?:input_mode|disconnect_worker)$"),
 )
 _STATIC_ASSET_PATH = re.compile(r"^/[a-zA-Z0-9._/-]+\.(?:html|css|js)$")
-
-
-def _extract_bearer_or_cookie(request: object) -> str | None:
-    """Return a JWT token from Authorization header or CF_Authorization cookie."""
-    try:
-        auth_header = str(request.headers.get("Authorization") or "")  # type: ignore[attr-defined]
-        if auth_header.lower().startswith("bearer "):
-            token = auth_header[7:].strip()
-            if token:
-                return token
-    except Exception:  # noqa: S110
-        pass
-    try:
-        cookie_header = str(request.headers.get("Cookie") or "")  # type: ignore[attr-defined]
-        for part in cookie_header.split(";"):
-            name, _, value = part.strip().partition("=")
-            if name.strip() == "CF_Authorization" and value.strip():
-                return value.strip()
-    except Exception:  # noqa: S110
-        pass
-    return None
 
 
 class Default(WorkerEntrypoint):
@@ -73,17 +64,16 @@ class Default(WorkerEntrypoint):
         if path == "/api/sessions":
             # Require JWT auth in jwt mode — fleet-wide session list is sensitive.
             if config.jwt.mode == "jwt":
-                token = _extract_bearer_or_cookie(request)
+                token = extract_bearer_or_cookie(request)
                 if not token:
                     return json_response({"error": "authentication required"}, status=401)
                 try:
-                    from undef_terminal_cloudflare.auth.jwt import JwtValidationError, decode_jwt
-                except Exception:
-                    from auth.jwt import JwtValidationError, decode_jwt  # type: ignore[import-not-found]
-                try:
-                    await decode_jwt(token, config.jwt)
+                    principal = await decode_jwt(token, config.jwt)
                 except JwtValidationError as exc:
                     return json_response({"error": "invalid token", "detail": str(exc)}, status=401)
+                # Viewer is the minimum role; all authenticated users qualify.
+                # resolve_role ensures the token carries a valid role claim.
+                _ = resolve_role(principal)
             # Fleet-wide list: query KV registry populated by each DO on connect/disconnect.
             # Falls back to empty list when SESSION_REGISTRY KV binding is not configured.
             kv_configured = getattr(self.env, "SESSION_REGISTRY", None) is not None

@@ -53,11 +53,19 @@ class SessionRegistry:
         hub.on_worker_empty = self._on_worker_empty
 
     async def _on_worker_empty(self, session_id: str) -> None:
-        """Auto-delete an ephemeral session when the last browser disconnects."""
+        """Auto-delete an ephemeral session when the last browser disconnects.
+
+        A short grace period lets reconnecting browsers (page refresh, brief
+        network drop, or the initial redirect to a freshly-created session) land
+        before the session is torn down.
+        """
         async with self._lock:
             session = self._sessions.get(session_id)
             if session is None or not session.ephemeral:
                 return
+        await asyncio.sleep(5)
+        if await self._hub.browser_count(session_id) > 0:
+            return
         with contextlib.suppress(KeyError):
             await self.delete_session(session_id)
 

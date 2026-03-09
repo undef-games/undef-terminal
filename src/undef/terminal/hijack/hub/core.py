@@ -183,12 +183,12 @@ class TermHub(_PollingMixin, _HijackOwnershipMixin, _ConnectionMixin):
             st = self._workers.get(worker_id)
             if st is None:
                 return {"seq": 0, "ts": time.time(), "type": event_type, "data": payload}
-            if len(st.events) == st.events.maxlen:
-                # events[0] is about to be evicted; update the minimum tracked seq
-                st.min_event_seq = int(st.events[1]["seq"]) if len(st.events) > 1 else st.event_seq + 1
             st.event_seq += 1
             evt: dict[str, Any] = {"seq": st.event_seq, "ts": time.time(), "type": event_type, "data": payload}
             st.events.append(evt)
+            # Set min_event_seq after append so it always reflects events[0].seq,
+            # which is correct whether or not the deque was full before the append.
+            st.min_event_seq = int(st.events[0]["seq"])
             return evt
 
     async def broadcast(self, worker_id: str, msg: dict[str, Any]) -> None:
@@ -429,6 +429,12 @@ class TermHub(_PollingMixin, _HijackOwnershipMixin, _ConnectionMixin):
         async with self._lock:
             st = self._workers.get(worker_id)
             return None if st is None else st.last_snapshot
+
+    async def browser_count(self, worker_id: str) -> int:
+        """Return the number of browser WebSockets currently connected for *worker_id*."""
+        async with self._lock:
+            st = self._workers.get(worker_id)
+            return 0 if st is None else len(st.browsers)
 
     async def get_recent_events(self, worker_id: str, limit: int) -> list[dict[str, Any]]:
         """Return the most recent events for *worker_id* (up to *limit*, clamped to 1-500)."""

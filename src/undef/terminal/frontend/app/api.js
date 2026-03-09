@@ -1,19 +1,4 @@
-async function apiJson(path, method = "GET", body = null) {
-    const init = {
-        method,
-        headers: {
-            "Content-Type": "application/json",
-        },
-    };
-    if (body !== null) {
-        init.body = JSON.stringify(body);
-    }
-    const response = await fetch(path, init);
-    if (!response.ok) {
-        throw new Error(`${response.status}`);
-    }
-    return (await response.json());
-}
+import { apiJson } from "../server-common.js";
 function normalizeMode(value) {
     return value === "hijack" ? "hijack" : "open";
 }

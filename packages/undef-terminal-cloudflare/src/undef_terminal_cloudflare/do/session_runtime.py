@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 try:
     from undef_terminal_cloudflare.api.http_routes import route_http
     from undef_terminal_cloudflare.api.ws_routes import handle_socket_message
-    from undef_terminal_cloudflare.auth.jwt import JwtValidationError, decode_jwt
+    from undef_terminal_cloudflare.auth.jwt import JwtValidationError, decode_jwt, extract_bearer_or_cookie
     from undef_terminal_cloudflare.auth.jwt import resolve_role as _resolve_jwt_role
     from undef_terminal_cloudflare.bridge.hijack import HijackCoordinator, HijackSession
     from undef_terminal_cloudflare.cf_types import DurableObject, Response
@@ -21,7 +21,7 @@ try:
 except Exception:
     from api.http_routes import route_http  # type: ignore[import-not-found]
     from api.ws_routes import handle_socket_message  # type: ignore[import-not-found]
-    from auth.jwt import JwtValidationError, decode_jwt  # type: ignore[import-not-found]
+    from auth.jwt import JwtValidationError, decode_jwt, extract_bearer_or_cookie  # type: ignore[import-not-found]
     from auth.jwt import resolve_role as _resolve_jwt_role  # type: ignore[import-not-found]
     from bridge.hijack import HijackCoordinator, HijackSession  # type: ignore[import-not-found]
     from cf_types import DurableObject, Response  # type: ignore[import-not-found]
@@ -100,25 +100,9 @@ class SessionRuntime(_WsHelperMixin, DurableObject):
 
     def _extract_token(self, request: object) -> str | None:
         """Extract a token from Authorization header, CF_Authorization cookie, or query params."""
-        try:
-            auth_header = str(request.headers.get("Authorization") or "")  # type: ignore[attr-defined]
-        except Exception:
-            auth_header = ""
-        if auth_header.lower().startswith("bearer "):
-            token = auth_header[7:].strip()
-            if token:
-                return token
-        # CF Access sets a CF_Authorization cookie containing the JWT.
-        # Browser WebSockets cannot set custom headers, so the cookie is the
-        # only mechanism available for authenticating WS upgrade requests.
-        try:
-            cookie_header = str(request.headers.get("Cookie") or "")  # type: ignore[attr-defined]
-            for part in cookie_header.split(";"):
-                name, _, value = part.strip().partition("=")
-                if name.strip() == "CF_Authorization" and value.strip():
-                    return value.strip()
-        except Exception:  # noqa: S110
-            pass
+        token = extract_bearer_or_cookie(request)
+        if token:
+            return token
         if not self.config.jwt.allow_query_token:
             return None
         try:
@@ -226,7 +210,12 @@ class SessionRuntime(_WsHelperMixin, DurableObject):
                 # Format: "browser:admin:e2e-abc123", "worker:admin:e2e-abc123", "raw:admin:e2e-abc123"
                 # worker_id in the attachment lets webSocketClose recover the ID after hibernation.
                 server.serializeAttachment(f"{socket_role}:{browser_role}:{self.worker_id}")
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "serializeAttachment failed — role lost on hibernation worker_id=%s: %s",
+                    self.worker_id,
+                    exc,
+                )
                 server._ut_role = socket_role
                 server._ut_browser_role = browser_role
             # Register here so the role is available if fetch() is re-entered
