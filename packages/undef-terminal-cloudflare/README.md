@@ -60,10 +60,10 @@ uterm-cf deploy --env production
 ```bash
 # Build and run from repo root
 docker build -f docker/Dockerfile.cf -t undef-terminal-cf .
-docker run --rm -p 8788:8788 undef-terminal-cf
+docker run --rm -p 27788:27788 undef-terminal-cf
 
 # JWT auth test
-docker run --rm -p 8788:8788 \
+docker run --rm -p 27788:27788 \
   -e AUTH_MODE=jwt \
   -e JWT_JWKS_URL=https://<team>.cloudflareaccess.com/cdn-cgi/access/certs \
   -e JWT_ISSUER=https://<team>.cloudflareaccess.com \

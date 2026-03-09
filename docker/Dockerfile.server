@@ -8,17 +8,17 @@
 #   docker build -f docker/Dockerfile.server -t undef-terminal-server .
 #
 # Run (dev mode, no pre-configured sessions):
-#   docker run --rm -p 8780:8780 undef-terminal-server
+#   docker run --rm -p 27780:27780 undef-terminal-server
 #
 # Run with a custom config:
-#   docker run --rm -p 8780:8780 \
+#   docker run --rm -p 27780:27780 \
 #     -v /path/to/my.toml:/config/server.toml:ro \
 #     undef-terminal-server
 #
-# The server binds on 0.0.0.0:8780 inside the container.
-# Dashboard: http://localhost:8780/app/
-# Health:    http://localhost:8780/api/health
-# Sessions:  http://localhost:8780/api/sessions
+# The server binds on 0.0.0.0:27780 inside the container.
+# Dashboard: http://localhost:27780/app/
+# Health:    http://localhost:27780/api/health
+# Sessions:  http://localhost:27780/api/sessions
 #
 
 FROM python:3.11-slim
@@ -41,6 +41,6 @@ RUN uv pip install --system ".[server,websocket]"
 # Override via: -v /path/to/config.toml:/config/server.toml:ro
 COPY docker/server.toml /config/server.toml
 
-EXPOSE 8780
+EXPOSE 27780
 
-CMD ["uterm-server", "--config", "/config/server.toml", "--host", "0.0.0.0", "--port", "8780"]
+CMD ["uterm-server", "--config", "/config/server.toml", "--host", "0.0.0.0", "--port", "27780"]

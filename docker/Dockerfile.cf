@@ -8,16 +8,16 @@
 #   docker build -f docker/Dockerfile.cf -t undef-terminal-cf .
 #
 # Run (dev mode, AUTH_MODE=dev):
-#   docker run --rm -p 8788:8788 undef-terminal-cf
+#   docker run --rm -p 27788:27788 undef-terminal-cf
 #
 # Run with a .dev.vars override:
-#   docker run --rm -p 8788:8788 \
+#   docker run --rm -p 27788:27788 \
 #     -v /path/to/.dev.vars:/app/packages/undef-terminal-cloudflare/.dev.vars:ro \
 #     undef-terminal-cf
 #
-# The worker dev server binds on 0.0.0.0:8788 inside the container.
-# Health:   http://localhost:8788/api/health
-# Sessions: http://localhost:8788/api/sessions
+# The worker dev server binds on 0.0.0.0:27788 inside the container.
+# Health:   http://localhost:27788/api/health
+# Sessions: http://localhost:27788/api/sessions
 #
 # NOTE: wrangler dev performs KV/DO isolation using local SQLite storage.
 # State persists in the container's /tmp — it is NOT written to Cloudflare.
@@ -55,7 +55,7 @@ RUN uv sync --extra dev
 RUN cp -r /app/src/undef/terminal/frontend/. \
         src/undef_terminal_cloudflare/ui/static/
 
-EXPOSE 8788
+EXPOSE 27788
 
 # pywrangler dev: syncs vendor deps then starts wrangler dev
-CMD ["uv", "run", "pywrangler", "dev", "--port", "8788", "--ip", "0.0.0.0"]
+CMD ["uv", "run", "pywrangler", "dev", "--port", "27788", "--ip", "0.0.0.0"]

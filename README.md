@@ -316,11 +316,11 @@ Pre-built Docker targets are provided for local testing of both backends.
 # Build (from repo root)
 docker build -f docker/Dockerfile.server -t undef-terminal-server .
 
-# Run — dashboard at http://localhost:8780/app/
-docker run --rm -p 8780:8780 undef-terminal-server
+# Run — dashboard at http://localhost:27780/app/
+docker run --rm -p 27780:27780 undef-terminal-server
 
 # Custom config
-docker run --rm -p 8780:8780 \
+docker run --rm -p 27780:27780 \
   -v /path/to/my.toml:/config/server.toml:ro \
   undef-terminal-server
 ```
@@ -333,8 +333,8 @@ The default config (`docker/server.toml`) starts in `dev` auth mode with one pre
 # Build (requires Docker Buildx; Node 20 + Python 3.11 image)
 docker build -f docker/Dockerfile.cf -t undef-terminal-cf .
 
-# Run — worker at http://localhost:8788/api/health
-docker run --rm -p 8788:8788 undef-terminal-cf
+# Run — worker at http://localhost:27788/api/health
+docker run --rm -p 27788:27788 undef-terminal-cf
 ```
 
 Runs `pywrangler dev` inside the container with `AUTH_MODE=dev`. Pass `-e AUTH_MODE=jwt -e JWT_JWKS_URL=...` etc. to test JWT auth. KV/DO state is local (SQLite in `/tmp`) — not written to Cloudflare.
@@ -345,7 +345,7 @@ Runs `pywrangler dev` inside the container with `AUTH_MODE=dev`. Pass `-e AUTH_M
 docker compose -f docker/docker-compose.yml up
 ```
 
-FastAPI on `:8780`, CF worker on `:8788`.
+FastAPI on `:27780`, CF worker on `:27788`.
 
 ---
 
