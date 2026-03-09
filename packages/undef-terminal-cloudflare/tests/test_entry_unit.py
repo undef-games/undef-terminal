@@ -322,3 +322,19 @@ async def test_sessions_jwt_mode_headers_get_raises_returns_401() -> None:
     r = SimpleNamespace(url="https://x/api/sessions", headers=_BadHeaders())
     resp = await d.fetch(r)
     assert resp.status == 401
+
+
+async def test_sessions_jwt_mode_cookie_token_returns_200() -> None:
+    """_extract_bearer_or_cookie: CF_Authorization cookie path → valid token accepted."""
+    d = _make_jwt_default()
+    token = _make_token()
+
+    def _get_header(k, default=None):
+        if k == "Cookie":
+            return f"session=abc; CF_Authorization={token}; other=x"
+        return None
+
+    r = SimpleNamespace(url="https://x/api/sessions", headers=SimpleNamespace(get=_get_header))
+    with patch("undef_terminal_cloudflare.entry.list_kv_sessions", new=AsyncMock(return_value=[])):
+        resp = await d.fetch(r)
+    assert resp.status == 200

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import importlib.resources
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -132,7 +133,12 @@ def test_serve_unknown_mime_type() -> None:
 def test_falls_through_to_frontend_package() -> None:
     from undef_terminal_cloudflare.ui.assets import serve_asset
 
-    with _patch_files_fallthrough(_mock_file("hijack.js", "// hijack")):
+    # Patch _LOCAL_STATIC to an empty dir so the filesystem fallback (option 2)
+    # doesn't intercept when ui/static/ is populated by the wrangler build.
+    with (
+        _patch_files_fallthrough(_mock_file("hijack.js", "// hijack")),
+        patch("undef_terminal_cloudflare.ui.assets._LOCAL_STATIC", Path("/nonexistent-test-dir")),
+    ):
         resp = serve_asset("hijack.js")
 
     assert resp.status == 200
@@ -143,7 +149,10 @@ def test_falls_through_to_frontend_package() -> None:
 def test_frontend_file_not_found_returns_404() -> None:
     from undef_terminal_cloudflare.ui.assets import serve_asset
 
-    with _patch_files_fallthrough(_not_found_file()):
+    with (
+        _patch_files_fallthrough(_not_found_file()),
+        patch("undef_terminal_cloudflare.ui.assets._LOCAL_STATIC", Path("/nonexistent-test-dir")),
+    ):
         resp = serve_asset("nonexistent.js")
 
     assert resp.status == 404
@@ -164,3 +173,93 @@ def test_frontend_module_not_found_returns_404() -> None:
 
     assert resp.status == 404
     assert "unavailable" in resp.body
+
+
+# ---------------------------------------------------------------------------
+# read_asset_text
+# ---------------------------------------------------------------------------
+
+
+def test_read_asset_text_path_traversal_returns_none() -> None:
+    from undef_terminal_cloudflare.ui.assets import read_asset_text
+
+    assert read_asset_text("../../etc/passwd") is None
+
+
+def test_read_asset_text_local_found() -> None:
+    from undef_terminal_cloudflare.ui.assets import read_asset_text
+
+    with _patch_files_local(_mock_file("terminal.html", "<html>terminal</html>")):
+        result = read_asset_text("terminal.html")
+
+    assert result == "<html>terminal</html>"
+
+
+def test_read_asset_text_file_relative_found(tmp_path) -> None:
+    from undef_terminal_cloudflare.ui.assets import read_asset_text
+
+    fake = tmp_path / "terminal.html"
+    fake.write_text("<html>local</html>")
+
+    def _raise_first(pkg_name: str):
+        raise ModuleNotFoundError("no local static")
+
+    with (
+        patch.object(importlib.resources, "files", side_effect=_raise_first),
+        patch("undef_terminal_cloudflare.ui.assets._LOCAL_STATIC", tmp_path),
+    ):
+        result = read_asset_text("terminal.html")
+
+    assert result == "<html>local</html>"
+
+
+def test_read_asset_text_frontend_fallback_found() -> None:
+    from undef_terminal_cloudflare.ui.assets import read_asset_text
+
+    with (
+        _patch_files_fallthrough(_mock_file("terminal.html", "<html>frontend</html>")),
+        patch("undef_terminal_cloudflare.ui.assets._LOCAL_STATIC", Path("/nonexistent-test-dir")),
+    ):
+        result = read_asset_text("terminal.html")
+
+    assert result == "<html>frontend</html>"
+
+
+def test_read_asset_text_local_static_oserror_falls_through() -> None:
+    from undef_terminal_cloudflare.ui.assets import read_asset_text
+
+    class _BrokenPath:
+        def __truediv__(self, other):
+            return self
+
+        def is_file(self):
+            raise OSError("permission denied")
+
+    def _raise_all(pkg_name: str):
+        raise ModuleNotFoundError("no pkg")
+
+    with (
+        patch.object(importlib.resources, "files", side_effect=_raise_all),
+        patch("undef_terminal_cloudflare.ui.assets._LOCAL_STATIC", _BrokenPath()),
+    ):
+        result = read_asset_text("terminal.html")
+
+    assert result is None
+
+
+def test_read_asset_text_not_found_returns_none() -> None:
+    from undef_terminal_cloudflare.ui.assets import read_asset_text
+
+    call_count = [0]
+
+    def _always_raise(pkg_name: str):
+        call_count[0] += 1
+        raise ModuleNotFoundError(f"no package ({call_count[0]})")
+
+    with (
+        patch.object(importlib.resources, "files", side_effect=_always_raise),
+        patch("undef_terminal_cloudflare.ui.assets._LOCAL_STATIC", Path("/nonexistent-test-dir")),
+    ):
+        result = read_asset_text("terminal.html")
+
+    assert result is None

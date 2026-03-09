@@ -454,3 +454,24 @@ def test_config_invalid_mode_defaults_to_jwt() -> None:
     env = SimpleNamespace(AUTH_MODE="invalid_mode")
     config = CloudflareConfig.from_env(env)
     assert config.jwt.mode == "jwt"
+
+
+# ---------------------------------------------------------------------------
+# do/session_runtime.py — _extract_token: CF_Authorization cookie path
+# ---------------------------------------------------------------------------
+
+
+def test_extract_token_cf_authorization_cookie_returned() -> None:
+    """_extract_token returns token from CF_Authorization cookie when present."""
+    rt = _make_runtime(mode="jwt")
+    token = _make_token()
+
+    def _get_header(name: str, default=None):
+        if name == "Cookie":
+            return f"session=abc; CF_Authorization={token}; extra=x"
+        return None
+
+    req = SimpleNamespace(headers=SimpleNamespace(get=_get_header), url="http://localhost/")
+    rt.config.jwt.allow_query_token = False
+    result = rt._extract_token(req)
+    assert result == token
