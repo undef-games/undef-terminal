@@ -4,6 +4,14 @@ main = "src/undef_terminal_cloudflare/entry.py"
 compatibility_date = "2026-03-04"
 compatibility_flags = ["python_workers"]
 
+# Bundle JS and CSS files from the ui/static/ directory alongside Python source.
+# These are served by assets.py via importlib.resources when undef-terminal is
+# not available in the worker runtime (e.g. Docker container, production deploy).
+[[rules]]
+type = "Text"
+globs = ["**/*.js", "**/*.css"]
+fallthrough = true
+
 [dev]
 port = 8788
 

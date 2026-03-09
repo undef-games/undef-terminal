@@ -49,6 +49,12 @@ WORKDIR /app/packages/undef-terminal-cloudflare
 # Install CF package dependencies including dev extras (workers-py provides pywrangler)
 RUN uv sync --extra dev
 
+# Populate the CF package's static dir with compiled frontend assets so the
+# worker can serve the UI without needing the undef-terminal package at runtime.
+# (ui/static/ is empty in the source tree; this is a container-only build step.)
+RUN cp -r /app/src/undef/terminal/frontend/. \
+        src/undef_terminal_cloudflare/ui/static/
+
 EXPOSE 8788
 
 # pywrangler dev: syncs vendor deps then starts wrangler dev
