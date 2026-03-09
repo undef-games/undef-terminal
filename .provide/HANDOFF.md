@@ -2,8 +2,8 @@
 
 ## Current State
 
-- **Main package (`undef-terminal`)**: **1097 tests passing**. `undef.terminal.server` at **99% coverage**. Pre-commit hooks active. `ty check src/undef/` passes clean.
-- **CF package (`undef-terminal-cloudflare`)**: **346 unit tests passing** + E2E tests (`-m e2e`). Total: **1442**. Overall: **94% coverage**. All reachable lines at 100%: `session_runtime.py`, `entry.py`, `ui/assets.py`, `ws_helpers.py`, `contracts.py`, `config.py`, `state/store.py`, `state/registry.py`, `bridge/hijack.py`.
+- **Main package (`undef-terminal`)**: **1114 tests passing**. `undef.terminal.server` at **99% coverage** (config.py, pages.py, ui.py, models.py all 100%). Pre-commit hooks active. `ty check src/undef/` passes clean.
+- **CF package (`undef-terminal-cloudflare`)**: **346 unit tests passing** + E2E tests (`-m e2e`). Total: **1460**. Overall: **94% coverage**. All reachable lines at 100%: `session_runtime.py`, `entry.py`, `ui/assets.py`, `ws_helpers.py`, `contracts.py`, `config.py`, `state/store.py`, `state/registry.py`, `bridge/hijack.py`.
 
 ---
 
@@ -99,13 +99,12 @@ REAL_CF=1 SLOW=1 REAL_CF_URL=https://... uv run pytest tests/test_e2e_full_stack
 - Run `npm run build:frontend` from repo root to compile to `src/undef/terminal/frontend/`.
 - `biome.json` and `.pre-commit-config.yaml` updated to new paths.
 
-### 2. Docker Containers ✓ (verified working)
-- `docker/Dockerfile.server` — FastAPI reference server; builds and passes health/sessions/dashboard checks
-- `docker/Dockerfile.cf` — pywrangler dev server (Node 20 + Python 3.11); fixed: `ca-certificates`, `wrangler@latest`, `uv sync --extra dev`
+### 2. Docker Containers ✓ (fully verified)
+- `docker/Dockerfile.server` — FastAPI reference server; xterm.js + addon-fit.js now injected (fitaddon_cdn fix); terminal renders correctly (Playwright MCP screenshot verified)
+- `docker/Dockerfile.cf` — pywrangler dev server; copies compiled frontend into `ui/static/` at build time so CF worker serves hijack demo page without undef-terminal installed; wrangler.toml `[[rules]]` bundles JS/CSS; hijack demo page renders (screenshot verified)
 - `docker/docker-compose.yml` — brings up both on ports 8780 + 8788
-- `docker/server.toml` — default dev config (shell session, no JWT)
 - 12 CF E2E tests pass against the containerized CF worker (`REAL_CF_URL=http://localhost:8788 REAL_CF=1`)
-- xterm.js terminal renders correctly in session/operator views (Playwright MCP verified screenshot)
+- CF container note: `/app/` serves `terminal.html` (simple hijack terminal); the full server dashboard is only at the FastAPI server (`port 8780`)
 
 ### 3. CF Access JWT — Groups-Based Role Mapping
 Config already supports this — no code changes needed.
