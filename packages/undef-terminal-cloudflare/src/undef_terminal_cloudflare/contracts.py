@@ -102,6 +102,61 @@ class HijackEventsResponse(TypedDict):
     lease_expires_at: float | None
 
 
+class SessionStatusResponse(TypedDict):
+    """Shape of GET /api/sessions/{id} response."""
+
+    session_id: str
+    display_name: str
+    connector_type: str
+    lifecycle_state: str
+    input_mode: str
+    connected: bool
+    auto_start: bool
+    tags: list
+    recording_enabled: bool
+    recording_available: bool
+    owner: str | None
+    visibility: str
+    last_error: str | None
+    hijacked: bool
+
+
+class SessionSnapshotResponse(TypedDict):
+    """Shape of GET /api/sessions/{id}/snapshot response."""
+
+    session_id: str
+    snapshot: dict | None
+    prompt_detected: dict | None
+    prompt_id: str | None
+
+
+class SessionEventsResponse(TypedDict):
+    """Shape of GET /api/sessions/{id}/events response."""
+
+    session_id: str
+    after_seq: int
+    latest_seq: int
+    min_event_seq: int
+    has_more: bool
+    events: list
+
+
+class SessionModeResponse(TypedDict):
+    """Shape of POST /api/sessions/{id}/mode response."""
+
+    ok: bool
+    input_mode: str
+    worker_id: str
+
+
+class SessionAnalyzeResponse(TypedDict):
+    """Shape of POST /api/sessions/{id}/analyze response."""
+
+    ok: bool
+    analysis: str | None
+    worker_id: str
+
+
 FrameType = Literal[
     "snapshot_req",
     "snapshot",
@@ -231,6 +286,7 @@ class RuntimeProtocol(Protocol):
     config: Any  # CloudflareConfig
     store: Any  # SqliteStateStore
     last_snapshot: Any
+    last_analysis: Any
     browser_hijack_owner: dict[str, str]
 
     async def browser_role_for_request(self, request: object) -> str: ...

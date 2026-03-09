@@ -24,6 +24,7 @@ class _Runtime:
         self.input_mode = input_mode
         self.hijack = HijackCoordinator()
         self.last_snapshot: dict | None = None
+        self.last_analysis: str | None = None
         self.browser_hijack_owner: dict[str, str] = {}
         self._browser_role = browser_role
         self._sent: list[dict] = []
@@ -265,3 +266,24 @@ async def test_browser_ping_no_response() -> None:
     ws = _Ws()
     await handle_socket_message(runtime, ws, _raw("ping"), is_worker=False)
     assert not runtime._sent
+
+
+# ---------------------------------------------------------------------------
+# Worker frames — analysis
+# ---------------------------------------------------------------------------
+
+
+async def test_worker_analysis_frame_stores_last_analysis() -> None:
+    """analysis frame from worker with formatted text: stores in last_analysis."""
+    runtime = _Runtime()
+    ws = _Ws()
+    await handle_socket_message(runtime, ws, _raw("analysis", formatted="Screen analysis result"), is_worker=True)
+    assert runtime.last_analysis == "Screen analysis result"
+
+
+async def test_worker_analysis_frame_empty_formatted_ignored() -> None:
+    """analysis frame from worker with empty formatted: last_analysis unchanged."""
+    runtime = _Runtime()
+    ws = _Ws()
+    await handle_socket_message(runtime, ws, _raw("analysis", formatted=""), is_worker=True)
+    assert runtime.last_analysis is None

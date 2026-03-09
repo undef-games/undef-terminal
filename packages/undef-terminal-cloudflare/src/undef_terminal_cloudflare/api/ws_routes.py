@@ -49,6 +49,10 @@ async def handle_socket_message(runtime: RuntimeProtocol, ws: object, raw: str, 
                 # Block open mode while a hijack lease is active (mirrors FastAPI set_worker_hello_mode).
                 runtime.input_mode = mode
                 runtime.store.save_input_mode(runtime.worker_id, mode)
+        elif frame_type == "analysis":
+            formatted = str(frame.get("formatted", ""))
+            if formatted:
+                runtime.last_analysis = formatted
         await runtime.broadcast_worker_frame(frame)
         return
 

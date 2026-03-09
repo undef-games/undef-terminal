@@ -52,6 +52,7 @@ class SessionRuntime(_WsHelperMixin, DurableObject):
         self.raw_sockets: dict[str, Any] = {}
         self.browser_hijack_owner: dict[str, str] = {}
         self.last_snapshot: dict[str, Any] | None = None
+        self.last_analysis: str | None = None
         self.input_mode: str = "hijack"
 
         self._restore_state()
@@ -174,7 +175,7 @@ class SessionRuntime(_WsHelperMixin, DurableObject):
             path = urlparse(str(request.url)).path  # type: ignore[attr-defined]
         except Exception:
             return
-        for prefix in ("/ws/worker/", "/ws/browser/", "/ws/raw/", "/worker/"):
+        for prefix in ("/ws/worker/", "/ws/browser/", "/ws/raw/", "/worker/", "/api/sessions/"):
             if path.startswith(prefix):
                 segment = path[len(prefix) :].split("/")[0]
                 if segment:

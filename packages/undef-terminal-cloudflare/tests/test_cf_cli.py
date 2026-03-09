@@ -113,6 +113,20 @@ class TestMain:
         with pytest.raises(SystemExit):
             main([])
 
+    def test_run_helper_invokes_subprocess(self) -> None:
+        from undef_terminal_cloudflare.cli import _run
+
+        with patch("subprocess.run", return_value=SimpleNamespace(returncode=0)) as mock_sp:
+            result = _run(["echo", "hi"], Path())
+        assert result == 0
+        mock_sp.assert_called_once()
+
+    def test_main_module_import(self) -> None:
+        import importlib
+
+        mod = importlib.import_module("undef_terminal_cloudflare.__main__")
+        assert hasattr(mod, "main")
+
     def test_build_parser_has_expected_subcommands(self) -> None:
         parser = build_parser()
         # Should not raise
