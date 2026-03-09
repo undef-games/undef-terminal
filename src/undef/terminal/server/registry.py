@@ -288,10 +288,11 @@ class SessionRegistry:
         normalized_limit = max(1, min(limit, 500))
         normalized_event = None if event is None else str(event).strip()
         normalized_offset = max(0, offset) if offset is not None else None
+
         # Stream line-by-line to avoid loading the entire file into memory.
         # When offset is given, skip accepted entries until the offset is reached,
         # then collect up to limit — avoiding O(N) in-memory accumulation.
-        if normalized_offset is not None:
+        def _read_with_offset(offset: int) -> list[dict[str, Any]]:
             entries: list[dict[str, Any]] = []
             skipped = 0
             with path.open(encoding="utf-8") as fh:
@@ -304,24 +305,29 @@ class SessionRegistry:
                         continue
                     if normalized_event and str(entry.get("event", "")) != normalized_event:
                         continue
-                    if skipped < normalized_offset:
+                    if skipped < offset:
                         skipped += 1
                         continue
                     entries.append(entry)
                     if len(entries) >= normalized_limit:
                         break
             return entries
-        # No offset: collect last `limit` entries efficiently with a fixed-size buffer.
-        tail: deque[dict[str, Any]] = deque(maxlen=normalized_limit)
-        with path.open(encoding="utf-8") as fh:
-            for line in fh:
-                if not line.strip():
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if normalized_event and str(entry.get("event", "")) != normalized_event:
-                    continue
-                tail.append(entry)
-        return list(tail)
+
+        def _read_tail() -> list[dict[str, Any]]:
+            tail: deque[dict[str, Any]] = deque(maxlen=normalized_limit)
+            with path.open(encoding="utf-8") as fh:
+                for line in fh:
+                    if not line.strip():
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if normalized_event and str(entry.get("event", "")) != normalized_event:
+                        continue
+                    tail.append(entry)
+            return list(tail)
+
+        if normalized_offset is not None:
+            return await asyncio.to_thread(_read_with_offset, normalized_offset)
+        return await asyncio.to_thread(_read_tail)
