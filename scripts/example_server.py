@@ -1,20 +1,20 @@
 """
-Interactive demo server for manual and Playwright testing of the hijack UI.
+Interactive example server for manual and Playwright testing of the hijack UI.
 
 Architecture
 ------------
 - Real TermHub handles the browser-side WebSocket protocol.
-- An in-memory demo session worker auto-connects as ``/ws/worker/demo-session/term``.
-- The demo worker renders a deterministic interactive transcript, responds to
+- An in-memory session worker auto-connects as ``/ws/worker/demo-session/term``.
+- The worker renders a deterministic interactive transcript, responds to
   snapshot/analyze/control requests, and reconnects automatically on disconnect.
 - Frontend static files are served at ``/hijack/``.
-- ``/hijack/hijack.html?worker=demo-session`` loads the interactive demo page.
+- ``/hijack/hijack.html?worker=demo-session`` loads the interactive example page.
 
 Run
 ---
-    uv run python scripts/demo_server.py [--port PORT]
-    # or via uvicorn (set DEMO_BASE_URL to match the bound address):
-    DEMO_BASE_URL=http://127.0.0.1:8888 uvicorn scripts.demo_server:app --port 8888
+    uv run python scripts/example_server.py [--port PORT]
+    # or via uvicorn (set EXAMPLE_BASE_URL to match the bound address):
+    EXAMPLE_BASE_URL=http://127.0.0.1:8888 uvicorn scripts.example_server:app --port 8888
 """
 
 from __future__ import annotations
@@ -77,7 +77,7 @@ def _resolve_browser_role(_ws, _worker_id: str) -> str:
 
 
 _hub = TermHub(resolve_browser_role=_resolve_browser_role)
-_runtime_base_url = os.environ.get("DEMO_BASE_URL", f"http://127.0.0.1:{_DEFAULT_PORT}")
+_runtime_base_url = os.environ.get("EXAMPLE_BASE_URL", f"http://127.0.0.1:{_DEFAULT_PORT}")
 _sessions: dict[str, DemoSessionState] = {}
 _sessions_lock = RLock()
 
@@ -628,7 +628,7 @@ app.mount("/hijack", StaticFiles(directory=str(frontend_path), html=True), name=
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="undef-terminal interactive demo server")
+    parser = argparse.ArgumentParser(description="undef-terminal interactive example server")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=_DEFAULT_PORT)
     args = parser.parse_args()

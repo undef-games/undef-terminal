@@ -133,12 +133,12 @@ Embed the hijack control widget in any HTML page:
 Mount the bundled frontend files via FastAPI's `StaticFiles` or use
 `mount_terminal_ui()` which includes `hijack.html`, `hijack.js`, and `hijack.css`.
 
-### Interactive Demo Server
+### Interactive Example Server
 
-The repo also includes an interactive demo server for manual testing:
+The repo also includes an interactive example server for manual testing:
 
 ```bash
-uv run python scripts/demo_server.py
+uv run python scripts/example_server.py
 ```
 
 Then open:
