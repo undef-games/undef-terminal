@@ -36,8 +36,8 @@ def default_server_config() -> ServerConfig:
         auth=AuthConfig(mode="dev"),
         sessions=[
             SessionDefinition(
-                session_id="demo-session",
-                display_name="Interactive Shell Session",
+                session_id="undef-shell",
+                display_name="Undef Shell",
                 connector_type="shell",
                 input_mode="open",
                 auto_start=True,
