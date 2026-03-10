@@ -846,7 +846,7 @@ class TestRestSendKeysTooLong:
                     last_heartbeat=now,
                 )
 
-        asyncio.get_event_loop().run_until_complete(_setup())
+        asyncio.run(_setup())
 
         too_long = "x" * 101  # > max_input_chars=100
         resp = client.post(f"/worker/w1/hijack/{hid}/send", json={"keys": too_long})
@@ -1087,7 +1087,7 @@ class TestResumeWithoutOwnerRecheckTrue:
                                 st.hijack_owner = None
                                 st.hijack_owner_expires_at = None
 
-                    asyncio.get_event_loop().run_until_complete(_expire_hijack())
+                    asyncio.run(_expire_hijack())
 
                     # Now: owned_hijack=True (route var), was_owner=False (cleared from hub)
                     # is_hijacked=False, worker online → resume_without_owner=True

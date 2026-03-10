@@ -99,7 +99,7 @@ class TestRestSendEmptyKeys:
                     last_heartbeat=now,
                 )
 
-        asyncio.get_event_loop().run_until_complete(_setup())
+        asyncio.run(_setup())
 
         resp = client.post(f"/worker/w1/hijack/{hid}/send", json={"keys": ""})
         assert resp.status_code == 400
@@ -160,7 +160,7 @@ class TestRestHijackRelease:
                     last_heartbeat=now,
                 )
 
-        asyncio.get_event_loop().run_until_complete(_setup())
+        asyncio.run(_setup())
 
         resp = client.post(f"/worker/w1/hijack/{hid}/release")
         assert resp.status_code == 200
@@ -190,7 +190,7 @@ class TestRestHijackRelease:
                     last_heartbeat=now,
                 )
 
-        asyncio.get_event_loop().run_until_complete(_setup())
+        asyncio.run(_setup())
 
         # Patch check_still_hijacked to return True (simulates new hijack between release and recheck)
         with patch.object(hub, "check_still_hijacked", new=AsyncMock(return_value=True)):
@@ -385,7 +385,7 @@ class TestWsBrowserNoInitialSnapshot:
                 st.worker_ws.send_text = AsyncMock()
                 st.last_snapshot = None  # No snapshot
 
-        asyncio.get_event_loop().run_until_complete(_setup())
+        asyncio.run(_setup())
 
         with client.websocket_connect("/ws/browser/w1/term") as browser:
             hello, _hs = _read_initial(browser)

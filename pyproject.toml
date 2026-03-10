@@ -99,8 +99,8 @@ addopts = [
     "--strict-config",
     "--tb=short",
     "-ra",
-    "--ignore=tests/test_zzz_playwright_hijack.py",
-    "--ignore=tests/test_zzz_playwright_server.py",
+    "--ignore=tests/playwright/test_hijack.py",
+    "--ignore=tests/playwright/test_server.py",
     "--randomly-dont-reorganize",
     "--cov=undef",
     "--cov-branch",
@@ -222,10 +222,10 @@ pytest_add_cli_args = ["--no-cov"]
 pytest_add_cli_args_test_selection = [
     "-m",
     "not playwright",
-    "--ignore=tests/test_zzz_playwright_hijack.py",
-    "--ignore=tests/test_e2e_live_hub_ws.py",
-    "--ignore=tests/test_e2e_ssh_gateway.py",
-    "--ignore=tests/test_e2e_telnet_gateway.py",
+    "--ignore=tests/playwright/test_hijack.py",
+    "--ignore=tests/e2e/test_live_hub_ws.py",
+    "--ignore=tests/e2e/test_ssh_gateway.py",
+    "--ignore=tests/e2e/test_telnet_gateway.py",
 ]
 
 [tool.uv.workspace]

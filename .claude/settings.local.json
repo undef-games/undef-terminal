@@ -3,7 +3,13 @@
     "allow": [
       "Bash(ls:*)",
       "Bash(wc:*)",
-      "Bash(uv run:*)"
+      "Bash(uv run:*)",
+      "Bash(uv build:*)",
+      "Bash(uv publish:*)",
+      "Bash(/tmp/verify_handoff.txt:*)",
+      "Bash(do echo \"=== $f ===\")",
+      "Read(//Users/tim/code/gh/undef-games/undef-terminal/**)",
+      "Bash(git stash:*)"
     ],
     "additionalDirectories": [
       "/Users/tim/code/gh/undef-games"
