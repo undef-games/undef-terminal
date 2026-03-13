@@ -153,8 +153,8 @@ ignore = ["E501", "S104", "S112", "S311"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "RUF022"]
-"tests/**/*.py" = ["E402", "B905", "S101", "S110", "ARG", "TCH", "RUF003", "RUF012", "RUF015", "RUF043", "RUF059"]
-"packages/**/tests/**/*.py" = ["E402", "B905", "S101", "S110", "ARG", "TCH", "RUF003", "RUF012", "RUF015", "RUF043", "RUF059"]
+"tests/**/*.py" = ["E402", "B905", "S101", "S105", "S106", "S110", "ARG", "TCH", "RUF003", "RUF012", "RUF015", "RUF043", "RUF059"]
+"packages/**/tests/**/*.py" = ["E402", "B905", "S101", "S105", "S106", "S110", "ARG", "TCH", "RUF003", "RUF012", "RUF015", "RUF043", "RUF059"]
 
 [tool.coverage.run]
 source = ["undef"]
@@ -232,6 +232,7 @@ pytest_add_cli_args_test_selection = [
     "--ignore=tests/playwright/test_hijack.py",
     "--ignore=tests/playwright/test_example.py",
     "--ignore=tests/playwright/test_frontend_coverage.py",
+    "--ignore=tests/playwright/test_terminal_proxy.py",
     "--ignore=tests/example/test_server_e2e.py",
     "--ignore=tests/hijack/test_hypothesis.py",
     "--ignore=tests/e2e/test_live_hub_ws.py",
