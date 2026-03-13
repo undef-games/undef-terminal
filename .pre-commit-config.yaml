@@ -52,6 +52,7 @@ repos:
           - asyncssh>=2.22.0
           - pyte>=0.8.2
           - pyjwt>=2.9
+          - fastmcp>=2.0
         pass_filenames: false
         always_run: true
         types: [python]
@@ -71,6 +72,7 @@ repos:
           - asyncssh>=2.22.0
           - pyte>=0.8.2
           - pyjwt>=2.9
+          - fastmcp>=2.0
         pass_filenames: false
         always_run: true
         types: [python]
