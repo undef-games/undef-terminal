@@ -333,26 +333,17 @@ class TestAuthMutationKilling:
     def test_resolve_principal_bearer_tried_before_cookie(self) -> None:
         """Bearer token checked BEFORE cookie fallback."""
         from undef.terminal.server.auth import _resolve_principal
-
-        test_key = "test-key-32-bytes-minimum-len"
-        now = int(time.time())
-        token1 = jwt.encode(
-            {"sub": "bearer_user", "exp": now + 600, "iat": now},
-            key=test_key,
-            algorithm="HS256",
-        )
-        token2 = jwt.encode(
-            {"sub": "cookie_user", "exp": now + 600, "iat": now},
-            key=test_key,
-            algorithm="HS256",
-        )
-
         from undef.terminal.server.models import AuthConfig
+
+        token1 = _make_token(sub="bearer_user", roles=["admin"])
+        token2 = _make_token(sub="cookie_user", roles=["viewer"])
 
         auth = AuthConfig(
             mode="jwt",
-            jwt_public_key_pem=test_key,
+            jwt_public_key_pem=_TEST_KEY,
             jwt_algorithms=["HS256"],
+            jwt_issuer="undef-terminal",
+            jwt_audience="undef-terminal-server",
             worker_bearer_token="token",
         )
 
