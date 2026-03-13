@@ -488,3 +488,220 @@ async def test_notify_hijack_changed_successful_async_does_not_log(caplog) -> No
         await asyncio.sleep(0.05)
 
     assert not any("on_hijack_changed" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Polling coverage — weak mutation survivors
+# ---------------------------------------------------------------------------
+
+
+async def test_snapshot_matches_both_constraints() -> None:
+    """snapshot_matches with both prompt_id AND regex — both must be satisfied."""
+    snapshot = {"prompt_detected": {"prompt_id": "menu"}, "screen": "Main Menu\nOptions:"}
+    pattern = re.compile("Options", re.IGNORECASE)
+
+    # Both match — returns True
+    assert TermHub.snapshot_matches(snapshot, expect_prompt_id="menu", expect_regex=pattern)
+
+    # Prompt matches, regex doesn't — returns False
+    assert not TermHub.snapshot_matches(snapshot, expect_prompt_id="menu", expect_regex=re.compile("NotFound"))
+
+    # Regex matches, prompt doesn't — returns False
+    assert not TermHub.snapshot_matches(snapshot, expect_prompt_id="wrong", expect_regex=pattern)
+
+
+async def test_snapshot_matches_regex_multiline() -> None:
+    """snapshot_matches regex uses MULTILINE flag."""
+    snapshot = {"screen": "line1\nline2 TARGET\nline3"}
+    pattern = re.compile("^line2", re.MULTILINE)
+    assert TermHub.snapshot_matches(snapshot, expect_prompt_id=None, expect_regex=pattern)
+
+
+async def test_wait_for_guard_regex_compile_error_message() -> None:
+    """wait_for_guard returns detailed error on invalid regex."""
+    hub = TermHub()
+    await hub._get("bot1")
+
+    ok, snap, reason = await hub.wait_for_guard(
+        "bot1",
+        expect_prompt_id=None,
+        expect_regex=r"(unclosed",
+        timeout_ms=100,
+        poll_interval_ms=10,
+    )
+
+    assert not ok
+    assert snap is None
+    assert "invalid expect_regex" in reason
+
+
+async def test_wait_for_guard_timeout_ms_minimum() -> None:
+    """wait_for_guard clamps timeout_ms to minimum 50ms."""
+    hub = TermHub()
+    await hub._get("bot1")
+    hub._workers["bot1"].last_snapshot = {"screen": "test"}
+
+    # timeout_ms=1 should be clamped to 50ms
+    start = time.time()
+    ok, snap, reason = await hub.wait_for_guard(
+        "bot1",
+        expect_prompt_id="nonexistent",
+        expect_regex=None,
+        timeout_ms=1,  # Will be clamped to 50
+        poll_interval_ms=10,
+    )
+    elapsed = time.time() - start
+
+    assert not ok
+    assert reason == "prompt_guard_not_satisfied"
+    assert elapsed >= 0.04  # At least ~50ms (clamped minimum)
+
+
+async def test_wait_for_guard_poll_interval_minimum() -> None:
+    """wait_for_guard clamps poll_interval_ms to minimum 20ms."""
+    hub = TermHub()
+    await hub._get("bot1")
+    hub._workers["bot1"].last_snapshot = {"screen": "test", "ts": time.time()}
+
+    # poll_interval_ms=1 should be clamped to 20ms
+    start = time.time()
+    ok, snap, reason = await hub.wait_for_guard(
+        "bot1",
+        expect_prompt_id="nonexistent",
+        expect_regex=None,
+        timeout_ms=100,
+        poll_interval_ms=1,  # Will be clamped to 20
+    )
+    elapsed = time.time() - start
+
+    # Should have at least 1 poll cycle (20ms)
+    assert elapsed >= 0.015
+
+
+async def test_wait_for_guard_matches_during_poll() -> None:
+    """wait_for_guard matches snapshot during polling loop."""
+    hub = TermHub()
+    await hub._get("bot1")
+
+    # Set initial snapshot without prompt_id
+    hub._workers["bot1"].last_snapshot = {"screen": "initial"}
+
+    # Simulate snapshot being updated in background
+    async def update_snapshot() -> None:
+        await asyncio.sleep(0.03)
+        hub._workers["bot1"].last_snapshot = {
+            "screen": "updated",
+            "prompt_detected": {"prompt_id": "target"},
+            "ts": time.time(),
+        }
+
+    task = asyncio.create_task(update_snapshot())
+    ok, snap, reason = await hub.wait_for_guard(
+        "bot1",
+        expect_prompt_id="target",
+        expect_regex=None,
+        timeout_ms=500,
+        poll_interval_ms=10,
+    )
+    await task
+
+    assert ok
+    assert snap is not None
+    assert snap["screen"] == "updated"
+    assert reason is None
+
+
+async def test_wait_for_guard_no_new_snapshot_rerequests() -> None:
+    """wait_for_guard re-requests snapshot when ts hasn't advanced."""
+    hub = TermHub()
+    await hub._get("bot1")
+
+    request_count = 0
+    original_request = hub.request_snapshot
+
+    async def track_requests(worker_id: str) -> None:
+        nonlocal request_count
+        request_count += 1
+        await original_request(worker_id)
+
+    hub.request_snapshot = track_requests  # type: ignore[method-assign]
+
+    # Set snapshot with old timestamp
+    old_ts = time.time() - 1
+    hub._workers["bot1"].last_snapshot = {
+        "screen": "old",
+        "ts": old_ts,
+    }
+
+    ok, snap, reason = await hub.wait_for_guard(
+        "bot1",
+        expect_prompt_id="nonexistent",
+        expect_regex=None,
+        timeout_ms=100,
+        poll_interval_ms=20,
+    )
+
+    # Should have requested multiple times (initial + re-requests)
+    assert request_count >= 2
+
+
+async def test_wait_for_snapshot_with_fresh_snapshot() -> None:
+    """wait_for_snapshot returns immediately when fresh snapshot available."""
+    """wait_for_snapshot returns immediately when fresh snapshot available."""
+    hub = TermHub()
+    await hub._get("bot1")
+
+    # Set fresh snapshot with timestamp in future (will be checked against req_ts)
+    import time
+
+    fresh_ts = time.time() + 1  # Definitely in the future
+    hub._workers["bot1"].last_snapshot = {
+        "screen": "fresh content",
+        "ts": fresh_ts,
+    }
+
+    # Should return immediately without waiting for timeout
+    start = time.time()
+    result = await hub.wait_for_snapshot("bot1", timeout_ms=500)
+    elapsed = time.time() - start
+
+    assert result is not None
+    assert result["screen"] == "fresh content"
+    assert elapsed < 0.1  # Should be fast, not wait 500ms
+
+
+async def test_wait_for_snapshot_ignores_older_ts() -> None:
+    """wait_for_snapshot ignores snapshots with ts <= req_ts."""
+    hub = TermHub()
+    await hub._get("bot1")
+
+    req_ts = time.time()
+
+    # Manually set to just before request time
+    hub._workers["bot1"].last_snapshot = {
+        "screen": "old",
+        "ts": req_ts - 0.1,
+    }
+
+    result = await hub.wait_for_snapshot("bot1", timeout_ms=50)
+
+    # Should timeout because snapshot predates the request
+    assert result is None
+
+
+async def test_wait_for_snapshot_worker_disappears() -> None:
+    """wait_for_snapshot returns None if worker is deleted during polling."""
+    hub = TermHub()
+    await hub._get("bot1")
+
+    # Simulate worker being removed
+    async def remove_worker() -> None:
+        await asyncio.sleep(0.02)
+        if "bot1" in hub._workers:
+            del hub._workers["bot1"]
+
+    task = asyncio.create_task(remove_worker())
+    result = await hub.wait_for_snapshot("bot1", timeout_ms=200)
+    await task
+
+    assert result is None
