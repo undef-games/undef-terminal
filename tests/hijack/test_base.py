@@ -216,3 +216,224 @@ class TestWatchdogBranches:
             await bot._watchdog_task
         # Callback was invoked at least once
         assert len(call_count) >= 1
+
+
+class TestStepTokenEdgeCases:
+    async def test_step_tokens_exactly_zero_blocks(self) -> None:
+        """When step_tokens == 0 and hijacked, should block."""
+        bot = Bot()
+        await bot.set_hijacked(True)
+        assert bot._hijack_step_tokens == 0
+        assert not bot._hijack_event.is_set()
+
+        task = asyncio.create_task(bot.await_if_hijacked())
+        await asyncio.sleep(0.05)
+        assert not task.done()
+
+        await bot.set_hijacked(False)
+        await asyncio.wait_for(task, timeout=0.5)
+        assert task.done()
+
+    async def test_step_tokens_decrement_on_each_call(self) -> None:
+        """Each await_if_hijacked decrements step_tokens by 1."""
+        bot = Bot()
+        await bot.set_hijacked(True)
+        await bot.request_step(checkpoints=3)
+        assert bot._hijack_step_tokens == 3
+
+        await bot.await_if_hijacked()
+        assert bot._hijack_step_tokens == 2
+
+        await bot.await_if_hijacked()
+        assert bot._hijack_step_tokens == 1
+
+        await bot.await_if_hijacked()
+        assert bot._hijack_step_tokens == 0
+
+    async def test_step_accumulation_below_cap(self) -> None:
+        """Step tokens accumulate when under cap."""
+        bot = Bot()
+        await bot.set_hijacked(True)
+
+        await bot.request_step(checkpoints=40)
+        assert bot._hijack_step_tokens == 40
+
+        await bot.request_step(checkpoints=30)
+        assert bot._hijack_step_tokens == 70
+
+        await bot.request_step(checkpoints=25)
+        assert bot._hijack_step_tokens == 95
+
+    async def test_step_negative_input_clamped_to_zero(self) -> None:
+        """Negative checkpoints input should be clamped to 0."""
+        bot = Bot()
+        await bot.set_hijacked(True)
+
+        await bot.request_step(checkpoints=-5)
+        assert bot._hijack_step_tokens == 0
+
+    async def test_step_float_input_converted_to_int(self) -> None:
+        """Float checkpoints should be converted to int."""
+        bot = Bot()
+        await bot.set_hijacked(True)
+
+        await bot.request_step(checkpoints=3.7)
+        assert bot._hijack_step_tokens == 3
+
+    async def test_step_zero_input_no_change(self) -> None:
+        """Zero checkpoints should not change token count."""
+        bot = Bot()
+        await bot.set_hijacked(True)
+        await bot.request_step(checkpoints=5)
+        original_tokens = bot._hijack_step_tokens
+
+        await bot.request_step(checkpoints=0)
+        assert bot._hijack_step_tokens == original_tokens
+
+
+class TestWatchdogTimingEdgeCases:
+    async def test_watchdog_min_check_interval_enforced(self) -> None:
+        """check_interval_s < 0.5 should be clamped to 0.5."""
+
+        class Bot2(HijackableMixin):
+            pass
+
+        bot = Bot2()
+        bot._last_progress_mono = 0.0
+
+        stuck_count = []
+
+        async def on_stuck() -> None:
+            stuck_count.append(1)
+
+        start = __import__("time").monotonic()
+        # Request check_interval_s=0.01, but it should be clamped to 0.5
+        bot.start_watchdog(stuck_timeout_s=0.05, check_interval_s=0.01, on_stuck=on_stuck)
+        await asyncio.sleep(0.1)
+        elapsed = __import__("time").monotonic() - start
+
+        bot._watchdog_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await bot._watchdog_task
+
+        # Should not have fired yet (clamped to 0.5s sleep)
+        assert len(stuck_count) == 0
+        assert elapsed < 0.3
+
+    async def test_watchdog_on_stuck_none_doesnt_crash(self) -> None:
+        """on_stuck=None should not crash when stuck triggers."""
+
+        class Bot2(HijackableMixin):
+            pass
+
+        bot = Bot2()
+        bot._last_progress_mono = 0.0
+
+        # on_stuck=None (explicitly)
+        bot.start_watchdog(stuck_timeout_s=0.05, check_interval_s=0.02, on_stuck=None)
+        await asyncio.sleep(0.3)
+        assert bot._watchdog_task is not None
+
+        bot._watchdog_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await bot._watchdog_task
+
+    async def test_watchdog_idle_for_exceeded_fires(self) -> None:
+        """When idle_for exceeds stuck_timeout_s, should fire."""
+
+        class Bot2(HijackableMixin):
+            pass
+
+        bot = Bot2()
+        fired = []
+
+        async def on_stuck() -> None:
+            fired.append(1)
+
+        # Set progress well in the past to guarantee idle_for > timeout_s
+        timeout_s = 0.05
+        bot._last_progress_mono -= 2.0
+
+        bot.start_watchdog(stuck_timeout_s=timeout_s, check_interval_s=0.02, on_stuck=on_stuck)
+        await asyncio.sleep(0.7)
+
+        bot._watchdog_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await bot._watchdog_task
+
+        # Should fire because idle_for >> stuck_timeout_s
+        assert len(fired) >= 1
+
+
+class TestHijackEventTransitions:
+    async def test_set_hijacked_true_clears_event(self) -> None:
+        """set_hijacked(True) should clear the event, causing await to block."""
+        bot = Bot()
+        assert bot._hijack_event.is_set()
+
+        await bot.set_hijacked(True)
+        assert not bot._hijack_event.is_set()
+
+    async def test_set_hijacked_false_sets_event(self) -> None:
+        """set_hijacked(False) should set the event, unblocking await."""
+        bot = Bot()
+        await bot.set_hijacked(True)
+        assert not bot._hijack_event.is_set()
+
+        await bot.set_hijacked(False)
+        assert bot._hijack_event.is_set()
+
+    async def test_multiple_awaits_resume_when_unhijacked(self) -> None:
+        """Multiple blocked await_if_hijacked calls should all resume."""
+        bot = Bot()
+        await bot.set_hijacked(True)
+
+        tasks = [asyncio.create_task(bot.loop_once()) for _ in range(3)]
+        await asyncio.sleep(0.02)
+        assert all(not t.done() for t in tasks)
+
+        await bot.set_hijacked(False)
+        await asyncio.wait_for(asyncio.gather(*tasks), timeout=1.0)
+        assert bot.steps_taken == 3
+
+
+class TestStopWatchdogEdgeCases:
+    async def test_stop_watchdog_with_none_task(self) -> None:
+        """stop_watchdog with _watchdog_task=None should be safe."""
+
+        class Bot2(HijackableMixin):
+            pass
+
+        bot = Bot2()
+        assert bot._watchdog_task is None
+        await bot.stop_watchdog()
+        assert bot._watchdog_task is None
+
+    async def test_stop_watchdog_idempotent(self) -> None:
+        """stop_watchdog called twice should be safe."""
+
+        class Bot2(HijackableMixin):
+            pass
+
+        bot = Bot2()
+        bot.start_watchdog(stuck_timeout_s=999)
+        await bot.stop_watchdog()
+        await bot.stop_watchdog()
+        assert bot._watchdog_task is None
+
+    async def test_stop_watchdog_with_already_done_task(self) -> None:
+        """stop_watchdog should handle already-done tasks."""
+
+        class Bot2(HijackableMixin):
+            pass
+
+        bot = Bot2()
+        bot.start_watchdog(stuck_timeout_s=999)
+        await asyncio.sleep(0.01)
+        bot._watchdog_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await bot._watchdog_task
+        assert bot._watchdog_task.done()
+
+        await bot.stop_watchdog()
+        assert bot._watchdog_task is None
