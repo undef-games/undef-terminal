@@ -103,7 +103,7 @@ class TestFrontendV8Coverage:
         session = _start_precise_coverage(page)
         page.goto(f"{example_server}/hijack/hijack.html?worker=undef-shell", wait_until="domcontentloaded")
 
-        expect(page.locator("#undef-shell-status")).to_contain_text("undef-shell", timeout=5000)
+        expect(page.locator("#demo-session-status")).to_contain_text("undef-shell", timeout=5000)
         expect(page.get_by_role("button", name="Hijack")).to_be_enabled(timeout=5000)
         page.get_by_role("button", name="Hijack").click()
         expect(page.locator("[id$='-statustext']")).to_have_text("Hijacked (you)", timeout=5000)
