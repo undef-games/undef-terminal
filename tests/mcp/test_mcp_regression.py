@@ -16,6 +16,7 @@ import time
 from typing import Any
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi import FastAPI
 from fastmcp import FastMCP
 from httpx import ASGITransport
@@ -1068,3 +1069,247 @@ class TestLeaseExpiry:
         # Lease should expire ~30s from now (allow 5s tolerance)
         assert d["lease_expires_at"] < time.time() + 35
         assert d["lease_expires_at"] > time.time() + 25
+
+
+# ---------------------------------------------------------------------------
+# _unescape_keys edge cases (unit-level, not integration)
+# ---------------------------------------------------------------------------
+
+
+class TestUnescapeKeysEdgeCases:
+    """Additional edge cases beyond test_mcp_server.py coverage."""
+
+    def test_consecutive_escapes(self) -> None:
+        from undef.terminal.mcp.server import _unescape_keys
+
+        assert _unescape_keys(r"\r\r\r") == "\r\r\r"
+
+    def test_consecutive_mixed_escapes(self) -> None:
+        from undef.terminal.mcp.server import _unescape_keys
+
+        assert _unescape_keys(r"\r\n\t") == "\r\n\t"
+
+    def test_escape_surrounded_by_text(self) -> None:
+        from undef.terminal.mcp.server import _unescape_keys
+
+        assert _unescape_keys(r"before\rafter") == "before\rafter"
+
+    def test_unknown_escape_at_start(self) -> None:
+        from undef.terminal.mcp.server import _unescape_keys
+
+        assert _unescape_keys(r"\qhello") == "\\qhello"
+
+    def test_unknown_escape_at_end(self) -> None:
+        from undef.terminal.mcp.server import _unescape_keys
+
+        assert _unescape_keys(r"hello\q") == "hello\\q"
+
+    def test_multiple_unknown_escapes(self) -> None:
+        from undef.terminal.mcp.server import _unescape_keys
+
+        assert _unescape_keys(r"\a\b\c") == "\\a\\b\\c"
+
+    def test_double_backslash_then_known_escape(self) -> None:
+        from undef.terminal.mcp.server import _unescape_keys
+
+        # \\\r → literal backslash + CR
+        assert _unescape_keys(r"\\\r") == "\\\r"
+
+    def test_only_backslash(self) -> None:
+        from undef.terminal.mcp.server import _unescape_keys
+
+        assert _unescape_keys("\\") == "\\"
+
+    def test_only_known_escape(self) -> None:
+        from undef.terminal.mcp.server import _unescape_keys
+
+        assert _unescape_keys(r"\n") == "\n"
+
+    def test_x1b_and_e_both_produce_esc(self) -> None:
+        from undef.terminal.mcp.server import _unescape_keys
+
+        assert _unescape_keys(r"\x1b") == _unescape_keys(r"\e") == "\x1b"
+
+    def test_long_string_with_mixed_content(self) -> None:
+        from undef.terminal.mcp.server import _unescape_keys
+
+        raw = r"USER admin\rPASS secret\r\nquit\r"
+        expected = "USER admin\rPASS secret\r\nquit\r"
+        assert _unescape_keys(raw) == expected
+
+
+# ---------------------------------------------------------------------------
+# _clean_snapshot edge cases (unit-level)
+# ---------------------------------------------------------------------------
+
+
+class TestCleanSnapshotEdgeCases:
+    """Additional edge cases beyond test_mcp_server.py coverage."""
+
+    def test_missing_screen_key_text_mode(self) -> None:
+        from undef.terminal.mcp.server import _clean_snapshot
+
+        assert _clean_snapshot({}, "text") == {"screen": ""}
+
+    def test_missing_screen_key_rendered_mode(self) -> None:
+        from undef.terminal.mcp.server import _clean_snapshot
+
+        result = _clean_snapshot({}, "rendered")
+        assert result["screen"] == ""
+        assert "cursor" not in result
+
+    def test_missing_screen_key_raw_mode(self) -> None:
+        from undef.terminal.mcp.server import _clean_snapshot
+
+        result = _clean_snapshot({}, "raw")
+        assert result == {}
+
+    def test_empty_screen_all_modes(self) -> None:
+        from undef.terminal.mcp.server import _clean_snapshot
+
+        snap: dict[str, Any] = {"screen": "", "cursor": {"x": 0, "y": 0}, "cols": 80, "rows": 24}
+        assert _clean_snapshot(snap, "text") == {"screen": ""}
+        rendered = _clean_snapshot(snap, "rendered")
+        assert rendered["screen"] == ""
+        assert rendered["cols"] == 80
+        raw = _clean_snapshot(snap, "raw")
+        assert raw is snap
+
+    def test_screen_with_only_ansi(self) -> None:
+        from undef.terminal.mcp.server import _clean_snapshot
+
+        snap: dict[str, Any] = {"screen": "\x1b[31m\x1b[0m"}
+        result = _clean_snapshot(snap, "text")
+        assert result["screen"] == ""
+
+    def test_rendered_mode_with_all_metadata(self) -> None:
+        from undef.terminal.mcp.server import _clean_snapshot
+
+        snap: dict[str, Any] = {
+            "screen": "hello",
+            "cursor": {"x": 5, "y": 0},
+            "cols": 132,
+            "rows": 50,
+        }
+        result = _clean_snapshot(snap, "rendered")
+        assert result["cursor"] == {"x": 5, "y": 0}
+        assert result["cols"] == 132
+        assert result["rows"] == 50
+
+    def test_extra_keys_not_in_rendered(self) -> None:
+        from undef.terminal.mcp.server import _clean_snapshot
+
+        snap: dict[str, Any] = {"screen": "x", "custom_key": 99, "cols": 80}
+        result = _clean_snapshot(snap, "rendered")
+        assert "custom_key" not in result
+        assert result["cols"] == 80
+
+
+# ---------------------------------------------------------------------------
+# CLI module edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestCLIEdgeCases:
+    def test_header_with_colon_in_value(self) -> None:
+        """Header value containing colons should be preserved."""
+        from unittest.mock import MagicMock, patch
+
+        from undef.terminal.mcp.cli import main
+
+        mock_app = MagicMock()
+        with patch(
+            "undef.terminal.mcp.server.create_mcp_app",
+            return_value=mock_app,
+        ) as mock_create:
+            main(["--url", "http://x", "--header", "Authorization:Bearer abc:def:ghi"])
+
+        call_headers = mock_create.call_args.kwargs["headers"]
+        assert call_headers["Authorization"] == "Bearer abc:def:ghi"
+
+    def test_header_with_whitespace(self) -> None:
+        """Whitespace around key/value should be stripped."""
+        from unittest.mock import MagicMock, patch
+
+        from undef.terminal.mcp.cli import main
+
+        mock_app = MagicMock()
+        with patch(
+            "undef.terminal.mcp.server.create_mcp_app",
+            return_value=mock_app,
+        ) as mock_create:
+            main(["--url", "http://x", "--header", "  Key  :  Value  "])
+
+        call_headers = mock_create.call_args.kwargs["headers"]
+        assert call_headers["Key"] == "Value"
+
+    def test_empty_header_value(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from undef.terminal.mcp.cli import main
+
+        mock_app = MagicMock()
+        with patch(
+            "undef.terminal.mcp.server.create_mcp_app",
+            return_value=mock_app,
+        ) as mock_create:
+            main(["--url", "http://x", "--header", "X-Empty:"])
+
+        call_headers = mock_create.call_args.kwargs["headers"]
+        assert call_headers["X-Empty"] == ""
+
+    def test_main_uses_sys_argv_when_argv_is_none(self) -> None:
+        """When argv=None, main falls through to sys.argv[1:]."""
+        from unittest.mock import MagicMock, patch
+
+        from undef.terminal.mcp.cli import main
+
+        mock_app = MagicMock()
+        with (
+            patch("sys.argv", ["uterm-mcp", "--url", "http://fallback"]),
+            patch(
+                "undef.terminal.mcp.server.create_mcp_app",
+                return_value=mock_app,
+            ) as mock_create,
+        ):
+            main()
+
+        mock_create.assert_called_once_with(
+            "http://fallback",
+            entity_prefix="/worker",
+            headers=None,
+        )
+
+    def test_build_parser_prog_name(self) -> None:
+        from undef.terminal.mcp.cli import _build_parser
+
+        parser = _build_parser()
+        assert parser.prog == "uterm-mcp"
+
+    def test_build_parser_missing_url_exits(self) -> None:
+        from io import StringIO
+        from unittest.mock import patch
+
+        from undef.terminal.mcp.cli import _build_parser
+
+        parser = _build_parser()
+        with pytest.raises(SystemExit) as exc_info, patch("sys.stderr", new_callable=StringIO):
+            parser.parse_args([])
+        assert exc_info.value.code == 2
+
+
+# ---------------------------------------------------------------------------
+# MCP __init__ re-exports
+# ---------------------------------------------------------------------------
+
+
+class TestMCPInit:
+    def test_create_mcp_app_importable_from_init(self) -> None:
+        from undef.terminal.mcp import create_mcp_app
+
+        assert callable(create_mcp_app)
+
+    def test_all_exports(self) -> None:
+        import undef.terminal.mcp as mcp_pkg
+
+        assert "create_mcp_app" in mcp_pkg.__all__
