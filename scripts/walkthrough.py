@@ -27,6 +27,7 @@ from typing import Any
 import httpx
 import uvicorn
 
+from undef.terminal.client import HijackClient
 from undef.terminal.server.app import create_server_app
 from undef.terminal.server.config import config_from_mapping
 
@@ -121,12 +122,12 @@ async def _start_server(port: int) -> tuple[uvicorn.Server, asyncio.Task[None]]:
     return server, task
 
 
-async def _wait_healthy(client: httpx.AsyncClient, *, timeout: float = 15.0) -> None:
+async def _wait_healthy(c: HijackClient, *, timeout: float = 15.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            r = await client.get("/api/health")
-            if r.status_code == 200 and r.json().get("ready"):
+            ok, data = await c.health()
+            if ok and data.get("ready"):
                 return
         except httpx.ConnectError:
             pass
@@ -139,13 +140,13 @@ async def _wait_healthy(client: httpx.AsyncClient, *, timeout: float = 15.0) -> 
 SESSION_ID = "undef-shell"
 
 
-async def phase_setup(client: httpx.AsyncClient, port: int, *, open_browser: bool) -> None:
+async def phase_setup(c: HijackClient, port: int, *, open_browser: bool) -> None:
     narrate("Start server", f"dev auth, shell connector, recording=true, port={port}")
 
     narrate("Wait for health check")
     show("GET", "/api/health")
-    r = await client.get("/api/health")
-    result(r.json(), keys=["ok", "ready", "service"])
+    _, data = await c.health()
+    result(data, keys=["ok", "ready", "service"])
 
     dashboard_url = f"http://127.0.0.1:{port}/app/"
     narrate("Dashboard ready", f"URL: {dashboard_url}")
@@ -153,16 +154,16 @@ async def phase_setup(client: httpx.AsyncClient, port: int, *, open_browser: boo
         webbrowser.open(dashboard_url)
 
 
-async def phase_discovery(client: httpx.AsyncClient, port: int, *, open_browser: bool) -> None:
+async def phase_discovery(c: HijackClient, port: int, *, open_browser: bool) -> None:
     narrate("List sessions")
     show("GET", "/api/sessions")
-    r = await client.get("/api/sessions")
-    result(r.json())
+    _, data = await c.list_sessions()
+    result(data)
 
     narrate("Get session status")
     show("GET", f"/api/sessions/{SESSION_ID}")
-    r = await client.get(f"/api/sessions/{SESSION_ID}")
-    result(r.json(), keys=["session_id", "lifecycle_state", "input_mode", "connected"])
+    _, data = await c.get_session(SESSION_ID)
+    result(data, keys=["session_id", "lifecycle_state", "input_mode", "connected"])
 
     operator_url = f"http://127.0.0.1:{port}/app/operator/{SESSION_ID}"
     narrate("Operator view ready", f"URL: {operator_url}")
@@ -170,16 +171,15 @@ async def phase_discovery(client: httpx.AsyncClient, port: int, *, open_browser:
         webbrowser.open(operator_url)
 
 
-async def phase_open_mode(client: httpx.AsyncClient) -> None:
+async def phase_open_mode(c: HijackClient) -> None:
     narrate("Ensure open mode")
     show("POST", f"/api/sessions/{SESSION_ID}/mode", {"input_mode": "open"})
-    r = await client.post(f"/api/sessions/{SESSION_ID}/mode", json={"input_mode": "open"})
-    result(r.json(), keys=["session_id", "input_mode"])
+    _, data = await c.set_session_mode(SESSION_ID, "open")
+    result(data, keys=["session_id", "input_mode"])
 
     narrate("Read snapshot (before)")
     show("GET", f"/api/sessions/{SESSION_ID}/snapshot")
-    r = await client.get(f"/api/sessions/{SESSION_ID}/snapshot")
-    snap = r.json()
+    _, snap = await c.session_snapshot(SESSION_ID)
     if snap and isinstance(snap, dict):
         screen = snap.get("screen", "")
         lines = screen.splitlines()[-5:] if screen else ["(empty)"]
@@ -191,33 +191,30 @@ async def phase_open_mode(client: httpx.AsyncClient) -> None:
         result(snap)
 
 
-async def phase_hijack(client: httpx.AsyncClient) -> dict[str, str]:
+async def phase_hijack(c: HijackClient) -> dict[str, str]:
     narrate("Switch to hijack mode")
     show("POST", f"/api/sessions/{SESSION_ID}/mode", {"input_mode": "hijack"})
-    r = await client.post(f"/api/sessions/{SESSION_ID}/mode", json={"input_mode": "hijack"})
-    result(r.json(), keys=["session_id", "input_mode"])
+    _, data = await c.set_session_mode(SESSION_ID, "hijack")
+    result(data, keys=["session_id", "input_mode"])
 
     narrate("Acquire hijack lease")
     body = {"owner": "walkthrough", "lease_s": 60}
     show("POST", f"/worker/{SESSION_ID}/hijack/acquire", body)
-    r = await client.post(f"/worker/{SESSION_ID}/hijack/acquire", json=body)
-    data = r.json()
+    _, data = await c.acquire(SESSION_ID, owner="walkthrough", lease_s=60)
     result(data, keys=["ok", "hijack_id", "lease_expires_at", "owner"])
     hid = data["hijack_id"]
 
     narrate("Send command: echo 'hijacked!'")
-    send_body: dict[str, Any] = {"keys": "echo 'hijacked!'\r"}
-    show("POST", f"/worker/{SESSION_ID}/hijack/{hid}/send", send_body)
-    r = await client.post(f"/worker/{SESSION_ID}/hijack/{hid}/send", json=send_body)
-    result(r.json(), keys=["ok", "sent"])
+    show("POST", f"/worker/{SESSION_ID}/hijack/{hid}/send", {"keys": "echo 'hijacked!'\r"})
+    _, data = await c.send(SESSION_ID, hid, keys="echo 'hijacked!'\r")
+    result(data, keys=["ok", "sent"])
 
     narrate("Wait for shell to process")
     await asyncio.sleep(1.5)
 
     narrate("Read hijack snapshot")
     show("GET", f"/worker/{SESSION_ID}/hijack/{hid}/snapshot")
-    r = await client.get(f"/worker/{SESSION_ID}/hijack/{hid}/snapshot")
-    snap = r.json()
+    _, snap = await c.snapshot(SESSION_ID, hid)
     screen = (snap.get("snapshot") or {}).get("screen", "") if isinstance(snap, dict) else ""
     if screen:
         lines = screen.splitlines()[-8:]
@@ -229,17 +226,15 @@ async def phase_hijack(client: httpx.AsyncClient) -> dict[str, str]:
         result(snap)
 
     narrate("Send command: date")
-    send_body = {"keys": "date\r"}
-    show("POST", f"/worker/{SESSION_ID}/hijack/{hid}/send", send_body)
-    r = await client.post(f"/worker/{SESSION_ID}/hijack/{hid}/send", json=send_body)
-    result(r.json(), keys=["ok", "sent"])
+    show("POST", f"/worker/{SESSION_ID}/hijack/{hid}/send", {"keys": "date\r"})
+    _, data = await c.send(SESSION_ID, hid, keys="date\r")
+    result(data, keys=["ok", "sent"])
 
     await asyncio.sleep(1.5)
 
     narrate("Read updated snapshot")
     show("GET", f"/worker/{SESSION_ID}/hijack/{hid}/snapshot")
-    r = await client.get(f"/worker/{SESSION_ID}/hijack/{hid}/snapshot")
-    snap = r.json()
+    _, snap = await c.snapshot(SESSION_ID, hid)
     screen = (snap.get("snapshot") or {}).get("screen", "") if isinstance(snap, dict) else ""
     if screen:
         lines = screen.splitlines()[-8:]
@@ -250,13 +245,12 @@ async def phase_hijack(client: httpx.AsyncClient) -> dict[str, str]:
 
     narrate("Heartbeat — extend lease")
     show("POST", f"/worker/{SESSION_ID}/hijack/{hid}/heartbeat", {"lease_s": 60})
-    r = await client.post(f"/worker/{SESSION_ID}/hijack/{hid}/heartbeat", json={"lease_s": 60})
-    result(r.json(), keys=["ok", "lease_expires_at"])
+    _, data = await c.heartbeat(SESSION_ID, hid, lease_s=60)
+    result(data, keys=["ok", "lease_expires_at"])
 
     narrate("Read hijack events")
     show("GET", f"/worker/{SESSION_ID}/hijack/{hid}/events")
-    r = await client.get(f"/worker/{SESSION_ID}/hijack/{hid}/events")
-    events_data = r.json()
+    _, events_data = await c.events(SESSION_ID, hid)
     events_list = events_data.get("events", []) if isinstance(events_data, dict) else []
     print(f"  -> {len(events_list)} event(s)")
     for ev in events_list[:5]:
@@ -266,21 +260,21 @@ async def phase_hijack(client: httpx.AsyncClient) -> dict[str, str]:
     return {"hijack_id": hid}
 
 
-async def phase_release(client: httpx.AsyncClient, hid: str) -> None:
+async def phase_release(c: HijackClient, hid: str) -> None:
     narrate("Release hijack lease")
     show("POST", f"/worker/{SESSION_ID}/hijack/{hid}/release")
-    r = await client.post(f"/worker/{SESSION_ID}/hijack/{hid}/release")
-    result(r.json(), keys=["ok", "worker_id", "hijack_id"])
+    _, data = await c.release(SESSION_ID, hid)
+    result(data, keys=["ok", "worker_id", "hijack_id"])
 
     narrate("Verify session after release")
     show("GET", f"/api/sessions/{SESSION_ID}")
-    r = await client.get(f"/api/sessions/{SESSION_ID}")
-    result(r.json(), keys=["session_id", "lifecycle_state", "input_mode"])
+    _, data = await c.get_session(SESSION_ID)
+    result(data, keys=["session_id", "lifecycle_state", "input_mode"])
 
     narrate("Check recording entries")
     show("GET", f"/api/sessions/{SESSION_ID}/recording/entries?limit=10")
-    r = await client.get(f"/api/sessions/{SESSION_ID}/recording/entries", params={"limit": 10})
-    entries = r.json() if r.status_code == 200 else []
+    # recording entries not yet in HijackClient — use raw _request
+    _, entries = await c._request("GET", f"/api/sessions/{SESSION_ID}/recording/entries", params={"limit": 10})
     if isinstance(entries, list) and entries:
         print(f"  -> {len(entries)} recording entries")
         for entry in entries[:3]:
@@ -291,25 +285,23 @@ async def phase_release(client: httpx.AsyncClient, hid: str) -> None:
     print()
 
 
-async def phase_quick_connect(client: httpx.AsyncClient) -> None:
+async def phase_quick_connect(c: HijackClient) -> None:
     narrate("Create ephemeral session (quick-connect)")
     body: dict[str, Any] = {"connector_type": "shell", "display_name": "Ephemeral Shell"}
     show("POST", "/api/connect", body)
-    r = await client.post("/api/connect", json=body)
-    data = r.json()
+    _, data = await c.quick_connect("shell", display_name="Ephemeral Shell")
     result(data, keys=["session_id", "url"])
 
     narrate("List sessions — should show 2")
     show("GET", "/api/sessions")
-    r = await client.get("/api/sessions")
-    result(r.json())
+    _, data = await c.list_sessions()
+    result(data)
 
 
-async def phase_events_and_metrics(client: httpx.AsyncClient) -> None:
+async def phase_events_and_metrics(c: HijackClient) -> None:
     narrate("Session event log")
     show("GET", f"/api/sessions/{SESSION_ID}/events?limit=10")
-    r = await client.get(f"/api/sessions/{SESSION_ID}/events", params={"limit": 10})
-    events = r.json() if r.status_code == 200 else []
+    _, events = await c.session_events(SESSION_ID, limit=10)
     if isinstance(events, list):
         print(f"  -> {len(events)} event(s)")
         for ev in events[:5]:
@@ -318,8 +310,8 @@ async def phase_events_and_metrics(client: httpx.AsyncClient) -> None:
 
     narrate("Server metrics")
     show("GET", "/api/metrics")
-    r = await client.get("/api/metrics")
-    metrics = r.json().get("metrics", {}) if r.status_code == 200 else {}
+    _, data = await c._request("GET", "/api/metrics")
+    metrics = data.get("metrics", {}) if isinstance(data, dict) else {}
     interesting = [
         "http_requests_total",
         "hijack_acquires_total",
@@ -382,25 +374,25 @@ async def run_walkthrough(*, port: int = 0, open_browser: bool = True) -> None:
     server, server_task = await _start_server(port)
 
     try:
-        async with httpx.AsyncClient(
-            base_url=f"http://127.0.0.1:{port}",
+        async with HijackClient(
+            f"http://127.0.0.1:{port}",
             headers={"X-Uterm-Principal": "walkthrough", "X-Uterm-Role": "admin"},
-            timeout=httpx.Timeout(15.0),
-        ) as client:
-            await _wait_healthy(client)
+            timeout=15.0,
+        ) as c:
+            await _wait_healthy(c)
 
             # Give the auto-start session time to connect its worker
             await asyncio.sleep(1.0)
 
-            await phase_setup(client, port, open_browser=open_browser)
-            await phase_discovery(client, port, open_browser=open_browser)
-            await phase_open_mode(client)
+            await phase_setup(c, port, open_browser=open_browser)
+            await phase_discovery(c, port, open_browser=open_browser)
+            await phase_open_mode(c)
 
-            hijack_result = await phase_hijack(client)
-            await phase_release(client, hijack_result["hijack_id"])
+            hijack_result = await phase_hijack(c)
+            await phase_release(c, hijack_result["hijack_id"])
 
-            await phase_quick_connect(client)
-            await phase_events_and_metrics(client)
+            await phase_quick_connect(c)
+            await phase_events_and_metrics(c)
 
         phase_summary()
     finally:

@@ -2223,6 +2223,7 @@ source = { editable = "." }
 all = [
     { name = "asyncssh" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "pyjwt" },
     { name = "pyte" },
     { name = "uvicorn" },
@@ -2232,6 +2233,9 @@ cli = [
     { name = "fastapi" },
     { name = "uvicorn" },
     { name = "websockets" },
+]
+client = [
+    { name = "httpx" },
 ]
 emulator = [
     { name = "pyte" },
@@ -2291,6 +2295,8 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'cli'", specifier = ">=0.110" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.110" },
     { name = "fastapi", marker = "extra == 'websocket'", specifier = ">=0.110" },
+    { name = "httpx", marker = "extra == 'all'", specifier = ">=0.27" },
+    { name = "httpx", marker = "extra == 'client'", specifier = ">=0.27" },
     { name = "pyjwt", marker = "extra == 'all'", specifier = ">=2.9" },
     { name = "pyjwt", marker = "extra == 'server'", specifier = ">=2.9" },
     { name = "pyte", marker = "extra == 'all'", specifier = ">=0.8" },
@@ -2302,7 +2308,7 @@ requires-dist = [
     { name = "websockets", marker = "extra == 'cli'", specifier = ">=12.0" },
     { name = "websockets", marker = "extra == 'websocket'", specifier = ">=12.0" },
 ]
-provides-extras = ["websocket", "ssh", "emulator", "server", "cli", "all"]
+provides-extras = ["websocket", "ssh", "emulator", "server", "cli", "client", "all"]
 
 [package.metadata.requires-dev]
 dev = [
