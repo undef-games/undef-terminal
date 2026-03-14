@@ -9,60 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 from typing import Any
 
 import httpx
 import websockets
 
-
-def _ws_url(base_url: str, path: str) -> str:
-    """Convert http to ws URL."""
-    return base_url.replace("http://", "ws://") + path
-
-
-def _snapshot_msg(screen: str = "test", prompt_id: str = "test_p") -> dict[str, Any]:
-    """Build a valid snapshot message."""
-    return {
-        "type": "snapshot",
-        "screen": screen,
-        "cursor": {"x": 0, "y": 0},
-        "cols": 80,
-        "rows": 25,
-        "screen_hash": "hash",
-        "cursor_at_end": True,
-        "has_trailing_space": False,
-        "prompt_detected": {"prompt_id": prompt_id},
-        "ts": time.time(),
-    }
-
-
-async def _drain_until(ws: Any, type_: str, timeout: float = 2.0) -> dict[str, Any] | None:
-    """Drain until message type found."""
-    deadline = asyncio.get_running_loop().time() + timeout
-    while asyncio.get_running_loop().time() < deadline:
-        try:
-            raw = await asyncio.wait_for(ws.recv(), timeout=0.2)
-            msg = json.loads(raw)
-            if msg.get("type") == type_:
-                return msg
-        except TimeoutError:
-            continue
-    return None
-
-
-async def _drain_all(ws: Any, timeout: float = 0.3) -> list[dict[str, Any]]:
-    """Drain all messages."""
-    msgs: list[dict[str, Any]] = []
-    deadline = asyncio.get_running_loop().time() + timeout
-    while asyncio.get_running_loop().time() < deadline:
-        try:
-            raw = await asyncio.wait_for(ws.recv(), timeout=0.1)
-            msgs.append(json.loads(raw))
-        except TimeoutError:
-            continue
-    return msgs
-
+from .conftest import _drain_all, _drain_until, _snapshot_msg, _ws_url
 
 # ---------------------------------------------------------------------------
 # TestInputValidation — input length, format
@@ -113,7 +65,8 @@ class TestGuardChecking:
 
             # Send snapshot with specific prompt_id
             await worker.send(json.dumps(_snapshot_msg("screen", "actual_prompt")))
-            await asyncio.sleep(0.1)
+            # Drain until hub processes the snapshot (no-sleep: drain_until acts as barrier)
+            await _drain_until(worker, "snapshot", timeout=1.0)
 
             # Try to send with different expected prompt_id
             r2 = await http.post(
@@ -121,8 +74,10 @@ class TestGuardChecking:
                 json={"keys": "test", "expect_prompt_id": "expected_prompt", "timeout_ms": 500},
             )
             # Guard check fails, returns 409
-            assert r2.status_code == 409
-            assert "prompt_guard" in r2.json().get("error", "").lower()
+            assert r2.status_code == 409, f"Guard mismatch should return 409, got {r2.status_code}: {r2.text}"
+            assert "prompt_guard" in r2.json().get("error", "").lower(), (
+                f"Error should mention prompt_guard, got {r2.json()}"
+            )
 
     async def test_send_guard_prompt_id_match_succeeds(self, live_hub: Any) -> None:
         """Send with matching expect_prompt_id succeeds."""
@@ -139,14 +94,15 @@ class TestGuardChecking:
 
             # Send snapshot with specific prompt
             await worker.send(json.dumps(_snapshot_msg("screen", "correct_prompt")))
-            await asyncio.sleep(0.1)
+            # Drain until hub processes the snapshot
+            await _drain_until(worker, "snapshot", timeout=1.0)
 
             # Send with matching prompt_id
             r2 = await http.post(
                 f"/worker/gc2/hijack/{hijack_id}/send",
                 json={"keys": "test", "expect_prompt_id": "correct_prompt", "timeout_ms": 1000},
             )
-            assert r2.status_code == 200
+            assert r2.status_code == 200, f"Guard match should succeed, got {r2.status_code}: {r2.text}"
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +118,7 @@ class TestWorkerOffline:
             # No worker connected for this worker_id
             r = await http.post("/worker/wo1/hijack/acquire", json={"owner": "test", "lease_s": 60})
             # When no worker is connected, acquire fails with 409
-            assert r.status_code == 409
+            assert r.status_code == 409, f"No-worker acquire should return 409, got {r.status_code}: {r.text}"
 
     async def test_send_fails_if_worker_disconnects(self, live_hub: Any) -> None:
         """Send fails with 409 after worker disconnects."""
@@ -174,16 +130,20 @@ class TestWorkerOffline:
                 hijack_id = r.json()["hijack_id"]
                 await _drain_until(worker, "control")
 
-            # Worker disconnected
-            await asyncio.sleep(0.2)
-
-            # Try to send
-            r2 = await http.post(
-                f"/worker/wo2/hijack/{hijack_id}/send",
-                json={"keys": "test", "timeout_ms": 500},
+            # Poll send endpoint until worker disconnect propagates (expected 404/409)
+            deadline_disc = asyncio.get_running_loop().time() + 2.0
+            r2 = None
+            while asyncio.get_running_loop().time() < deadline_disc:
+                r2 = await http.post(
+                    f"/worker/wo2/hijack/{hijack_id}/send",
+                    json={"keys": "test", "timeout_ms": 500},
+                )
+                if r2.status_code in (404, 409):
+                    break
+                await asyncio.sleep(0.05)
+            assert r2 is not None and r2.status_code in (404, 409), (
+                f"Send after disconnect should fail with 404/409, got {r2.status_code if r2 else 'None'}: {r2.text if r2 else ''}"
             )
-            # May be 404 (session expired) or 409 (worker gone)
-            assert r2.status_code in (404, 409)
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +160,7 @@ class TestInvalidSession:
                 "/worker/is1/hijack/00000000-0000-0000-0000-000000000000/send",
                 json={"keys": "test", "timeout_ms": 500},
             )
-            assert r.status_code == 404
+            assert r.status_code == 404, f"Invalid hijack_id should return 404, got {r.status_code}: {r.text}"
 
     async def test_snapshot_with_invalid_hijack_id(self, live_hub: Any) -> None:
         """GET /snapshot with bad hijack_id returns 404."""
@@ -208,7 +168,7 @@ class TestInvalidSession:
         async with httpx.AsyncClient(base_url=base_url) as http:
             # Use a valid UUID format that doesn't exist
             r = await http.get("/worker/is2/hijack/00000000-0000-0000-0000-000000000000/snapshot")
-            assert r.status_code == 404
+            assert r.status_code == 404, f"Invalid hijack_id should return 404, got {r.status_code}: {r.text}"
 
     async def test_step_with_expired_session(self, live_hub: Any) -> None:
         """Step after lease expires returns 404."""
@@ -222,12 +182,12 @@ class TestInvalidSession:
             r = await http.post("/worker/is3/hijack/acquire", json={"owner": "test", "lease_s": 1})
             hijack_id = r.json()["hijack_id"]
 
-            # Wait for lease to expire
+            # Wait for lease to expire (time-based, no polling alternative)
             await asyncio.sleep(1.5)
 
             # Try to step with expired lease
             r2 = await http.post(f"/worker/is3/hijack/{hijack_id}/step")
-            assert r2.status_code == 404
+            assert r2.status_code == 404, f"Expired lease step should return 404, got {r2.status_code}: {r2.text}"
 
 
 # ---------------------------------------------------------------------------
@@ -254,9 +214,7 @@ class TestMultiBrowserContention:
                 for b in (b1, b2, b3):
                     await b.send(json.dumps({"type": "hijack_request"}))
 
-                await asyncio.sleep(0.1)
-
-                # Collect states
+                # Collect states — no sleep needed; drain_until blocks until message arrives
                 states = {
                     "b1": await _drain_until(b1, "hijack_state"),
                     "b2": await _drain_until(b2, "hijack_state"),
@@ -266,8 +224,8 @@ class TestMultiBrowserContention:
                 # Exactly one should have owner=me, others owner=other
                 me_count = sum(1 for s in states.values() if s and s.get("owner") == "me")
                 other_count = sum(1 for s in states.values() if s and s.get("owner") == "other")
-                assert me_count == 1, f"Expected 1 owner=me, got {me_count}"
-                assert other_count == 2, f"Expected 2 owner=other, got {other_count}"
+                assert me_count == 1, f"Expected 1 owner=me, got {me_count} (states={states})"
+                assert other_count == 2, f"Expected 2 owner=other, got {other_count} (states={states})"
 
 
 # ---------------------------------------------------------------------------
@@ -285,16 +243,14 @@ class TestBrowserDisconnect:
             async with websockets.connect(_ws_url(base_url, "/ws/browser/bd1/term")) as browser:
                 await _drain_all(browser)
                 await browser.send(json.dumps({"type": "hijack_request"}))
-                await _drain_until(browser, "hijack_state")
+                state_bd1 = await _drain_until(browser, "hijack_state")
+                assert state_bd1 is not None, "Should receive hijack_state after hijack_request"
                 await _drain_until(worker, "control")  # pause
 
-            # Browser exited context (disconnected)
-            await asyncio.sleep(0.1)
-
-            # Worker should get resume
+            # Browser exited context (disconnected); drain_until waits for resume
             resume = await _drain_until(worker, "control", timeout=2.0)
-            assert resume is not None
-            assert resume["action"] == "resume"
+            assert resume is not None, "Worker should receive resume after browser disconnect"
+            assert resume["action"] == "resume", f"Expected resume, got {resume.get('action')}"
 
     async def test_second_browser_takes_hijack_after_disconnect(self, live_hub: Any) -> None:
         """After first hijack owner disconnects, second browser can acquire."""
@@ -306,17 +262,19 @@ class TestBrowserDisconnect:
                 await _drain_all(b1)
                 await b1.send(json.dumps({"type": "hijack_request"}))
                 state1 = await _drain_until(b1, "hijack_state")
-                assert state1["owner"] == "me"
+                assert state1 is not None, "b1 should receive hijack_state"
+                assert state1["owner"] == "me", f"b1 should be owner, got {state1.get('owner')}"
 
-            # b1 disconnected
-            await asyncio.sleep(0.2)
+            # b1 disconnected; wait for resume before b2 can acquire
+            await _drain_until(worker, "control", timeout=2.0)
 
             async with websockets.connect(_ws_url(base_url, "/ws/browser/bd2/term")) as b2:
                 await _drain_all(b2)
                 await b2.send(json.dumps({"type": "hijack_request"}))
                 state2 = await _drain_until(b2, "hijack_state")
                 # b2 should be able to hijack now
-                assert state2["owner"] == "me"
+                assert state2 is not None, "b2 should receive hijack_state"
+                assert state2["owner"] == "me", f"b2 should be owner after b1 disconnect, got {state2.get('owner')}"
 
 
 # ---------------------------------------------------------------------------
@@ -331,27 +289,30 @@ class TestSnapshotLifecycle:
         async with websockets.connect(_ws_url(base_url, "/ws/worker/sl1/term")) as worker:
             await worker.recv()
             await worker.send(json.dumps(_snapshot_msg("cached content")))
-            await asyncio.sleep(0.1)
 
             async with websockets.connect(_ws_url(base_url, "/ws/browser/sl1/term")) as browser:
-                # Should receive cached snapshot
+                # Should receive cached snapshot (sent on browser connect)
                 snap = await _drain_until(browser, "snapshot", timeout=2.0)
-                assert snap is not None
-                assert snap["screen"] == "cached content"
+                assert snap is not None, "New browser should receive cached snapshot"
+                assert snap["screen"] == "cached content", f"Unexpected snapshot: {snap.get('screen')}"
 
     async def test_snapshot_cleared_after_worker_disconnect(self, live_hub: Any) -> None:
         """Snapshot is cleared when worker disconnects."""
         _, base_url = live_hub
-        async with websockets.connect(_ws_url(base_url, "/ws/worker/sl2/term")) as worker:
-            await worker.recv()
-            await worker.send(json.dumps(_snapshot_msg("old snapshot")))
-            await asyncio.sleep(0.1)
+        async with websockets.connect(_ws_url(base_url, "/ws/browser/sl2/term")) as sl2_browser:
+            async with websockets.connect(_ws_url(base_url, "/ws/worker/sl2/term")) as worker:
+                await worker.recv()
+                await worker.send(json.dumps(_snapshot_msg("old snapshot")))
+                # Wait for snapshot to be acknowledged by hub
+                await _drain_until(sl2_browser, "snapshot", timeout=2.0)
 
-        # Worker disconnected, snapshot should clear
-        await asyncio.sleep(0.2)
+            # Worker disconnected — wait for disconnect event
+            await _drain_until(sl2_browser, "worker_disconnected", timeout=2.0)
 
         async with websockets.connect(_ws_url(base_url, "/ws/browser/sl2/term")) as browser:
-            # Should NOT receive a cached snapshot
+            # Should NOT receive a cached snapshot — snapshot cleared on worker disconnect
             snap = await _drain_until(browser, "snapshot", timeout=1.0)
             # Either None or has no content (browser still gets hello/hijack_state)
-            assert snap is None or snap.get("screen") != "old snapshot"
+            assert snap is None or snap.get("screen") != "old snapshot", (
+                f"Snapshot should be cleared after worker disconnect, got {snap}"
+            )

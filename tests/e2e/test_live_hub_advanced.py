@@ -20,53 +20,7 @@ from fastapi import FastAPI
 
 from undef.terminal.hijack.hub import TermHub
 
-
-def _ws_url(base_url: str, path: str) -> str:
-    """Convert http to ws URL."""
-    return base_url.replace("http://", "ws://") + path
-
-
-def _snapshot_msg(screen: str = "test screen", prompt_id: str = "test_prompt") -> dict[str, Any]:
-    """Build a valid snapshot message."""
-    return {
-        "type": "snapshot",
-        "screen": screen,
-        "cursor": {"x": 0, "y": 0},
-        "cols": 80,
-        "rows": 25,
-        "screen_hash": "test-hash",
-        "cursor_at_end": True,
-        "has_trailing_space": False,
-        "prompt_detected": {"prompt_id": prompt_id},
-        "ts": time.time(),
-    }
-
-
-async def _drain_until(ws: Any, type_: str, timeout: float = 3.0) -> dict[str, Any] | None:
-    """Drain messages until one matches the type."""
-    deadline = asyncio.get_running_loop().time() + timeout
-    while asyncio.get_running_loop().time() < deadline:
-        try:
-            raw = await asyncio.wait_for(ws.recv(), timeout=0.3)
-            msg = json.loads(raw)
-            if msg.get("type") == type_:
-                return msg
-        except TimeoutError:
-            continue
-    return None
-
-
-async def _drain_all(ws: Any, timeout: float = 0.5) -> list[dict[str, Any]]:
-    """Drain all available messages."""
-    msgs: list[dict[str, Any]] = []
-    deadline = asyncio.get_running_loop().time() + timeout
-    while asyncio.get_running_loop().time() < deadline:
-        try:
-            raw = await asyncio.wait_for(ws.recv(), timeout=0.1)
-            msgs.append(json.loads(raw))
-        except TimeoutError:
-            continue
-    return msgs
+from .conftest import _drain_all, _drain_until, _snapshot_msg, _wait_for_server, _ws_url
 
 
 @asynccontextmanager
@@ -82,15 +36,7 @@ async def _hub_with_roles(role_map: dict[str, str]):
     task = asyncio.create_task(server.serve())
 
     try:
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + 5.0
-        while not server.started:
-            if loop.time() > deadline:
-                server.should_exit = True
-                await asyncio.wait_for(task, timeout=2.0)
-                raise RuntimeError("role-aware hub: uvicorn startup timeout")
-            await asyncio.sleep(0.05)
-
+        await _wait_for_server(server, task, "role-aware hub")
         port: int = server.servers[0].sockets[0].getsockname()[1]
         yield hub, f"http://127.0.0.1:{port}"
     finally:
@@ -125,13 +71,14 @@ class TestBrowserRoles:
                         }
                     )
                 )
-                await asyncio.sleep(0.1)
+                # Wait for mode switch to propagate to the browser
+                await _drain_until(browser, "hijack_state", timeout=2.0)
 
                 await browser.send(json.dumps({"type": "input", "data": "test"}))
                 # Viewer input is rejected or ignored; no input appears in worker messages
                 msgs = await _drain_all(worker, timeout=0.5)
                 input_msgs = [m for m in msgs if m.get("type") == "input"]
-                assert len(input_msgs) == 0
+                assert len(input_msgs) == 0, f"Viewer should not be able to send input, got {input_msgs}"
 
     async def test_viewer_gets_hello_with_can_hijack_false(self) -> None:
         """Viewer hello message includes can_hijack=false."""
@@ -140,8 +87,8 @@ class TestBrowserRoles:
             websockets.connect(_ws_url(base_url, "/ws/browser/v2/term")) as browser,
         ):
             hello = await _drain_until(browser, "hello")
-            assert hello is not None
-            assert hello.get("role") == "viewer"
+            assert hello is not None, "Should receive hello message"
+            assert hello.get("role") == "viewer", f"Role should be 'viewer', got {hello.get('role')}"
 
     async def test_operator_can_send_in_open_mode(self) -> None:
         """Operator can send input in open mode; worker receives it."""
@@ -163,12 +110,13 @@ class TestBrowserRoles:
                     }
                 )
             )
-            await asyncio.sleep(0.1)
+            # Wait for mode switch to propagate to the browser
+            await _drain_until(browser, "hijack_state", timeout=2.0)
 
             await browser.send(json.dumps({"type": "input", "data": "opkey"}))
             inp = await _drain_until(worker, "input")
-            assert inp is not None
-            assert inp["data"] == "opkey"
+            assert inp is not None, "Worker should receive input from operator in open mode"
+            assert inp["data"] == "opkey", f"Input data should be 'opkey', got {inp.get('data')}"
 
     async def test_operator_hijack_request_rejected(self) -> None:
         """Operator sends hijack_request, gets error."""
@@ -182,7 +130,7 @@ class TestBrowserRoles:
             # Operator cannot hijack; error or no state change
             msg = await _drain_until(browser, "error", timeout=1.0)
             # May receive error or no state change; operator hijack should be rejected
-            assert msg is not None  # pragma: no cover
+            assert msg is not None, "Operator hijack should be rejected with error"  # pragma: no cover
 
     async def test_admin_can_hijack(self, live_hub: Any) -> None:
         """Admin sends hijack_request, acquires hijack with owner=me."""
@@ -196,9 +144,9 @@ class TestBrowserRoles:
 
             await browser.send(json.dumps({"type": "hijack_request"}))
             state = await _drain_until(browser, "hijack_state")
-            assert state is not None
-            assert state.get("hijacked") is True
-            assert state.get("owner") == "me"
+            assert state is not None, "Should receive hijack_state after hijack_request"
+            assert state.get("hijacked") is True, f"Should be hijacked, got {state}"
+            assert state.get("owner") == "me", f"Owner should be 'me', got {state.get('owner')}"
 
 
 # ---------------------------------------------------------------------------
@@ -217,20 +165,21 @@ class TestLeaseExpiry:
             await worker.recv()  # snapshot_req
 
             r = await http.post("/worker/le1/hijack/acquire", json={"owner": "test", "lease_s": 1})
-            assert r.status_code == 200
+            assert r.status_code == 200, f"Acquire should succeed, got {r.status_code}: {r.text}"
 
             # Immediately send a snapshot so guard passes for any upcoming send
             await worker.send(json.dumps(_snapshot_msg()))
             ctrl = await _drain_until(worker, "control")
-            assert ctrl["action"] == "pause"
+            assert ctrl is not None, "Should receive control message after acquire"
+            assert ctrl["action"] == "pause", f"Control action should be pause, got {ctrl.get('action')}"
 
-            # Wait for lease to expire
+            # Wait for lease to expire (time-based; no polling alternative)
             await asyncio.sleep(1.5)
 
             # Hub should send resume after lease expiry
             resume = await _drain_until(worker, "control", timeout=3.0)
-            assert resume is not None
-            assert resume["action"] == "resume"
+            assert resume is not None, "Worker should receive resume after lease expiry"
+            assert resume["action"] == "resume", f"Control action should be resume, got {resume.get('action')}"
 
     async def test_ws_hijack_owner_disconnect_sends_resume(self, live_hub: Any) -> None:
         """Browser hijacks, then disconnects; worker receives resume."""
@@ -242,14 +191,16 @@ class TestLeaseExpiry:
                 await _drain_all(b1)
                 await b1.send(json.dumps({"type": "hijack_request"}))
                 state = await _drain_until(b1, "hijack_state")
-                assert state["owner"] == "me"
+                assert state is not None, "Should receive hijack_state after hijack_request"
+                assert state["owner"] == "me", f"b1 should own hijack, got {state.get('owner')}"
                 pause = await _drain_until(worker, "control")
-                assert pause["action"] == "pause"
+                assert pause is not None, "Worker should receive pause control"
+                assert pause["action"] == "pause", f"Expected pause, got {pause.get('action')}"
 
             # b1 disconnected; worker should get resume
             resume = await _drain_until(worker, "control", timeout=3.0)
-            assert resume is not None
-            assert resume["action"] == "resume"
+            assert resume is not None, "Worker should receive resume after hijack owner disconnect"
+            assert resume["action"] == "resume", f"Expected resume, got {resume.get('action')}"
 
 
 # ---------------------------------------------------------------------------
@@ -265,11 +216,12 @@ class TestWorkerReconnect:
             await _drain_all(browser)
 
             async with websockets.connect(_ws_url(base_url, "/ws/worker/wr1/term")):
-                await _drain_until(browser, "worker_connected", timeout=2.0)
+                connected = await _drain_until(browser, "worker_connected", timeout=2.0)
+                assert connected is not None, "Browser should see worker_connected event"
 
             # Worker disconnected
             disc = await _drain_until(browser, "worker_disconnected", timeout=2.0)
-            assert disc is not None
+            assert disc is not None, "Browser should see worker_disconnected event"
 
     async def test_active_hijack_cleared_on_worker_disconnect(self, live_hub: Any) -> None:
         """REST acquire, then worker disconnects; second acquire succeeds."""
@@ -279,16 +231,16 @@ class TestWorkerReconnect:
                 await worker.recv()  # snapshot_req
 
                 r1 = await http.post("/worker/wr2/hijack/acquire", json={"owner": "test", "lease_s": 60})
-                assert r1.status_code == 200
+                assert r1.status_code == 200, f"First acquire should succeed, got {r1.status_code}: {r1.text}"
 
-            # Worker disconnected; hijack is cleared
-            await asyncio.sleep(0.2)
-
+            # Worker reconnects; hub clears hijack on worker disconnect before registering new worker
             async with websockets.connect(_ws_url(base_url, "/ws/worker/wr2/term")) as worker:
-                await worker.recv()
+                await worker.recv()  # snapshot_req — server processed disconnect before this
                 # Second acquire should succeed
                 r2 = await http.post("/worker/wr2/hijack/acquire", json={"owner": "test2", "lease_s": 60})
-                assert r2.status_code == 200
+                assert r2.status_code == 200, (
+                    f"Second acquire after reconnect should succeed, got {r2.status_code}: {r2.text}"
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -312,14 +264,13 @@ class TestRestHijackAdvanced:
 
             # Send a snapshot so poll doesn't timeout
             await worker.send(json.dumps(_snapshot_msg("test snapshot")))
-            await asyncio.sleep(0.1)
 
-            # Poll snapshot endpoint
-            r2 = await http.get(f"/worker/rha1/hijack/{hijack_id}/snapshot?wait_ms=100")
-            assert r2.status_code == 200
+            # Poll snapshot endpoint — wait_ms=500 lets it block until snapshot arrives
+            r2 = await http.get(f"/worker/rha1/hijack/{hijack_id}/snapshot?wait_ms=500")
+            assert r2.status_code == 200, f"Snapshot poll should return 200, got {r2.status_code}: {r2.text}"
             data = r2.json()
-            assert data.get("ok") is True
-            assert data.get("hijack_id") == hijack_id
+            assert data.get("ok") is True, f"Snapshot should have ok=True, got {data}"
+            assert data.get("hijack_id") == hijack_id, f"hijack_id mismatch: {data}"
 
     async def test_events_ring_buffer_ordered(self, live_hub: Any) -> None:
         """Acquire, step, GET /events; returns events with monotonic seq."""
@@ -337,21 +288,21 @@ class TestRestHijackAdvanced:
 
             # Send a snapshot to ensure we have a valid state
             await worker.send(json.dumps(_snapshot_msg()))
-            await asyncio.sleep(0.1)
+            # Use step endpoint with wait — avoids sleep by letting server block
+            await _drain_until(worker, "snapshot", timeout=2.0)
 
             # Trigger a step event
             r2 = await http.post(f"/worker/rha2/hijack/{hijack_id}/step")
-            assert r2.status_code == 200
-            await asyncio.sleep(0.1)
+            assert r2.status_code == 200, f"Step should return 200, got {r2.status_code}: {r2.text}"
 
             # GET events while hijack is still active
             r3 = await http.get(f"/worker/rha2/hijack/{hijack_id}/events")
-            assert r3.status_code == 200
+            assert r3.status_code == 200, f"Events should return 200, got {r3.status_code}: {r3.text}"
             events = r3.json().get("events", [])
             # Verify monotonically increasing seq
             seqs = [e["seq"] for e in events if "seq" in e]
             if len(seqs) > 1:
-                assert seqs == sorted(seqs)
+                assert seqs == sorted(seqs), f"Event sequences should be monotonic: {seqs}"
 
     async def test_concurrent_acquire_second_client_gets_409(self, live_hub: Any) -> None:
         """Two clients race to acquire; exactly one gets 200, other gets 409."""
@@ -370,7 +321,7 @@ class TestRestHijackAdvanced:
             results = await asyncio.gather(acquire(1), acquire(2))
             statuses = sorted(results)
             # Exactly one 200 and one 409
-            assert 200 in statuses and 409 in statuses
+            assert 200 in statuses and 409 in statuses, f"Expected one 200 and one 409, got {statuses}"
 
 
 # ---------------------------------------------------------------------------
@@ -392,7 +343,7 @@ class TestAnalyzeRoundTrip:
             # Browser acquires hijack first
             await browser.send(json.dumps({"type": "hijack_request"}))
             state = await _drain_until(browser, "hijack_state")
-            assert state is not None
+            assert state is not None, "Should receive hijack_state after hijack_request"
             await _drain_until(worker, "control")  # pause
 
             # Browser sends analyze_req (only works for hijack owner)
@@ -400,7 +351,7 @@ class TestAnalyzeRoundTrip:
 
             # Worker receives it
             analyze = await _drain_until(worker, "analyze_req", timeout=2.0)
-            assert analyze is not None
+            assert analyze is not None, "Worker should receive analyze_req"
 
             # Worker sends analysis back
             await worker.send(
@@ -415,8 +366,8 @@ class TestAnalyzeRoundTrip:
 
             # Browser receives it
             analysis = await _drain_until(browser, "analysis", timeout=2.0)
-            assert analysis is not None
-            assert analysis["formatted"] == "test analysis result"
+            assert analysis is not None, "Browser should receive analysis"
+            assert analysis["formatted"] == "test analysis result", f"Unexpected analysis: {analysis}"
 
 
 # ---------------------------------------------------------------------------
@@ -435,11 +386,11 @@ class TestInputModeLifecycle:
             await worker.recv()
 
             r = await http.post("/worker/im1/hijack/acquire", json={"owner": "test", "lease_s": 60})
-            assert r.status_code == 200
+            assert r.status_code == 200, f"Acquire should return 200, got {r.status_code}: {r.text}"
 
             # Try to change input_mode
             r2 = await http.post("/worker/im1/input_mode", json={"input_mode": "open"})
-            assert r2.status_code == 409
+            assert r2.status_code == 409, f"Mode switch should be rejected with 409, got {r2.status_code}: {r2.text}"
 
     async def test_worker_hello_open_mode_propagates_to_browsers(self, live_hub: Any) -> None:
         """Worker sends worker_hello with open mode; browser receives mode update."""
@@ -465,6 +416,6 @@ class TestInputModeLifecycle:
             # Browser should receive an update reflecting open mode
             # This may come as a hijack_state with input_mode field
             msg = await _drain_until(browser, "hijack_state", timeout=2.0)
-            assert msg is not None
+            assert msg is not None, "Browser should receive hijack_state after mode switch"
             # Verify open mode is reflected (field name may vary)
-            assert msg.get("input_mode") == "open" or "open" in str(msg)
+            assert msg.get("input_mode") == "open" or "open" in str(msg), f"Browser should see 'open' mode, got {msg}"
