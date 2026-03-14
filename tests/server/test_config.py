@@ -194,6 +194,40 @@ def test_config_from_mapping_rejects_invalid_visibility() -> None:
         config_from_mapping({"sessions": [{"session_id": "s1", "connector_type": "shell", "visibility": "secret"}]})
 
 
+def test_partial_auth_override_preserves_default_server_config_auth_mode() -> None:
+    # Regression: replacing merged["auth"] with the raw user dict discarded
+    # default_server_config().auth.mode == "dev", falling back to AuthConfig's
+    # class default "jwt".
+    config = config_from_mapping({"auth": {"principal_header": "x-user"}})
+
+    assert config.auth.mode == "dev"
+    assert config.auth.principal_header == "x-user"
+
+
+def test_partial_server_override_preserves_sibling_defaults() -> None:
+    config = config_from_mapping({"server": {"port": 9999}})
+
+    assert config.server.port == 9999
+    assert config.server.host == default_server_config().server.host
+    assert config.server.public_base_url == default_server_config().server.public_base_url
+
+
+def test_partial_ui_override_preserves_sibling_defaults() -> None:
+    config = config_from_mapping({"ui": {"app_path": "/custom"}})
+
+    assert config.ui.app_path == "/custom"
+    assert config.ui.xterm_cdn == default_server_config().ui.xterm_cdn
+    assert config.ui.fitaddon_cdn == default_server_config().ui.fitaddon_cdn
+
+
+def test_partial_recording_override_preserves_sibling_defaults() -> None:
+    config = config_from_mapping({"recording": {"enabled_by_default": True}})
+
+    assert config.recording.enabled_by_default is True
+    assert config.recording.max_bytes == default_server_config().recording.max_bytes
+    assert config.recording.directory == default_server_config().recording.directory
+
+
 def test_config_from_mapping_rejects_unknown_top_level_section() -> None:
     with pytest.raises(ValueError, match="Extra inputs are not permitted"):
         config_from_mapping({"bogus": {"x": 1}})
