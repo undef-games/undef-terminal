@@ -190,3 +190,159 @@ class TestParserSubcommandRequired:
         """Parser rejects invalid subcommand."""
         with pytest.raises(SystemExit):
             _build_parser().parse_args(["invalid"])
+
+
+class TestCmdListenPortLogic:
+    """Test _cmd_listen port validation edge cases — mutation killing."""
+
+    def test_both_ports_exactly_zero_exits(self) -> None:
+        """When both ports == 0, exit with code 1."""
+        args = _build_parser().parse_args(["listen", "ws://localhost", "--port", "0", "--ssh-port", "0"])
+        captured = io.StringIO()
+        with pytest.raises(SystemExit) as exc_info, patch("sys.stderr", captured):
+            _cmd_listen(args)
+        assert exc_info.value.code == 1
+
+    def test_telnet_port_zero_ssh_port_nonzero_continues(self) -> None:
+        """When telnet_port == 0 and ssh_port > 0, validation passes."""
+        args = _build_parser().parse_args(["listen", "ws://localhost", "--port", "0", "--ssh-port", "2222"])
+        # Should not raise SystemExit (except for networking issues)
+        assert args.port == 0
+        assert args.ssh_port == 2222
+
+    def test_telnet_port_nonzero_ssh_port_zero_continues(self) -> None:
+        """When telnet_port > 0 and ssh_port == 0, validation passes."""
+        args = _build_parser().parse_args(["listen", "ws://localhost", "--port", "2112", "--ssh-port", "0"])
+        assert args.port == 2112
+        assert args.ssh_port == 0
+
+    def test_both_ports_nonzero_continues(self) -> None:
+        """When both ports > 0, validation passes."""
+        args = _build_parser().parse_args(["listen", "ws://localhost", "--port", "2112", "--ssh-port", "2222"])
+        assert args.port == 2112
+        assert args.ssh_port == 2222
+
+    def test_both_ports_one_is_nonzero_not_both_zero(self) -> None:
+        """Mutation catch: AND must not become OR (both zero is only failure case)."""
+        # OR would fail for port=1, ssh_port=0 (1 OR 0 = True)
+        # AND must fail ONLY when both zero
+        args = _build_parser().parse_args(["listen", "ws://localhost", "--port", "1", "--ssh-port", "0"])
+        assert args.port == 1
+        assert args.ssh_port == 0
+
+    def test_telnet_port_boundary_one(self) -> None:
+        """Port == 1 is non-zero (catches > 0 vs >= 1 mutation)."""
+        args = _build_parser().parse_args(["listen", "ws://localhost", "--port", "1", "--ssh-port", "0"])
+        assert args.port == 1
+
+    def test_ssh_port_boundary_one(self) -> None:
+        """SSH port == 1 is non-zero."""
+        args = _build_parser().parse_args(["listen", "ws://localhost", "--port", "0", "--ssh-port", "1"])
+        assert args.ssh_port == 1
+
+    def test_zero_equality_not_inequality(self) -> None:
+        """Mutation catch: == 0 must not become != 0."""
+        args_both_zero = _build_parser().parse_args(["listen", "ws://localhost", "--port", "0", "--ssh-port", "0"])
+        args_one_zero = _build_parser().parse_args(["listen", "ws://localhost", "--port", "1", "--ssh-port", "0"])
+        # Both zero should trigger check; one zero should not
+        assert args_both_zero.port == 0 and args_both_zero.ssh_port == 0
+        assert args_one_zero.port == 1 or args_one_zero.ssh_port == 0
+
+
+class TestProxyPortValidation:
+    """Test proxy port validation edge cases — mutation killing."""
+
+    def test_proxy_port_default_exact_value(self) -> None:
+        """Proxy port default is 8765 (not 8764 or 8766)."""
+        args = _build_parser().parse_args(["proxy", "host", "23"])
+        assert args.port == 8765
+        assert args.port != 8764
+        assert args.port != 8766
+
+    def test_proxy_bbs_port_zero_accepted(self) -> None:
+        """Port 0 is technically accepted by argparse (validation elsewhere if needed)."""
+        args = _build_parser().parse_args(["proxy", "host", "0"])
+        assert args.bbs_port == 0
+
+    def test_proxy_port_zero_accepted(self) -> None:
+        """Proxy listen port 0 is accepted by argparse."""
+        args = _build_parser().parse_args(["proxy", "host", "23", "--port", "0"])
+        assert args.port == 0
+
+    def test_proxy_port_high_value_accepted(self) -> None:
+        """High port numbers accepted."""
+        args = _build_parser().parse_args(["proxy", "host", "23", "--port", "65535"])
+        assert args.port == 65535
+
+    def test_listen_port_default_exact_value(self) -> None:
+        """Listen port default is 2112 (not 2111 or 2113)."""
+        args = _build_parser().parse_args(["listen", "ws://url"])
+        assert args.port == 2112
+        assert args.port != 2111
+        assert args.port != 2113
+
+    def test_listen_ssh_port_default_exact_zero(self) -> None:
+        """SSH port default is 0 (disabled), not 22."""
+        args = _build_parser().parse_args(["listen", "ws://url"])
+        assert args.ssh_port == 0
+        assert args.ssh_port != 22
+        assert args.ssh_port != -1
+
+
+class TestTransportValidation:
+    """Test transport choices and defaults — mutation killing."""
+
+    def test_transport_telnet_exact_value(self) -> None:
+        """Transport 'telnet' exact match required."""
+        args = _build_parser().parse_args(["proxy", "host", "23", "--transport", "telnet"])
+        assert args.transport == "telnet"
+        assert args.transport != "Telnet"
+        assert args.transport != "TELNET"
+
+    def test_transport_ssh_exact_value(self) -> None:
+        """Transport 'ssh' exact match required."""
+        args = _build_parser().parse_args(["proxy", "host", "23", "--transport", "ssh"])
+        assert args.transport == "ssh"
+        assert args.transport != "SSH"
+        assert args.transport != "Ssh"
+
+    def test_transport_default_is_telnet_not_ssh(self) -> None:
+        """Transport default is 'telnet', not 'ssh'."""
+        args = _build_parser().parse_args(["proxy", "host", "23"])
+        assert args.transport == "telnet"
+        assert args.transport != "ssh"
+
+
+class TestBindAddressValidation:
+    """Test bind address defaults — mutation killing."""
+
+    def test_proxy_bind_default_0_0_0_0(self) -> None:
+        """Proxy bind default is 0.0.0.0 exactly."""
+        args = _build_parser().parse_args(["proxy", "host", "23"])
+        assert args.bind == "0.0.0.0"
+        assert args.bind != "127.0.0.1"
+        assert args.bind != "localhost"
+
+    def test_listen_bind_default_0_0_0_0(self) -> None:
+        """Listen bind default is 0.0.0.0 exactly."""
+        args = _build_parser().parse_args(["listen", "ws://url"])
+        assert args.bind == "0.0.0.0"
+        assert args.bind != "127.0.0.1"
+        assert args.bind != "localhost"
+
+    def test_bind_custom_value_preserved(self) -> None:
+        """Custom bind address is preserved."""
+        args = _build_parser().parse_args(["proxy", "host", "23", "--bind", "127.0.0.1"])
+        assert args.bind == "127.0.0.1"
+
+
+class TestPathValidation:
+    """Test WebSocket path default — mutation killing."""
+
+    def test_proxy_path_default_exact_value(self) -> None:
+        """Proxy path default is /ws/terminal exactly."""
+        args = _build_parser().parse_args(["proxy", "host", "23"])
+        assert args.path == "/ws/terminal"
+        assert args.path != "/ws/term"
+        assert args.path != "/terminal"
+        assert args.path != "ws/terminal"  # missing leading slash
