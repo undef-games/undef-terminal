@@ -494,7 +494,6 @@ async def test_can_send_input_open_mode_roles_exact() -> None:
     ws_op = MagicMock()
     st.browsers[ws_op] = "operator"
     assert hub.can_send_input(st, ws_op)
-
     # Viewer cannot send (critical: 'in' operator)
     ws_viewer = MagicMock()
     st.browsers[ws_viewer] = "viewer"
