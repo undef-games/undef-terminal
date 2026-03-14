@@ -19,7 +19,7 @@ from fastapi import FastAPI
 
 from undef.terminal.hijack.hub import TermHub
 
-from .conftest import _drain_all, _drain_until, _snapshot_msg, _ws_url
+from .conftest import _drain_all, _drain_until, _snapshot_msg, _wait_for_server, _ws_url
 
 
 @asynccontextmanager
@@ -38,15 +38,7 @@ async def _tight_rate_hub(acquire_rate: float = 1.0, send_rate: float = 2.0):
     task = asyncio.create_task(server.serve())
 
     try:
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + 5.0
-        while not server.started:
-            if loop.time() > deadline:
-                server.should_exit = True
-                await asyncio.wait_for(task, timeout=2.0)
-                raise RuntimeError("rate_hub: uvicorn startup timeout")
-            await asyncio.sleep(0.05)
-
+        await _wait_for_server(server, task, "rate_hub")
         port: int = server.servers[0].sockets[0].getsockname()[1]
         yield hub, f"http://127.0.0.1:{port}"
     finally:

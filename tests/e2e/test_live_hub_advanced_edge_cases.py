@@ -130,16 +130,20 @@ class TestWorkerOffline:
                 hijack_id = r.json()["hijack_id"]
                 await _drain_until(worker, "control")
 
-            # Worker disconnected; brief yield for disconnect propagation
-            await asyncio.sleep(0.2)
-
-            # Try to send
-            r2 = await http.post(
-                f"/worker/wo2/hijack/{hijack_id}/send",
-                json={"keys": "test", "timeout_ms": 500},
+            # Poll send endpoint until worker disconnect propagates (expected 404/409)
+            deadline_disc = asyncio.get_running_loop().time() + 2.0
+            r2 = None
+            while asyncio.get_running_loop().time() < deadline_disc:
+                r2 = await http.post(
+                    f"/worker/wo2/hijack/{hijack_id}/send",
+                    json={"keys": "test", "timeout_ms": 500},
+                )
+                if r2.status_code in (404, 409):
+                    break
+                await asyncio.sleep(0.05)
+            assert r2 is not None and r2.status_code in (404, 409), (
+                f"Send after disconnect should fail with 404/409, got {r2.status_code if r2 else 'None'}: {r2.text if r2 else ''}"
             )
-            # May be 404 (session expired) or 409 (worker gone)
-            assert r2.status_code in (404, 409), f"Send after disconnect should fail, got {r2.status_code}: {r2.text}"
 
 
 # ---------------------------------------------------------------------------

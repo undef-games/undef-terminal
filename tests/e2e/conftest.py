@@ -84,3 +84,15 @@ async def _poll_until_status(
             pass
         await asyncio.sleep(0.05)
     return last_response
+
+
+async def _wait_for_server(server: Any, task: Any, label: str, *, timeout: float = 5.0) -> None:
+    """Poll until uvicorn server.started is True or raise RuntimeError on timeout."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while not server.started:
+        if loop.time() > deadline:
+            server.should_exit = True
+            await asyncio.wait_for(task, timeout=2.0)
+            raise RuntimeError(f"{label}: uvicorn startup timeout")
+        await asyncio.sleep(0.05)
