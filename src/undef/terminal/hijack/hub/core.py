@@ -165,8 +165,7 @@ class TermHub(_PollingMixin, _HijackOwnershipMixin, _ConnectionMixin):
                     resolved_role = await asyncio.wait_for(resolved_role, timeout=5.0)
                 except TimeoutError as exc:
                     logger.warning("resolve_browser_role_timeout worker_id=%s", worker_id)
-                    if self._on_metric:
-                        self._on_metric("browser_role_resolution_timeout", 1)
+                    self.metric("browser_role_resolution_timeout")
                     raise BrowserRoleResolutionError(worker_id) from exc
         except (BrowserRoleResolutionError, WebSocketException):
             # Re-raise so the caller sees the original close code / error type.

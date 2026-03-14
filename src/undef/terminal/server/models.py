@@ -174,7 +174,7 @@ class SessionDefinition(ServerBaseModel):
     def _validate_display_name(cls, value: str, info: Any) -> str:
         if value == "":
             if isinstance(info.data, dict):
-                return str(info.data["session_id"])
+                return str(info.data.get("session_id", ""))
             return ""
         return str(value)
 
@@ -243,8 +243,4 @@ def validation_error_message(exc: ValidationError) -> str:
     if not errors:
         return str(exc)
     first = errors[0]
-    message = str(first.get("msg", exc))
-    prefix = first.get("loc") or ()
-    if prefix and not message.startswith(str(prefix[0])):
-        return message
-    return message
+    return str(first.get("msg", exc))
