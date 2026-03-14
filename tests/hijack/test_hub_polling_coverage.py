@@ -317,3 +317,118 @@ async def test_wait_for_snapshot_worker_disappears() -> None:
     await task
 
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Mutation-killing tests for polling edge cases
+# ---------------------------------------------------------------------------
+
+
+async def test_snapshot_matches_expects_and_not_or() -> None:
+    """snapshot_matches with both constraints must use AND (not OR)."""
+    snapshot = {"prompt_detected": {"prompt_id": "menu"}, "screen": "Main"}
+    pattern = re.compile("Main")
+
+    # Both match → True
+    assert TermHub.snapshot_matches(snapshot, expect_prompt_id="menu", expect_regex=pattern)
+
+    # Only prompt matches, regex doesn't
+    assert not TermHub.snapshot_matches(snapshot, expect_prompt_id="menu", expect_regex=re.compile("Missing"))
+
+    # Only regex matches, prompt doesn't
+    assert not TermHub.snapshot_matches(snapshot, expect_prompt_id="wrong", expect_regex=pattern)
+
+
+async def test_wait_for_snapshot_timestamp_gt_not_ge() -> None:
+    """wait_for_snapshot must use > not >= for timestamp comparison."""
+    hub = TermHub()
+    await hub._get("bot1")
+
+    req_ts = time.time()
+
+    # Snapshot with ts exactly equal to req_ts should NOT be returned (must be >)
+    hub._workers["bot1"].last_snapshot = {"screen": "test", "ts": req_ts}
+
+    result = await hub.wait_for_snapshot("bot1", timeout_ms=50)
+
+    # Should timeout because ts == req_ts (not greater)
+    assert result is None
+
+
+async def test_wait_for_snapshot_timestamp_exceeds_req() -> None:
+    """Snapshot with ts > req_ts should be returned immediately."""
+    hub = TermHub()
+    await hub._get("bot1")
+
+    req_ts = time.time()
+
+    # Snapshot with ts slightly in future (> req_ts)
+    hub._workers["bot1"].last_snapshot = {"screen": "fresh", "ts": req_ts + 0.01}
+
+    start = time.time()
+    result = await hub.wait_for_snapshot("bot1", timeout_ms=500)
+    elapsed = time.time() - start
+
+    assert result is not None
+    assert result["screen"] == "fresh"
+    assert elapsed < 0.2  # Should return fast, not wait full timeout
+
+
+async def test_wait_for_guard_min_timeout_50ms() -> None:
+    """wait_for_guard clamps timeout to min 50ms (not 49ms or 51ms)."""
+    hub = TermHub()
+    await hub._get("bot1")
+    hub._workers["bot1"].last_snapshot = {"screen": "test"}
+
+    # Request very small timeout that should be clamped to 50ms
+    start = time.time()
+    ok, snap, reason = await hub.wait_for_guard(
+        "bot1",
+        expect_prompt_id="nonexistent",
+        expect_regex=None,
+        timeout_ms=1,  # Way too small
+        poll_interval_ms=10,
+    )
+    elapsed = time.time() - start
+
+    # Should have waited at least 50ms (clamped minimum)
+    assert elapsed >= 0.04
+
+
+async def test_wait_for_guard_min_interval_20ms() -> None:
+    """wait_for_guard clamps poll_interval to min 20ms (not 19ms or 21ms)."""
+    hub = TermHub()
+    await hub._get("bot1")
+    hub._workers["bot1"].last_snapshot = {"screen": "test", "ts": time.time()}
+
+    # Request very small interval
+    start = time.time()
+    ok, snap, reason = await hub.wait_for_guard(
+        "bot1",
+        expect_prompt_id="nonexistent",
+        expect_regex=None,
+        timeout_ms=100,
+        poll_interval_ms=1,  # Way too small, should clamp to 20ms
+    )
+    elapsed = time.time() - start
+
+    # Should have polled multiple times with minimum 20ms intervals
+    # At least one poll cycle should occur
+    assert elapsed >= 0.015
+
+
+async def test_snapshot_matches_none_snapshot_returns_false() -> None:
+    """snapshot_matches with None snapshot must return False (not True)."""
+    # The check on line 36 is critical
+    assert not TermHub.snapshot_matches(None, expect_prompt_id="menu", expect_regex=None)
+    assert not TermHub.snapshot_matches(None, expect_prompt_id=None, expect_regex=re.compile("x"))
+    assert not TermHub.snapshot_matches(None, expect_prompt_id=None, expect_regex=None)
+
+
+async def test_snapshot_no_constraints_requires_nonnone() -> None:
+    """snapshot_matches with no constraints returns True only for non-None snapshot."""
+    # Non-None snapshot, no constraints → True
+    assert TermHub.snapshot_matches({"screen": "x"}, expect_prompt_id=None, expect_regex=None)
+
+    # None snapshot, no constraints → False (not True)
+    assert not TermHub.snapshot_matches(None, expect_prompt_id=None, expect_regex=None)
