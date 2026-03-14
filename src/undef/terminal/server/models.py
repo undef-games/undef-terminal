@@ -40,7 +40,7 @@ def _clean_path(value: str, fallback: str) -> str:
 class ServerBaseModel(BaseModel):
     """Base class for mutable server models."""
 
-    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+    model_config = ConfigDict(extra="forbid")
 
 
 class AuthConfig(ServerBaseModel):
@@ -86,6 +86,8 @@ class UiConfig(ServerBaseModel):
 class RecordingConfig(ServerBaseModel):
     """File-backed recording settings."""
 
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
     enabled_by_default: bool = False
     directory: Path = Path(".uterm-recordings")
     max_bytes: int = 0  # 0 = unlimited
@@ -116,13 +118,13 @@ class SessionDefinition(ServerBaseModel):
     display_name: str = ""
     connector_type: str = "shell"
     connector_config: dict[str, Any] = Field(default_factory=dict)
-    input_mode: str = "open"
+    input_mode: InputMode = "open"
     auto_start: bool = True
     tags: list[str] = Field(default_factory=list)
     recording_enabled: bool | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     owner: str | None = None
-    visibility: str = "public"
+    visibility: Visibility = "public"
     ephemeral: bool = False
 
     @model_validator(mode="before")
@@ -178,9 +180,9 @@ class SessionDefinition(ServerBaseModel):
             return ""
         return str(value)
 
-    @field_validator("input_mode")
+    @field_validator("input_mode", mode="before")
     @classmethod
-    def _validate_input_mode(cls, value: str, info: Any) -> str:
+    def _validate_input_mode(cls, value: Any, info: Any) -> Any:
         if value not in {"hijack", "open"}:
             session_id = ""
             if isinstance(info.data, dict):
@@ -188,9 +190,9 @@ class SessionDefinition(ServerBaseModel):
             raise ValueError(f"invalid input_mode for {session_id or '<unknown>'}: {value}")
         return value
 
-    @field_validator("visibility")
+    @field_validator("visibility", mode="before")
     @classmethod
-    def _validate_visibility(cls, value: str, info: Any) -> str:
+    def _validate_visibility(cls, value: Any, info: Any) -> Any:
         if value not in {"public", "operator", "private"}:
             session_id = ""
             if isinstance(info.data, dict):
@@ -204,16 +206,17 @@ class SessionRuntimeStatus(ServerBaseModel):
 
     session_id: str
     display_name: str
+    created_at: datetime
     connector_type: str
     lifecycle_state: SessionLifecycle
-    input_mode: str
+    input_mode: InputMode
     connected: bool
     auto_start: bool
     tags: list[str]
     recording_enabled: bool
     recording_available: bool = False
     owner: str | None = None
-    visibility: str = "public"
+    visibility: Visibility = "public"
     last_error: str | None = None
 
 
