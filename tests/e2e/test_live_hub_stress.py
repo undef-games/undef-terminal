@@ -41,10 +41,12 @@ class TestConcurrentBrowsers:
         _, base_url = live_hub
 
         received: dict[int, list[dict[str, Any]]] = {i: [] for i in range(10)}
+        ready = asyncio.Barrier(11)  # 10 browsers + 1 coordinator
 
         async def _browser_task(i: int) -> None:
             async with websockets.connect(_ws_url(base_url, "/ws/browser/stress2/term")) as browser:
                 await _drain_all(browser)  # consume hello + hijack_state
+                await ready.wait()  # signal ready, wait for all + coordinator
                 # Wait for the term message
                 term = await _drain_until(browser, "term", timeout=5.0)
                 if term is not None:
@@ -56,10 +58,10 @@ class TestConcurrentBrowsers:
             # Start 10 browsers
             browser_tasks = [asyncio.create_task(_browser_task(i)) for i in range(10)]
 
-            # Give browsers time to connect
-            await asyncio.sleep(0.1)
+            # Wait for all browsers to be connected and ready
+            await ready.wait()
 
-            # Worker broadcasts a term message (triggers via snapshot → worker sends)
+            # Worker broadcasts a term message
             await worker.send(
                 json.dumps(
                     {
