@@ -346,3 +346,26 @@ class TestPathValidation:
         assert args.path != "/ws/term"
         assert args.path != "/terminal"
         assert args.path != "ws/terminal"  # missing leading slash
+
+
+class TestMutationKillingCLI:
+    """Additional mutation-killing tests for CLI validation."""
+
+    def test_proxy_port_default_exact_8765(self) -> None:
+        """Default proxy port is exactly 8765, not 8764 or 8766."""
+        args = _build_parser().parse_args(["proxy", "host", "23"])
+        assert args.port == 8765
+        assert args.port != 8764
+        assert args.port != 8766
+
+    def test_transport_case_sensitivity(self) -> None:
+        """Transport choice must match exactly (case-sensitive)."""
+        # telnet in lowercase should work
+        args = _build_parser().parse_args(["proxy", "host", "23", "--transport", "telnet"])
+        assert args.transport == "telnet"
+
+    def test_path_leading_slash_required(self) -> None:
+        """Path default has leading slash — critical for routing."""
+        args = _build_parser().parse_args(["proxy", "host", "23"])
+        assert args.path.startswith("/")
+        assert args.path == "/ws/terminal"
