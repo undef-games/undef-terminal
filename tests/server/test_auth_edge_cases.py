@@ -11,6 +11,7 @@ import time
 from typing import Any
 
 import jwt
+import pytest
 
 _TEST_KEY = "uterm-test-secret-32-byte-minimum-key"
 
@@ -393,3 +394,60 @@ class TestAuthMutationKilling:
         # Non-bearer schemes should fail
         assert _extract_bearer_token({"authorization": "Basic dXNlcjpwYXNz"}) is None
         assert _extract_bearer_token({"authorization": "Digest username=user"}) is None
+
+    def test_resolve_principal_mode_set_membership_exact(self) -> None:
+        """Mode check uses set membership {none, dev}, not just substring."""
+        from undef.terminal.server.auth import _resolve_principal
+        from undef.terminal.server.models import AuthConfig
+
+        # "none" mode → admin, "dev" mode → admin
+        for mode_val in ["none", "dev"]:
+            auth = AuthConfig(mode=mode_val, worker_bearer_token="token")
+            p = _resolve_principal({}, {}, auth)
+            assert "admin" in p.roles
+
+    def test_principal_from_jwt_token_subject_strip_required(self) -> None:
+        """JWT subject extraction must strip whitespace."""
+        from undef.terminal.server.auth import _principal_from_jwt_token
+        from undef.terminal.server.models import AuthConfig
+
+        token = _make_token(sub="  user-with-spaces  ")
+        auth = AuthConfig(
+            mode="jwt",
+            jwt_public_key_pem=_TEST_KEY,
+            jwt_algorithms=["HS256"],
+            jwt_issuer="undef-terminal",
+            jwt_audience="undef-terminal-server",
+            worker_bearer_token=_make_token(),
+        )
+        p = _principal_from_jwt_token(token, auth)
+        assert p.subject_id == "user-with-spaces"
+        assert p.subject_id != "  user-with-spaces  "
+
+    def test_principal_from_jwt_token_subject_empty_after_strip_raises(self) -> None:
+        """JWT subject whitespace-only should raise."""
+        from undef.terminal.server.auth import _principal_from_jwt_token
+        from undef.terminal.server.models import AuthConfig
+
+        token = _make_token(sub="   ")
+        auth = AuthConfig(
+            mode="jwt",
+            jwt_public_key_pem=_TEST_KEY,
+            jwt_algorithms=["HS256"],
+            jwt_issuer="undef-terminal",
+            jwt_audience="undef-terminal-server",
+            worker_bearer_token=_make_token(),
+        )
+        with pytest.raises(ValueError, match="sub claim is required"):
+            _principal_from_jwt_token(token, auth)
+
+    def test_roles_from_claims_string_and_list_both_strip_lower(self) -> None:
+        """Both string and list branches must call strip().lower()."""
+        from undef.terminal.server.auth import _roles_from_claims
+        from undef.terminal.server.models import AuthConfig
+
+        auth = AuthConfig(mode="jwt", jwt_public_key_pem="key", worker_bearer_token="token")
+        # Both branches with whitespace/mixed case
+        result_str = _roles_from_claims({"roles": "  OPERATOR  ,  ADMIN  "}, auth)
+        result_list = _roles_from_claims({"roles": ["  OPERATOR  ", "  ADMIN  "]}, auth)
+        assert result_str == result_list == frozenset({"operator", "admin"})
