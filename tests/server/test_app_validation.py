@@ -423,3 +423,43 @@ class TestValidateAuthConfigMutationKilling:
         # Whitespace is not stripped in models, so this is technically "present"
         # but let's document the behavior
         _validate_auth_config(config)  # This will pass (whitespace key is truthy)
+
+    def test_validate_auth_config_mode_in_set_exact(self) -> None:
+        """Mode check must use set membership, and early return from non-jwt modes."""
+        # "dev" and "none" modes should early return without error
+        for mode_val in ["dev", "none"]:
+            config = ServerConfig(auth=AuthConfig(mode=mode_val, worker_bearer_token="token"))
+            _validate_auth_config(config)
+
+        # Mode not in {none, dev, header, jwt} gets past early returns but doesn't validate JWT
+        # (validation is only if mode == "jwt")
+        config_unknown = ServerConfig(auth=AuthConfig(mode="unknown", worker_bearer_token="token"))
+        _validate_auth_config(config_unknown)  # Should not raise
+
+    def test_validate_auth_config_jwt_check_continues_after_header(self) -> None:
+        """JWT mode check must continue after header check (not early return)."""
+        # If `if mode != "jwt": return` mutated to `if mode == "jwt": return`,
+        # jwt_algorithms check would be skipped
+        config = ServerConfig(
+            auth=AuthConfig(
+                mode="jwt",
+                jwt_public_key_pem="key",
+                jwt_algorithms=[],  # Empty — should raise
+                worker_bearer_token="token",
+            )
+        )
+        with pytest.raises(ValueError, match="jwt_algorithms"):
+            _validate_auth_config(config)
+
+    def test_validate_auth_config_none_algorithm_both_conditions(self) -> None:
+        """'none' check must look at lowercase AND check all items (any)."""
+        config = ServerConfig(
+            auth=AuthConfig(
+                mode="jwt",
+                jwt_public_key_pem="key",
+                jwt_algorithms=["RS256", "NONE"],  # UPPERCASE
+                worker_bearer_token="token",
+            )
+        )
+        with pytest.raises(ValueError, match="none"):
+            _validate_auth_config(config)
