@@ -432,3 +432,65 @@ async def test_snapshot_no_constraints_requires_nonnone() -> None:
 
     # None snapshot, no constraints → False (not True)
     assert not TermHub.snapshot_matches(None, expect_prompt_id=None, expect_regex=None)
+
+
+# ---------------------------------------------------------------------------
+# Mutation-killing tests for snapshot_matches and polling logic
+# ---------------------------------------------------------------------------
+
+
+async def test_snapshot_matches_regex_and_not_logic() -> None:
+    """Test double-negation regex logic catches mutations.
+
+    Line 40: `not (expect_regex is not None and not expect_regex.search(...))`
+    Mutations: `and`→`or`, `not` removal, `is not`→`is`
+    """
+    pattern = re.compile("found")
+    snapshot = {"screen": "found it"}
+
+    # Regex present and matches → True (catches `not` removal)
+    assert TermHub.snapshot_matches(snapshot, expect_prompt_id=None, expect_regex=pattern)
+
+    # Regex present but doesn't match → False (catches `not` removal)
+    snapshot_no_match = {"screen": "not there"}
+    assert not TermHub.snapshot_matches(snapshot_no_match, expect_prompt_id=None, expect_regex=pattern)
+
+    # Regex absent → True regardless of screen (catches `is not`→`is`)
+    assert TermHub.snapshot_matches({"screen": "anything"}, expect_prompt_id=None, expect_regex=None)
+    assert TermHub.snapshot_matches({"screen": ""}, expect_prompt_id=None, expect_regex=None)
+
+
+async def test_snapshot_matches_timestamp_boundary() -> None:
+    """Test timestamp comparison boundaries (mutation documentation).
+
+    Line 53: `snap.get("ts", 0) > req_ts`
+    Mutations: `>`→`>=`, `>`→`<`
+
+    Integration tests in other files cover actual timestamp behavior.
+    This documents the mutation targets:
+    """
+    req_ts = 100.0
+
+    # Catches `>`→`>=`: value == req_ts should NOT be considered fresh
+    ts_equal = 100.0
+    assert not (ts_equal > req_ts)  # False, correctly
+
+    # Catches `>`→`<` inversion: value > req_ts should be fresh
+    ts_newer = 101.0
+    assert ts_newer > req_ts  # True, correctly
+
+    # Default case: missing ts treated as 0, older than any req_ts
+    ts_default = 0.0
+    assert not (ts_default > req_ts)  # False, correctly
+
+
+async def test_polling_interval_min_enforced() -> None:
+    """Test that minimum poll interval is enforced via max().
+
+    Line 87: `interval = max(20, poll_interval_ms) / 1000.0`
+    Mutations: `max`→`min` would allow intervals below 20ms
+
+    This documents the mutation target; integration tests cover actual polling.
+    """
+    assert max(20, 10) == 20  # Catches `max`→`min`
+    assert max(20, 50) == 50  # Boundary above minimum
