@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import re
-import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, TypeAlias
 
@@ -120,7 +120,7 @@ class SessionDefinition(ServerBaseModel):
     auto_start: bool = True
     tags: list[str] = Field(default_factory=list)
     recording_enabled: bool | None = None
-    created_at: float = Field(default_factory=time.time)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     owner: str | None = None
     visibility: str = "public"
     ephemeral: bool = False
