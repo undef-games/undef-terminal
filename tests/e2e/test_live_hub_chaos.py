@@ -120,6 +120,9 @@ class TestBrowserDropsMidHijack:
                 assert b2_state is not None, "b2 should see hijack_state"
                 assert b2_state.get("owner") == "other", f"b2 should see owner=other, got {b2_state}"
 
+                # Drain the "pause" the worker received when b1 hijacked
+                await _drain_until(worker, "control", timeout=2.0)
+
             # Both dropped; worker should get resume
             resume = await _drain_until(worker, "control", timeout=3.0)
             assert resume is not None, "Worker should receive resume after all browsers drop"

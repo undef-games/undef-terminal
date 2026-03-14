@@ -118,9 +118,12 @@ class TestBroadcastUnderLoad:
 
         browser_counts: dict[int, int] = dict.fromkeys(range(3), 0)
 
+        ready4 = asyncio.Barrier(4)  # 3 browsers + 1 coordinator
+
         async def _browser_task(i: int) -> None:
             async with websockets.connect(_ws_url(base_url, "/ws/browser/stress4/term")) as browser:
                 await _drain_all(browser)  # drain initial messages
+                await ready4.wait()
                 msgs = await _drain_all(browser, timeout=2.0)
                 browser_counts[i] = sum(1 for m in msgs if m.get("type") == "term")
 
@@ -128,7 +131,7 @@ class TestBroadcastUnderLoad:
             await worker.recv()
 
             browser_tasks = [asyncio.create_task(_browser_task(i)) for i in range(3)]
-            await asyncio.sleep(0.05)  # Let browsers connect
+            await ready4.wait()  # Wait for all browsers ready
 
             # Send 20 rapid term messages
             for j in range(20):
@@ -146,9 +149,12 @@ class TestBroadcastUnderLoad:
 
         snapshots: dict[int, dict[str, Any] | None] = {}
 
+        ready5 = asyncio.Barrier(6)  # 5 browsers + 1 coordinator
+
         async def _browser_task(i: int) -> None:
             async with websockets.connect(_ws_url(base_url, "/ws/browser/stress5/term")) as browser:
                 await _drain_all(browser)  # drain hello + hijack_state
+                await ready5.wait()
                 snap = await _drain_until(browser, "snapshot", timeout=3.0)
                 snapshots[i] = snap
 
@@ -156,7 +162,7 @@ class TestBroadcastUnderLoad:
             await worker.recv()
 
             browser_tasks = [asyncio.create_task(_browser_task(i)) for i in range(5)]
-            await asyncio.sleep(0.05)  # Let browsers connect
+            await ready5.wait()  # Wait for all browsers ready
 
             # Worker sends snapshot
             await worker.send(json.dumps(_snapshot_msg("stress test content")))
