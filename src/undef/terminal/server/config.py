@@ -41,6 +41,8 @@ def _merged_config_mapping(data: dict[str, Any]) -> dict[str, Any]:
     merged = dict(base)
     for section in ("server", "auth", "ui", "recording"):
         if section in data:
+            if not isinstance(data[section], dict):
+                raise ValueError(f"[{section}] must be a table, got {type(data[section]).__name__!r}")
             merged[section] = {**merged[section], **data[section]}
     if data.get("sessions"):
         merged["sessions"] = [entry for entry in data["sessions"] if isinstance(entry, dict)]

@@ -228,6 +228,13 @@ def test_partial_recording_override_preserves_sibling_defaults() -> None:
     assert config.recording.directory == default_server_config().recording.directory
 
 
+@pytest.mark.parametrize("section", ["server", "auth", "ui", "recording"])
+def test_config_from_mapping_rejects_non_dict_known_section(section: str) -> None:
+    # Malformed TOML (e.g. `server = []`) must raise ValueError, not TypeError.
+    with pytest.raises(ValueError, match=rf"\[{section}\] must be a table"):
+        config_from_mapping({section: []})
+
+
 def test_config_from_mapping_rejects_unknown_top_level_section() -> None:
     with pytest.raises(ValueError, match="Extra inputs are not permitted"):
         config_from_mapping({"bogus": {"x": 1}})
