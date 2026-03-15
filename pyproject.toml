@@ -121,7 +121,7 @@ addopts = [
     "-ra",
     "--ignore=tests/playwright/test_hijack.py",
     "--ignore=tests/playwright/test_server.py",
-    "--cov=undef",
+    "--cov=undef.terminal",
     "--cov-branch",
     "--cov-report=term-missing",
     "--cov-fail-under=100",
@@ -170,7 +170,7 @@ ignore = ["E501", "S104", "S112", "S311"]
 "packages/**/tests/**/*.py" = ["E402", "B905", "S101", "S105", "S106", "S110", "ARG", "TCH", "RUF003", "RUF012", "RUF015", "RUF043", "RUF059"]
 
 [tool.coverage.run]
-source = ["undef"]
+source = ["undef.terminal"]
 omit = ["tests/*"]
 branch = true
 

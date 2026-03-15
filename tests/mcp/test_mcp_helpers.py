@@ -156,6 +156,17 @@ class TestCleanSnapshot:
         result = _clean_snapshot(snap, "text", tail_lines=0)
         assert result["screen"] == "a\nb\nc"
 
+    def test_tail_lines_raw_larger_than_content(self) -> None:
+        snap: dict[str, Any] = {"screen": "\x1b[31mA\x1b[0m\nB", "cols": 80}
+        result = _clean_snapshot(snap, "raw", tail_lines=10)
+        assert result["screen"] == "\x1b[31mA\x1b[0m\nB"
+        assert result["cols"] == 80
+
+    def test_tail_lines_rendered_larger_than_content(self) -> None:
+        snap: dict[str, Any] = {"screen": "a\nb", "cols": 80}
+        result = _clean_snapshot(snap, "rendered", tail_lines=10)
+        assert result["screen"] == "a\nb"
+
 
 # ---------------------------------------------------------------------------
 # _unescape_keys unit tests

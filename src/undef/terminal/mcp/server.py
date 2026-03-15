@@ -94,9 +94,7 @@ def _clean_snapshot(
             if len(lines) > tail_lines:
                 return {**snapshot, "screen": "\n".join(lines[-tail_lines:])}
         return snapshot
-    screen = snapshot.get("screen", "")
-    if output != "raw":
-        screen = strip_ansi(screen)
+    screen = strip_ansi(snapshot.get("screen", ""))
     if tail_lines is not None and tail_lines > 0:
         lines = screen.splitlines()
         if len(lines) > tail_lines:
