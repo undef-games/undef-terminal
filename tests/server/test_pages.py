@@ -277,6 +277,40 @@ def test_token_cookie_has_secure_flag_over_https() -> None:
     assert "Secure" in token_cookie_headers[0]
 
 
+def test_set_page_cookies_skips_token_for_anonymous() -> None:
+    """_set_page_cookies must not write token_cookie when principal is anonymous."""
+    from fastapi.responses import HTMLResponse
+    from starlette.requests import Request
+
+    from undef.terminal.server.routes.pages import _set_page_cookies
+
+    cfg = default_server_config()
+    cfg.auth = AuthConfig(
+        mode="jwt",
+        jwt_public_key_pem=_TEST_KEY,
+        jwt_algorithms=["HS256"],
+        jwt_issuer="undef-terminal",
+        jwt_audience="undef-terminal-server",
+        worker_bearer_token=_make_token(sub="worker", roles=["admin"]),
+    )
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "headers": [
+            (b"authorization", f"Bearer {_make_token(sub='x')}".encode()),
+        ],
+        "query_string": b"",
+    }
+    req = Request(scope)
+    resp = HTMLResponse("ok")
+    # Call with principal_name="anonymous" — must NOT set token_cookie
+    _set_page_cookies(resp, req, cfg, "anonymous", "operator", secure=False)
+    set_cookies = b",".join(v for k, v in resp.raw_headers if k == b"set-cookie")
+    assert b"uterm_token=" not in set_cookies.lower()
+    assert b"uterm_principal=anonymous" in set_cookies
+
+
 def test_jwt_token_cookie_enables_subsequent_api_call() -> None:
     """Full browser flow: page request → token_cookie → API call without Bearer → 200."""
     token = _make_token(sub="user1", roles=["admin"])

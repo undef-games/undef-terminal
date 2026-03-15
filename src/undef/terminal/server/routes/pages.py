@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Annotated
 from fastapi import APIRouter, HTTPException, Path, Request
 from fastapi.responses import HTMLResponse
 
-from undef.terminal.server.auth import _extract_bearer_token, resolve_http_principal
+from undef.terminal.server.auth import extract_bearer_token, resolve_http_principal
 from undef.terminal.server.ui import connect_page_html, operator_dashboard_html, replay_page_html, session_page_html
 
 if TYPE_CHECKING:
@@ -54,8 +54,8 @@ def _set_page_cookies(
 ) -> None:
     _set_auth_cookie(response, cfg.auth.principal_cookie, principal_name, secure=secure)
     _set_auth_cookie(response, cfg.auth.surface_cookie, surface, secure=secure)
-    if cfg.auth.mode == "jwt":
-        token = _extract_bearer_token(request.headers)
+    if cfg.auth.mode == "jwt" and principal_name != "anonymous":
+        token = extract_bearer_token(request.headers)
         if token:
             _set_auth_cookie(response, cfg.auth.token_cookie, token, secure=secure)
 

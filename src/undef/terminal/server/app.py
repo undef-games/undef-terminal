@@ -25,7 +25,7 @@ from starlette.staticfiles import StaticFiles
 from undef.terminal.hijack.hub import TermHub
 from undef.terminal.server.auth import (
     Principal,
-    _extract_bearer_token,
+    extract_bearer_token,
     resolve_http_principal,
     resolve_ws_principal,
 )
@@ -133,7 +133,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
             and connection.scope.get("type") == "websocket"
             and str(connection.scope.get("path", "")).startswith("/ws/worker/")
         ):
-            token = _extract_bearer_token(connection.headers)
+            token = extract_bearer_token(connection.headers)
             if secrets.compare_digest(token or "", config.auth.worker_bearer_token or ""):
                 connection.state.uterm_principal = Principal(
                     subject_id="worker", roles=frozenset({"admin"}), scopes=frozenset({"*"})

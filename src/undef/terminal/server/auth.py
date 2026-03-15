@@ -50,7 +50,7 @@ def _cookie_value(cookies: dict[str, str], key: str) -> str | None:
     return text or None
 
 
-def _extract_bearer_token(headers: Any) -> str | None:
+def extract_bearer_token(headers: Any) -> str | None:
     authorization = str(headers.get("authorization", "")).strip()
     if not authorization:
         return None
@@ -158,7 +158,7 @@ def _resolve_principal(headers: Any, cookies: Any, auth: AuthConfig) -> Principa
         return _principal_from_header_auth(headers, cookies, auth)
     if mode != "jwt":
         raise ValueError(f"unknown auth mode: {mode!r}")
-    token = _extract_bearer_token(headers) or _cookie_value(cookies, auth.token_cookie)
+    token = extract_bearer_token(headers) or _cookie_value(cookies, auth.token_cookie)
     if not token:
         return _anonymous_principal()
     try:
