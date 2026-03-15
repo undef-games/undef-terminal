@@ -7,9 +7,9 @@ interface SessionMetaProps {
 export function SessionMeta({ summary }: SessionMetaProps) {
   return (
     <>
-      <div style={{ borderTop: "0.5px solid var(--border-primary)", paddingTop: 16 }}>
-        <SectionLabel>Session info</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
+      <div className="border-section">
+        <div className="section-label">Session info</div>
+        <div className="meta-list">
           <MetaRow label="Connector" value={summary.connectorType} />
           <MetaRow label="State" value={summary.lifecycleState} />
           <MetaRow label="Owner" value={summary.owner ?? "—"} />
@@ -23,22 +23,11 @@ export function SessionMeta({ summary }: SessionMetaProps) {
       </div>
 
       {summary.tags.length > 0 && (
-        <div style={{ borderTop: "0.5px solid var(--border-primary)", paddingTop: 16 }}>
-          <SectionLabel>Tags</SectionLabel>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        <div className="border-section">
+          <div className="section-label">Tags</div>
+          <div className="tag-list">
             {summary.tags.map((tag) => (
-              <span
-                key={tag}
-                style={{
-                  fontSize: 11,
-                  padding: "2px 8px",
-                  borderRadius: "var(--radius-pill)",
-                  border: "0.5px solid var(--border-primary)",
-                  color: "var(--text-secondary)",
-                }}
-              >
-                {tag}
-              </span>
+              <span key={tag} className="tag-pill">{tag}</span>
             ))}
           </div>
         </div>
@@ -47,24 +36,10 @@ export function SessionMeta({ summary }: SessionMetaProps) {
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{
-      fontSize: 11,
-      textTransform: "uppercase",
-      letterSpacing: "0.5px",
-      color: "var(--text-tertiary)",
-      marginBottom: 8,
-    }}>
-      {children}
-    </div>
-  );
-}
-
 function MetaRow({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between" }}>
-      <span style={{ color: "var(--text-secondary)" }}>{label}</span>
+    <div className="meta-row">
+      <span className="text-muted">{label}</span>
       <span style={{ color: valueColor }}>{value}</span>
     </div>
   );

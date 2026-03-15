@@ -9,24 +9,13 @@ interface OperatorSidebarProps {
   bootstrap: AppBootstrap;
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{
-      fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px",
-      color: "var(--text-tertiary)", marginBottom: 8,
-    }}>
-      {children}
-    </div>
-  );
-}
-
 export function OperatorSidebar({ sessionId, bootstrap }: OperatorSidebarProps) {
   const { summary, analysis, modePending, utilityPending, switchMode, clear, analyze } = useSessionStore();
 
   return (
     <>
       <div>
-        <SectionLabel>Input mode</SectionLabel>
+        <div className="section-label">Input mode</div>
         <ModeToggle
           mode={summary?.inputMode ?? "hijack"}
           disabled={modePending}
@@ -35,17 +24,17 @@ export function OperatorSidebar({ sessionId, bootstrap }: OperatorSidebarProps) 
       </div>
 
       <div>
-        <SectionLabel>Actions</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <button type="button" style={{ textAlign: "left", width: "100%", padding: "8px 12px" }}
+        <div className="section-label">Actions</div>
+        <div className="sidebar-actions">
+          <button type="button" className="sidebar-btn"
             disabled={utilityPending} onClick={() => void analyze(sessionId)}>
             Analyze screen
           </button>
-          <a className="action-link" style={{ textAlign: "left", width: "100%", padding: "8px 12px", justifyContent: "flex-start" }}
+          <a className="action-link sidebar-btn"
             href={`${bootstrap.app_path}/replay/${encodeURIComponent(sessionId)}`}>
             View replay
           </a>
-          <button type="button" style={{ textAlign: "left", width: "100%", padding: "8px 12px" }}
+          <button type="button" className="sidebar-btn"
             disabled={utilityPending} onClick={() => void clear(sessionId)}>
             Clear runtime
           </button>
@@ -54,11 +43,8 @@ export function OperatorSidebar({ sessionId, bootstrap }: OperatorSidebarProps) 
 
       {analysis && (
         <div>
-          <SectionLabel>Analysis</SectionLabel>
-          <div style={{
-            fontSize: 12, padding: 8, background: "var(--bg-tertiary)",
-            borderRadius: "var(--radius-md)", whiteSpace: "pre-wrap", color: "var(--text-secondary)",
-          }}>
+          <div className="section-label">Analysis</div>
+          <div className="code-box code-box-sm">
             {analysis}
           </div>
         </div>
@@ -66,13 +52,10 @@ export function OperatorSidebar({ sessionId, bootstrap }: OperatorSidebarProps) 
 
       {summary && <SessionMeta summary={summary} />}
 
-      <div style={{ flex: 1 }} />
+      <div className="flex-spacer" />
 
-      <div style={{ borderTop: "0.5px solid var(--border-primary)", paddingTop: 12 }}>
-        <button type="button" style={{
-          width: "100%", padding: "8px 12px",
-          color: "var(--text-danger)", borderColor: "var(--border-danger)",
-        }} onClick={() => {
+      <div className="border-section border-section-sm">
+        <button type="button" className="btn-full btn-danger-outline" onClick={() => {
           void restartSession(sessionId).then(() => window.location.reload());
         }}>
           Restart session

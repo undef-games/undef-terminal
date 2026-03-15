@@ -50,7 +50,7 @@ export function SessionRow({ session, bootstrap }: SessionRowProps) {
         {session.recordingAvailable && (
           <a className="action-link" href={`${appPath}/replay/${encodeURIComponent(session.sessionId)}`}>Replay</a>
         )}
-        <button type="button" style={{ fontSize: 11, padding: "4px 10px" }}
+        <button type="button" className="btn-sm"
           onClick={() => void restart(session.sessionId)}>
           Restart
         </button>

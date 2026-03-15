@@ -4,8 +4,6 @@ import type { AppBootstrap } from "../../api/types";
 import { saveRecent } from "./ConnectPage";
 import styles from "./ConnectPage.module.css";
 
-const labelStyle = { fontSize: 12, color: "var(--text-secondary)", display: "block", marginBottom: 4 } as const;
-
 interface ConnectFormProps {
   bootstrap: AppBootstrap;
 }
@@ -70,13 +68,13 @@ export function ConnectForm({ bootstrap: _bootstrap }: ConnectFormProps) {
     <form onSubmit={(e) => void handleSubmit(e)}>
       <div className={styles.formGrid}>
         <label>
-          <span style={labelStyle}>Host</span>
+          <span className="form-label">Host</span>
           <input type="text" value={needsHost ? host : "(local)"}
             onChange={needsHost ? (e) => setHost(e.target.value) : undefined}
             placeholder="bbs.example.com" disabled={!needsHost} readOnly={!needsHost} />
         </label>
         <label>
-          <span style={labelStyle}>Transport</span>
+          <span className="form-label">Transport</span>
           <select value={connType} onChange={(e) => handleTypeChange(e.target.value)}>
             <option value="telnet">telnet</option>
             <option value="ssh">ssh</option>
@@ -84,7 +82,7 @@ export function ConnectForm({ bootstrap: _bootstrap }: ConnectFormProps) {
           </select>
         </label>
         <label>
-          <span style={labelStyle}>Port</span>
+          <span className="form-label">Port</span>
           <input type="text" value={port}
             onChange={(e) => { setPort(e.target.value); setPortEdited(true); }}
             placeholder="23" disabled={!needsHost} />
@@ -92,38 +90,34 @@ export function ConnectForm({ bootstrap: _bootstrap }: ConnectFormProps) {
       </div>
 
       {connType === "ssh" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+        <div className="ssh-grid">
           <label>
-            <span style={labelStyle}>Username</span>
+            <span className="form-label">Username</span>
             <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="username" />
           </label>
           <label>
-            <span style={labelStyle}>Password</span>
+            <span className="form-label">Password</span>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="password" />
           </label>
         </div>
       )}
 
       <div className={styles.formRow}>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)" }}>
-          <input type="checkbox" checked={recording} onChange={(e) => setRecording(e.target.checked)} style={{ width: 14, height: 14 }} />
+        <label className="checkbox-label">
+          <input type="checkbox" checked={recording} onChange={(e) => setRecording(e.target.checked)} className="checkbox-input" />
           Record session
         </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", marginLeft: 16 }}>
-          <input type="checkbox" checked={autoReconnect} onChange={(e) => setAutoReconnect(e.target.checked)} style={{ width: 14, height: 14 }} />
+        <label className="checkbox-label ml-16">
+          <input type="checkbox" checked={autoReconnect} onChange={(e) => setAutoReconnect(e.target.checked)} className="checkbox-input" />
           Auto-reconnect
         </label>
-        <div style={{ flex: 1 }} />
-        <button type="submit" disabled={submitting} style={{
-          fontSize: 13, padding: "8px 20px",
-          background: "var(--bg-info)", borderColor: "var(--border-info)",
-          color: "var(--text-info)", fontWeight: 500,
-        }}>
+        <div className="flex-spacer" />
+        <button type="submit" disabled={submitting} className="btn-primary btn-connect">
           {submitting ? "Connecting…" : "Connect"}
         </button>
       </div>
 
-      {error && <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-danger)" }}>{error}</div>}
+      {error && <div className="error-text mt-8">{error}</div>}
     </form>
   );
 }

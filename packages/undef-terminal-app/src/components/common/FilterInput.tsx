@@ -11,7 +11,7 @@ export function FilterInput({ value, onChange, placeholder = "Filter..." }: Filt
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      style={{ width: 180, fontSize: 12, padding: "6px 10px" }}
+      className="filter-input"
     />
   );
 }

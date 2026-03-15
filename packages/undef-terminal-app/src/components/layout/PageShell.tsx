@@ -6,12 +6,7 @@ interface PageShellProps {
 
 export function PageShell({ children }: PageShellProps) {
   return (
-    <div style={{
-      display: "flex",
-      flexDirection: "column",
-      minHeight: "100%",
-      background: "var(--bg-primary)",
-    }}>
+    <div className="page-shell">
       {children}
     </div>
   );

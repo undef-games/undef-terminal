@@ -7,7 +7,7 @@ interface EventDetailProps {
 export function EventDetail({ entry }: EventDetailProps) {
   if (!entry) {
     return (
-      <div style={{ padding: "12px 14px", fontSize: 12, color: "var(--text-secondary)" }}>
+      <div className="detail-pad text-muted">
         No event selected.
       </div>
     );
@@ -21,40 +21,19 @@ export function EventDetail({ entry }: EventDetailProps) {
 
   return (
     <>
-      <div style={{
-        padding: "12px 14px",
-        borderBottom: "0.5px solid var(--border-primary)",
-      }}>
-        <div style={{
-          fontSize: 11,
-          textTransform: "uppercase",
-          letterSpacing: "0.5px",
-          color: "var(--text-tertiary)",
-          marginBottom: 4,
-        }}>
+      <div className="detail-header">
+        <div className="section-label mb-4">
           Event detail
         </div>
-        <div style={{ fontSize: 13, fontWeight: 500 }}>{entry.event}</div>
+        <div className="detail-title">{entry.event}</div>
       </div>
-      <div style={{ padding: "12px 14px", fontSize: 12, flex: 1, overflow: "auto" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div className="detail-body">
+        <div className="meta-list">
           <MetaRow label="Timestamp" value={ts} />
           <MetaRow label="Event" value={entry.event} />
           <MetaRow label="Bytes" value={String(bytes)} />
         </div>
-        <div style={{
-          marginTop: 12,
-          padding: 8,
-          background: "var(--bg-tertiary)",
-          borderRadius: "var(--radius-md)",
-          fontFamily: "var(--font-mono)",
-          fontSize: 11,
-          color: "var(--text-secondary)",
-          wordBreak: "break-all",
-          whiteSpace: "pre-wrap",
-          maxHeight: 200,
-          overflow: "auto",
-        }}>
+        <div className="code-box text-mono code-box-scroll">
           {dataStr}
         </div>
       </div>
@@ -64,9 +43,9 @@ export function EventDetail({ entry }: EventDetailProps) {
 
 function MetaRow({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between" }}>
-      <span style={{ color: "var(--text-secondary)" }}>{label}</span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{value}</span>
+    <div className="meta-row">
+      <span className="text-muted">{label}</span>
+      <span className="text-mono">{value}</span>
     </div>
   );
 }

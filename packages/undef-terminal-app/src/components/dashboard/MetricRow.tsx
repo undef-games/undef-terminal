@@ -9,12 +9,7 @@ interface MetricRowProps {
 
 export function MetricRow({ total, live, errors, recording }: MetricRowProps) {
   return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: "repeat(4, 1fr)",
-      gap: 12,
-      marginBottom: 20,
-    }}>
+    <div className="metric-grid">
       <MetricCard label="Sessions" value={total} />
       <MetricCard label="Live" value={live} color="var(--success)" />
       <MetricCard label="Errors" value={errors} color="var(--danger)" />

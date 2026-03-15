@@ -14,17 +14,10 @@ export function ScreenPreview({ entry, index }: ScreenPreviewProps) {
 
   return (
     <>
-      <div style={{ color: "#64748b", marginBottom: 8, fontFamily: "var(--font-sans)", fontSize: 12 }}>
+      <div className="screen-caption">
         Screen snapshot at event #{index + 1} ({ts})
       </div>
-      <pre style={{
-        margin: 0,
-        whiteSpace: "pre-wrap",
-        wordBreak: "break-all",
-        fontFamily: "var(--font-mono)",
-        fontSize: 12,
-        lineHeight: 1.6,
-      }}>
+      <pre className="pre-block">
         {entry.screen || "(no screen data)"}
       </pre>
     </>

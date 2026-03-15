@@ -18,19 +18,9 @@ function formatTimeAgo(iso: string): string {
 
 export function PresetCard({ connection }: PresetCardProps) {
   return (
-    <div style={{
-      padding: 12,
-      border: "0.5px solid var(--border-primary)",
-      borderRadius: "var(--radius-md)",
-      cursor: "pointer",
-    }}>
+    <div className="preset-card">
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-        <div style={{
-          width: 6,
-          height: 6,
-          borderRadius: "50%",
-          background: "var(--text-tertiary)",
-        }} />
+        <div className="status-dot" style={{ background: "var(--text-tertiary)" }} />
         <span style={{ fontSize: 13, fontWeight: 500 }}>{connection.host}</span>
       </div>
       <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>

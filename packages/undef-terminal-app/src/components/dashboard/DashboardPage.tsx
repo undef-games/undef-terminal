@@ -29,8 +29,7 @@ export function DashboardPage({ bootstrap }: DashboardPageProps) {
       <AppHeader
         bootstrap={bootstrap}
         right={
-          <a href={`${bootstrap.app_path}/connect`} className="action-link"
-            style={{ borderColor: "var(--border-info)", background: "var(--bg-info)", color: "var(--text-info)" }}>
+          <a href={`${bootstrap.app_path}/connect`} className="action-link btn-primary">
             Quick connect
           </a>
         }
@@ -67,7 +66,7 @@ export function DashboardPage({ bootstrap }: DashboardPageProps) {
         <div className={styles.listHeader}>
           <span style={{ fontSize: 14, fontWeight: 500 }}>Sessions</span>
           <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>sorted by status</span>
-          <div style={{ flex: 1 }} />
+          <div className="flex-spacer" />
           <FilterInput value={filter} onChange={setFilter} placeholder="Filter sessions..." />
         </div>
 

@@ -29,11 +29,11 @@ export function SessionList({ bootstrap, filter }: SessionListProps) {
   });
 
   if (sorted.length === 0) {
-    return <div style={{ fontSize: 13, color: "var(--text-secondary)", padding: "12px 0" }}>No sessions found.</div>;
+    return <div className="empty-state">No sessions found.</div>;
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div className="session-stack">
       {sorted.map((session) => (
         <SessionRow key={session.sessionId} session={session} bootstrap={bootstrap} />
       ))}

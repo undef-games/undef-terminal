@@ -70,8 +70,7 @@ function TerminalStatusDot() {
   const rows = useTerminalStore((s) => s.rows);
   return (
     <>
-      <div style={{
-        width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+      <div className="status-dot" style={{
         background: mounted ? "var(--success)" : "var(--text-tertiary)",
         boxShadow: mounted ? "0 0 4px var(--success)" : undefined,
       }} />
