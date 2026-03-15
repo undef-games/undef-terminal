@@ -7,17 +7,17 @@
 
 from __future__ import annotations
 
-import logging
 import re
 import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from undef.telemetry import get_logger
+
 if TYPE_CHECKING:
     from undef.terminal.server.models import AuthConfig
 
-logger = logging.getLogger(__name__)
-
+logger = get_logger(__name__)
 # Module-level cache: jwks_url → PyJWKClient instance.
 # PyJWKClient fetches and caches the JWKS document internally; sharing one
 # instance per URL avoids a redundant HTTP round-trip on every token validation.

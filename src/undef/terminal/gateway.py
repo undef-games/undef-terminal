@@ -40,12 +40,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import logging
 from pathlib import Path
+
+from undef.telemetry import get_logger
 
 from undef.terminal.defaults import TerminalDefaults
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _require_websockets() -> None:

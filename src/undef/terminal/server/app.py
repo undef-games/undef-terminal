@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import importlib.resources
-import logging
 import secrets
 import time
 import uuid
@@ -21,6 +20,7 @@ from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketExcepti
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import HTTPConnection  # noqa: TC002
 from starlette.staticfiles import StaticFiles
+from undef.telemetry import get_logger
 
 from undef.terminal.hijack.hub import TermHub
 from undef.terminal.server.auth import (
@@ -44,8 +44,7 @@ if TYPE_CHECKING:
 
     from undef.terminal.server.models import ServerConfig
 
-logger = logging.getLogger(__name__)
-
+logger = get_logger(__name__)
 # Delay between FastAPI startup completing and the auto-start session loop
 # beginning.  Gives the event loop time to finish route/middleware init.
 _AUTO_START_DELAY_S = 0.15

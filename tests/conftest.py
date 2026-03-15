@@ -38,8 +38,23 @@ if _loaded_undef is not None:
             if name == "undef" or name.startswith("undef."):
                 del sys.modules[name]
 
+import structlog
+
 from undef.terminal.hijack.hub import TermHub
 from undef.terminal.server import create_server_app, default_server_config
+
+# Configure structlog for testing: use stdlib LoggerFactory so pytest's caplog
+# fixture captures structured log output.  Render events as plain strings so
+# caplog.records[].message contains the event text.
+structlog.configure(
+    processors=[
+        structlog.stdlib.add_log_level,
+        structlog.dev.ConsoleRenderer(colors=False),
+    ],
+    wrapper_class=structlog.make_filtering_bound_logger(0),  # 0 = DEBUG
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=False,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator

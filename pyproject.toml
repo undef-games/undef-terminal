@@ -28,7 +28,7 @@ classifiers = [
     "Topic :: Terminals",
     "Framework :: FastAPI",
 ]
-dependencies = []
+dependencies = ["undef-telemetry>=0.3"]
 
 [project.urls]
 Homepage = "https://github.com/undef-games/undef-terminal"
@@ -197,6 +197,15 @@ namespace_packages = true
 explicit_package_bases = true
 mypy_path = ["src"]
 
+[[tool.mypy.overrides]]
+module = [
+    "undef.telemetry",
+    "undef.telemetry.*",
+    "structlog",
+    "structlog.*",
+]
+ignore_missing_imports = true
+
 [tool.ty.environment]
 python-version = "3.11"
 
@@ -262,3 +271,4 @@ members = [
 [tool.uv.sources]
 undef-terminal = { workspace = true }
 undef-terminal-cloudflare = { workspace = true }
+undef-telemetry = { path = "../undef-telemetry", editable = true }

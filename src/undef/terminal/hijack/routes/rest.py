@@ -33,6 +33,7 @@ synchroniser token, or ``SameSite=Strict`` on session cookies).
 
       from fastapi import Depends, HTTPException, Security
       from fastapi.security import HTTPBearer
+from undef.telemetry import get_logger
 
       token_scheme = HTTPBearer()
 
@@ -67,7 +68,8 @@ try:
 except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required for hijack routes: pip install 'undef-terminal[websocket]'") from _e
 
-import logging
+
+from undef.telemetry import get_logger
 
 from undef.terminal.hijack.models import (
     HijackAcquireRequest,
@@ -80,7 +82,7 @@ from undef.terminal.hijack.models import (
 if TYPE_CHECKING:
     from undef.terminal.hijack.hub import TermHub
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def register_rest_routes(hub: TermHub, router: APIRouter) -> None:

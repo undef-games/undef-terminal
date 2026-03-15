@@ -9,15 +9,15 @@ from __future__ import annotations
 
 import importlib.resources
 import json
-import logging
 from html import escape
 from typing import TYPE_CHECKING
+
+from undef.telemetry import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-logger = logging.getLogger(__name__)
-
+logger = get_logger(__name__)
 # Cached Vite manifest — loaded once on first call.
 _vite_manifest: dict[str, object] | None = None
 _vite_manifest_loaded = False

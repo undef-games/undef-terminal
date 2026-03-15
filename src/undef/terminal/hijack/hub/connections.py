@@ -18,8 +18,12 @@ import uuid
 from collections import deque
 from typing import TYPE_CHECKING, Any
 
+from undef.telemetry import get_logger
+
 from undef.terminal.hijack.models import WorkerTermState
 from undef.terminal.hijack.ratelimit import TokenBucket
+
+logger = get_logger(__name__)
 
 # Keeps strong references to fire-and-forget tasks so CPython's GC cannot
 # collect them before the event loop runs them.  Each task removes itself
@@ -141,9 +145,7 @@ class _ConnectionMixin:
             if st is None:
                 return False
             if mode == "open" and self.is_hijacked(st):
-                import logging as _logging
-
-                _logging.getLogger(__name__).warning(
+                logger.warning(
                     "worker_hello_mode_blocked worker_id=%s — cannot switch to open while hijack active",
                     worker_id,
                 )

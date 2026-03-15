@@ -10,9 +10,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import logging
 import time
 from typing import TYPE_CHECKING, Any, Literal, cast
+
+from undef.telemetry import get_logger
 
 from undef.terminal.server.connectors import SessionConnector, build_connector
 from undef.terminal.server.models import RecordingConfig, SessionDefinition, SessionLifecycle, SessionRuntimeStatus
@@ -21,7 +22,7 @@ from undef.terminal.session_logger import SessionLogger
 if TYPE_CHECKING:
     from pathlib import Path
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def _cancel_and_wait(tasks: set[asyncio.Task[object]]) -> None:
