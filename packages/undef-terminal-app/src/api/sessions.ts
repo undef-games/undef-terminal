@@ -1,3 +1,8 @@
+//
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+
 import { apiJson } from "./client";
 import { normalizeRecordingEntries, normalizeSessionStatus } from "./normalize";
 import type { QuickConnectPayload, QuickConnectResult, RecordingEntryView, SessionDetails, SessionSummary } from "./types";

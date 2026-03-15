@@ -1,3 +1,8 @@
+//
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+
 /**
  * Convert a string containing ANSI SGR escape sequences into an array of
  * HTML-safe segments with optional inline styles.  Supports:
