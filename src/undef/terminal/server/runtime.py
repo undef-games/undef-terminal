@@ -88,7 +88,7 @@ class HostedSessionRuntime:
         if self._task is not None and not self._task.done():
             return
         self._stop = asyncio.Event()
-        self._queue = asyncio.Queue()
+        self._queue = asyncio.Queue(maxsize=2000)
         self._state = "starting"
         self._last_error = None
         self._task = asyncio.create_task(self._run())

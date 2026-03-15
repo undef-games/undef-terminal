@@ -1,0 +1,94 @@
+<div style="padding:1rem 0">
+<p style="font-size:13px;color:var(--color-text-secondary);margin:0 0 4px">Mockup 2 of 4</p>
+<p style="font-size:18px;font-weight:500;margin:0 0 16px;color:var(--color-text-primary)">Operator console — sidebar controls + terminal main</p>
+
+<div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden">
+
+  <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:0.5px solid var(--color-border-tertiary)">
+    <span style="font-size:12px;color:var(--color-text-secondary);cursor:pointer">Dashboard</span>
+    <span style="font-size:12px;color:var(--color-text-tertiary)">/</span>
+    <span style="font-size:12px;font-weight:500">bbs-mainframe</span>
+    <span style="font-size:11px;padding:2px 8px;border-radius:999px;background:var(--color-background-success);color:var(--color-text-success)">Live</span>
+    <div style="flex:1"></div>
+    <span style="font-size:11px;padding:2px 8px;border-radius:999px;background:var(--color-background-warning);color:var(--color-text-warning)">recording</span>
+    <span style="font-size:11px;color:var(--color-text-tertiary)">connected 2h 14m</span>
+  </div>
+
+  <div style="display:grid;grid-template-columns:240px minmax(0,1fr);min-height:420px">
+
+    <div style="border-right:0.5px solid var(--color-border-tertiary);padding:16px;display:flex;flex-direction:column;gap:16px;background:var(--color-background-secondary)">
+
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-text-tertiary);margin-bottom:8px">Input mode</div>
+        <div style="display:flex;gap:4px;background:var(--color-background-tertiary);border-radius:var(--border-radius-md);padding:3px">
+          <div style="flex:1;text-align:center;padding:6px;border-radius:6px;font-size:12px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);font-weight:500;cursor:pointer">Shared</div>
+          <div style="flex:1;text-align:center;padding:6px;border-radius:6px;font-size:12px;color:var(--color-text-secondary);cursor:pointer">Exclusive</div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-text-tertiary);margin-bottom:8px">Actions</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <button style="font-size:12px;padding:8px 12px;text-align:left;width:100%">Analyze screen</button>
+          <button style="font-size:12px;padding:8px 12px;text-align:left;width:100%">View replay</button>
+          <button style="font-size:12px;padding:8px 12px;text-align:left;width:100%">Clear runtime</button>
+        </div>
+      </div>
+
+      <div style="border-top:0.5px solid var(--color-border-tertiary);padding-top:16px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-text-tertiary);margin-bottom:8px">Session info</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--color-text-secondary)">Connector</span><span>telnet</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--color-text-secondary)">State</span><span>running</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--color-text-secondary)">Owner</span><span>sysop</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--color-text-secondary)">Visibility</span><span>public</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--color-text-secondary)">Auto-start</span><span style="color:var(--color-text-success)">yes</span></div>
+        </div>
+      </div>
+
+      <div style="border-top:0.5px solid var(--color-border-tertiary);padding-top:16px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-text-tertiary);margin-bottom:8px">Tags</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          <span style="font-size:11px;padding:2px 8px;border-radius:999px;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)">production</span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:999px;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)">bbs</span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:999px;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)">monitored</span>
+        </div>
+      </div>
+
+      <div style="flex:1"></div>
+
+      <div style="border-top:0.5px solid var(--color-border-tertiary);padding-top:12px">
+        <button style="font-size:12px;padding:8px 12px;width:100%;color:var(--color-text-danger);border-color:var(--color-border-danger)">Restart session</button>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column">
+      <div style="flex:1;background:#0d1117;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);color:#22c55e;font-size:13px;padding:20px;line-height:1.6;min-height:320px">
+        <div style="width:100%;max-width:600px">
+          <div style="color:#64748b">Last login: Sat Mar 14 09:22:01 2026</div>
+          <div style="margin-top:8px">Welcome to BBS Mainframe v3.2</div>
+          <div>Type HELP for available commands.</div>
+          <div style="margin-top:12px;display:flex;align-items:center;gap:4px">
+            <span style="color:#22c55e">sysop@mainframe:~$</span>
+            <span style="display:inline-block;width:8px;height:16px;background:#22c55e;animation:blink 1s step-end infinite"></span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-top:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary);font-size:11px;color:var(--color-text-tertiary)">
+        <div style="width:6px;height:6px;border-radius:50%;background:#1D9E75;box-shadow:0 0 4px #1D9E75"></div>
+        <span>Connected</span>
+        <span>·</span>
+        <span>80x25</span>
+        <span>·</span>
+        <span>CRT theme</span>
+        <div style="flex:1"></div>
+        <span style="cursor:pointer;padding:2px 6px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">Settings</span>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+<style>
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+</style>

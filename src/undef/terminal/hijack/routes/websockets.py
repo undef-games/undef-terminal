@@ -19,7 +19,7 @@ from contextlib import suppress
 from typing import TYPE_CHECKING, Annotated, Any
 
 try:
-    from fastapi import APIRouter, Path, WebSocket, WebSocketDisconnect
+    from fastapi import APIRouter, Path, WebSocket, WebSocketDisconnect, WebSocketException
 except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required for hijack routes: pip install 'undef-terminal[websocket]'") from _e
 
@@ -212,6 +212,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         except BrowserRoleResolutionError:
             await websocket.close(code=1008, reason="browser role resolution failed")
             return
+        except WebSocketException:
+            raise  # re-raise so FastAPI closes the already-accepted socket with the exception's code
         if role not in VALID_ROLES:  # pragma: no cover
             role = "viewer"
         can_hijack = role == "admin"

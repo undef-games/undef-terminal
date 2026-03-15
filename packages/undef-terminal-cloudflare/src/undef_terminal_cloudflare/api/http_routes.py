@@ -269,7 +269,7 @@ async def route_http(runtime: RuntimeProtocol, request: object) -> Response:
                 "after_seq": after_seq,
                 "latest_seq": latest_seq,
                 "min_event_seq": min_event_seq,
-                "has_more": len(rows) == limit,
+                "has_more": len(rows) >= limit,
                 "events": rows,
                 "lease_expires_at": session.lease_expires_at,
             }
@@ -419,7 +419,7 @@ async def _handle_session_route(
                 "after_seq": after_seq,
                 "latest_seq": latest_seq,
                 "min_event_seq": min_event_seq,
-                "has_more": len(rows) == limit,
+                "has_more": len(rows) >= limit,
                 "events": rows,
             }
         )

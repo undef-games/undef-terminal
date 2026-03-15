@@ -64,6 +64,8 @@ where = ["src"]
     "frontend/app/*.js",
     "frontend/app/views/*.js",
     "frontend/app/widgets/*.js",
+    "frontend/.vite/*",
+    "frontend/assets/*",
 ]
 
 [dependency-groups]
@@ -207,7 +209,7 @@ invalid-argument-type = "ignore"
 unused-type-ignore-comment = "ignore"
 
 [tool.codespell]
-skip = ".git,*.pyc,__pycache__,.venv,node_modules,uv.lock,*.mmd"
+skip = ".git,*.pyc,__pycache__,.venv,node_modules,uv.lock,*.mmd,src/undef/terminal/frontend/assets/*.js"
 ignore-words-list = "ore,opps,wont,strat,nd,rade,ans"
 
 [tool.bandit]

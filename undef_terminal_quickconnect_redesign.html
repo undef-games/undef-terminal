@@ -1,0 +1,87 @@
+<div style="padding:1rem 0">
+<p style="font-size:13px;color:var(--color-text-secondary);margin:0 0 4px">Mockup 4 of 4</p>
+<p style="font-size:18px;font-weight:500;margin:0 0 16px;color:var(--color-text-primary)">Quick connect — presets + custom form</p>
+
+<div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden">
+
+  <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:0.5px solid var(--color-border-tertiary)">
+    <span style="font-size:12px;color:var(--color-text-secondary);cursor:pointer">Dashboard</span>
+    <span style="font-size:12px;color:var(--color-text-tertiary)">/</span>
+    <span style="font-size:12px;font-weight:500">Quick connect</span>
+  </div>
+
+  <div style="padding:20px">
+    <div style="margin-bottom:20px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-text-tertiary);margin-bottom:10px">Recent connections</div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+        <div style="padding:12px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);cursor:pointer">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <div style="width:6px;height:6px;border-radius:50%;background:#1D9E75"></div>
+            <span style="font-size:13px;font-weight:500">bbs.example.com</span>
+          </div>
+          <div style="font-size:11px;color:var(--color-text-secondary)">telnet:23 · last used 2h ago</div>
+        </div>
+        <div style="padding:12px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);cursor:pointer">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <div style="width:6px;height:6px;border-radius:50%;background:var(--color-text-tertiary)"></div>
+            <span style="font-size:13px;font-weight:500">dev.local</span>
+          </div>
+          <div style="font-size:11px;color:var(--color-text-secondary)">ssh:22 · last used 1d ago</div>
+        </div>
+        <div style="padding:12px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);cursor:pointer">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <div style="width:6px;height:6px;border-radius:50%;background:var(--color-text-tertiary)"></div>
+            <span style="font-size:13px;font-weight:500">retrobbs.net</span>
+          </div>
+          <div style="font-size:11px;color:var(--color-text-secondary)">telnet:2323 · last used 5d ago</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="border-top:0.5px solid var(--color-border-tertiary);padding-top:20px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-text-tertiary);margin-bottom:12px">New connection</div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 120px 80px;gap:8px;align-items:end">
+        <div>
+          <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Host</label>
+          <input type="text" placeholder="bbs.example.com" style="font-size:13px;padding:8px 12px">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Transport</label>
+          <select style="font-size:13px;padding:8px 10px">
+            <option>telnet</option>
+            <option>ssh</option>
+            <option>shell</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Port</label>
+          <input type="text" placeholder="23" style="font-size:13px;padding:8px 12px">
+        </div>
+      </div>
+
+      <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="checkbox" id="rec" checked style="width:14px;height:14px">
+          <label for="rec" style="font-size:12px;color:var(--color-text-secondary)">Record session</label>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-left:16px">
+          <input type="checkbox" id="auto" style="width:14px;height:14px">
+          <label for="auto" style="font-size:12px;color:var(--color-text-secondary)">Auto-reconnect</label>
+        </div>
+        <div style="flex:1"></div>
+        <button style="font-size:13px;padding:8px 20px;background:var(--color-background-info);border-color:var(--color-border-info);color:var(--color-text-info);font-weight:500">Connect</button>
+      </div>
+    </div>
+
+    <div style="border-top:0.5px solid var(--color-border-tertiary);padding-top:16px;margin-top:20px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-text-tertiary);margin-bottom:8px">Keyboard shortcuts</div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;font-size:12px">
+        <div style="display:flex;justify-content:space-between;color:var(--color-text-secondary)"><span>Focus terminal</span><span style="font-family:var(--font-mono);font-size:11px;padding:1px 6px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">Esc</span></div>
+        <div style="display:flex;justify-content:space-between;color:var(--color-text-secondary)"><span>Toggle settings</span><span style="font-family:var(--font-mono);font-size:11px;padding:1px 6px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">Ctrl+,</span></div>
+        <div style="display:flex;justify-content:space-between;color:var(--color-text-secondary)"><span>Switch mode</span><span style="font-family:var(--font-mono);font-size:11px;padding:1px 6px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">Ctrl+M</span></div>
+        <div style="display:flex;justify-content:space-between;color:var(--color-text-secondary)"><span>Command palette</span><span style="font-family:var(--font-mono);font-size:11px;padding:1px 6px;border-radius:4px;border:0.5px solid var(--color-border-tertiary)">Ctrl+K</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>

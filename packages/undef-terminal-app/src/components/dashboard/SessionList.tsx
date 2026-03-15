@@ -1,0 +1,42 @@
+import type { AppBootstrap } from "../../api/types";
+import { useDashboardStore } from "../../stores/dashboardStore";
+import { SessionRow } from "./SessionRow";
+
+interface SessionListProps {
+  bootstrap: AppBootstrap;
+  filter: string;
+}
+
+export function SessionList({ bootstrap, filter }: SessionListProps) {
+  const sessions = useDashboardStore((s) => s.sessions);
+  const lowerFilter = filter.toLowerCase();
+
+  const filtered = lowerFilter
+    ? sessions.filter(
+        (s) =>
+          s.displayName.toLowerCase().includes(lowerFilter) ||
+          s.sessionId.toLowerCase().includes(lowerFilter) ||
+          s.connectorType.toLowerCase().includes(lowerFilter) ||
+          s.tags.some((t) => t.toLowerCase().includes(lowerFilter)),
+      )
+    : sessions;
+
+  // Sort: errors first, then connected, then stopped
+  const sorted = [...filtered].sort((a, b) => {
+    const aScore = a.lastError ? 0 : a.connected ? 1 : 2;
+    const bScore = b.lastError ? 0 : b.connected ? 1 : 2;
+    return aScore - bScore;
+  });
+
+  if (sorted.length === 0) {
+    return <div style={{ fontSize: 13, color: "var(--text-secondary)", padding: "12px 0" }}>No sessions found.</div>;
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {sorted.map((session) => (
+        <SessionRow key={session.sessionId} session={session} bootstrap={bootstrap} />
+      ))}
+    </div>
+  );
+}

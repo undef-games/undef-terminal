@@ -1,7 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.6/schema.json",
   "files": {
-    "includes": ["packages/undef-terminal-frontend/src/**"]
+    "includes": ["packages/undef-terminal-frontend/src/**", "packages/undef-terminal-app/src/**"]
   },
   "formatter": {
     "enabled": true,

@@ -1,11 +1,17 @@
 {
   "name": "undef-terminal-root",
   "private": true,
-  "workspaces": ["packages/undef-terminal-frontend"],
+  "workspaces": ["packages/undef-terminal-frontend", "packages/undef-terminal-app"],
   "scripts": {
-    "build:frontend": "npm run build --workspace=packages/undef-terminal-frontend",
+    "build:frontend": "npm run build --workspace=packages/undef-terminal-frontend && npm run build --workspace=packages/undef-terminal-app",
+    "build:widgets": "npm run build --workspace=packages/undef-terminal-frontend",
+    "build:app": "npm run build --workspace=packages/undef-terminal-app",
+    "dev:app": "npm run dev --workspace=packages/undef-terminal-app",
     "typecheck:frontend": "npm run typecheck --workspace=packages/undef-terminal-frontend",
+    "typecheck:app": "npm run typecheck --workspace=packages/undef-terminal-app",
     "lint:frontend": "npm run lint --workspace=packages/undef-terminal-frontend",
-    "fix:frontend": "npm run fix --workspace=packages/undef-terminal-frontend"
+    "lint:app": "npm run lint --workspace=packages/undef-terminal-app",
+    "fix:frontend": "npm run fix --workspace=packages/undef-terminal-frontend",
+    "fix:app": "npm run fix --workspace=packages/undef-terminal-app"
   }
 }

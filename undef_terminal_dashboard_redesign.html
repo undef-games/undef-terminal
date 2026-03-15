@@ -1,0 +1,113 @@
+<div style="padding:1rem 0">
+<p style="font-size:13px;color:var(--color-text-secondary);margin:0 0 4px">Mockup 1 of 4</p>
+<p style="font-size:18px;font-weight:500;margin:0 0 16px;color:var(--color-text-primary)">Dashboard — aggregate health + session grid</p>
+
+<div style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1.25rem;margin-bottom:16px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:10px;height:10px;border-radius:50%;background:#1D9E75"></div>
+      <span style="font-weight:500;font-size:15px">Undef Terminal</span>
+      <span style="font-size:12px;padding:3px 10px;border-radius:999px;background:var(--color-background-success);color:var(--color-text-success)">All systems healthy</span>
+    </div>
+    <div style="display:flex;gap:8px">
+      <span style="font-size:12px;padding:4px 10px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary);cursor:pointer">Dashboard</span>
+      <span style="font-size:12px;padding:4px 10px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-info);background:var(--color-background-info);color:var(--color-text-info);cursor:pointer">Quick connect</span>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+    <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:1rem">
+      <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:4px">Sessions</div>
+      <div style="font-size:24px;font-weight:500">7</div>
+    </div>
+    <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:1rem">
+      <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:4px">Live</div>
+      <div style="font-size:24px;font-weight:500;color:#1D9E75">4</div>
+    </div>
+    <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:1rem">
+      <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:4px">Errors</div>
+      <div style="font-size:24px;font-weight:500;color:#E24B4A">1</div>
+    </div>
+    <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:1rem">
+      <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:4px">Recording</div>
+      <div style="font-size:24px;font-weight:500">3</div>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+    <span style="font-size:14px;font-weight:500">Sessions</span>
+    <span style="font-size:12px;color:var(--color-text-secondary)">sorted by status</span>
+    <div style="flex:1"></div>
+    <input type="text" placeholder="Filter sessions..." style="width:180px;font-size:12px;padding:6px 10px">
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);background:var(--color-background-primary)">
+      <div style="width:8px;height:8px;border-radius:50%;background:#E24B4A;box-shadow:0 0 6px #E24B4A"></div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-weight:500;font-size:14px">tradewars-lobby</span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:999px;background:var(--color-background-danger);color:var(--color-text-danger)">Error</span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:999px;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)">telnet</span>
+        </div>
+        <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Connection timeout after 30s · last seen 4m ago</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button style="font-size:11px;padding:4px 10px">Operate</button>
+        <button style="font-size:11px;padding:4px 10px">Restart</button>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);background:var(--color-background-primary)">
+      <div style="width:8px;height:8px;border-radius:50%;background:#1D9E75;box-shadow:0 0 6px #1D9E75"></div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-weight:500;font-size:14px">bbs-mainframe</span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:999px;background:var(--color-background-success);color:var(--color-text-success)">Live</span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:999px;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)">telnet</span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:999px;background:var(--color-background-warning);color:var(--color-text-warning)">rec</span>
+        </div>
+        <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Shared mode · connected 2h 14m · operator: sysop</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button style="font-size:11px;padding:4px 10px">Operate</button>
+        <button style="font-size:11px;padding:4px 10px">View</button>
+        <button style="font-size:11px;padding:4px 10px">Replay</button>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);background:var(--color-background-primary)">
+      <div style="width:8px;height:8px;border-radius:50%;background:#1D9E75;box-shadow:0 0 6px #1D9E75"></div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-weight:500;font-size:14px">game-session-alpha</span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:999px;background:var(--color-background-success);color:var(--color-text-success)">Live</span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:999px;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)">shell</span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:999px;background:var(--color-background-warning);color:var(--color-text-warning)">rec</span>
+        </div>
+        <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Exclusive mode · hijacked · connected 18m</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button style="font-size:11px;padding:4px 10px">Operate</button>
+        <button style="font-size:11px;padding:4px 10px">View</button>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);background:var(--color-background-primary);opacity:0.6">
+      <div style="width:8px;height:8px;border-radius:50%;background:var(--color-text-tertiary)"></div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-weight:500;font-size:14px">dev-sandbox</span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:999px;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-tertiary)">Stopped</span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:999px;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)">ssh</span>
+        </div>
+        <div style="font-size:12px;color:var(--color-text-tertiary);margin-top:2px">Stopped · last active 3d ago</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button style="font-size:11px;padding:4px 10px">Restart</button>
+        <button style="font-size:11px;padding:4px 10px">Replay</button>
+      </div>
+    </div>
+  </div>
+</div>
+</div>

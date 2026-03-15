@@ -26,6 +26,12 @@ Implemented:
 - Page-route auth cookies now set explicit `HttpOnly`, `SameSite=Lax`, and `Secure` policy.
 - Cloudflare hijack lease values are validated and clamped at HTTP entrypoints.
 
+Known gaps:
+- FastAPI hosted page routes do not yet bridge bearer-auth JWTs into `token_cookie`.
+  The initial HTML request can succeed in `jwt` mode while subsequent browser
+  `/api/...` requests fail unless an auth proxy keeps injecting `Authorization`
+  headers.
+
 ## Gate 2 (P0): Cross-Backend Protocol Parity
 
 Decision:
@@ -37,6 +43,11 @@ Implemented:
 - Both backends now advertise capabilities in WS `hello`.
 - Cloudflare includes REST `step` route.
 - Frontend hijack widget dynamically chooses WS or REST control by handshake.
+
+Known gaps:
+- Cloudflare and FastAPI are not yet identical in every hijack REST edge case.
+  Route names and capability negotiation match, but validation and security
+  semantics still need periodic parity review.
 
 ## Gate 3 (P1): Packaging and Runtime Artifact Integrity
 

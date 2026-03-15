@@ -291,7 +291,7 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
             "after_seq": after_seq,
             "latest_seq": latest_seq,
             "min_event_seq": min_event_seq,
-            "has_more": len(rows) == limit,
+            "has_more": len(rows) >= limit,
             "events": rows,
             "lease_expires_at": fresh_expires,
         }

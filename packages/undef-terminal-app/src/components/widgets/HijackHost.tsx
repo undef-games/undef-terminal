@@ -1,0 +1,59 @@
+import { useEffect, useRef } from "react";
+import type { SessionSurface } from "../../api/types";
+import { useTerminalStore } from "../../stores/terminalStore";
+
+interface HijackWidget {
+  _term?: { cols: number; rows: number } | null;
+}
+
+declare global {
+  interface Window {
+    UndefHijack?: new (
+      container: HTMLElement,
+      config: { workerId: string; showAnalysis?: boolean; mobileKeys?: boolean },
+    ) => HijackWidget;
+  }
+}
+
+interface HijackHostProps {
+  sessionId: string;
+  surface?: SessionSurface;
+}
+
+export function HijackHost({ sessionId, surface }: HijackHostProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const widgetRef = useRef<HijackWidget | null>(null);
+  const mountedRef = useRef(false);
+  const setMounted = useTerminalStore((s) => s.setMounted);
+  const setDimensions = useTerminalStore((s) => s.setDimensions);
+
+  useEffect(() => {
+    if (mountedRef.current || !containerRef.current) return;
+    const HijackCtor = window.UndefHijack;
+    if (typeof HijackCtor !== "function") {
+      setMounted(false, "UndefHijack is not available — ensure hijack.js is loaded");
+      return;
+    }
+    const isOperator = surface === "operator";
+    const widget = new HijackCtor(containerRef.current, {
+      workerId: sessionId,
+      showAnalysis: isOperator,
+      mobileKeys: isOperator,
+    });
+    widgetRef.current = widget;
+    mountedRef.current = true;
+    setMounted(true);
+
+    // Poll xterm dimensions from the widget's _term property
+    const timer = setInterval(() => {
+      const term = widgetRef.current?._term;
+      if (term && term.cols > 0 && term.rows > 0) {
+        setDimensions(term.cols, term.rows);
+      }
+    }, 1500);
+
+    return () => clearInterval(timer);
+  }, [sessionId, surface, setMounted, setDimensions]);
+
+  return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
+}

@@ -249,7 +249,7 @@ class UndefHijack {
 
     const termDiv = this._q("terminal");
     this._term = new terminalCtor({
-      convertEol: true,
+      convertEol: false,
       cursorBlink: true,
       fontFamily: "'Fira Code', 'Cascadia Code', 'Consolas', monospace",
       fontSize: 13,
