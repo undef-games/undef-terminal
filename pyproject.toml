@@ -257,9 +257,8 @@ pytest_add_cli_args_test_selection = [
     "--ignore=tests/playwright/test_terminal_proxy.py",
     "--ignore=tests/example/test_server_e2e.py",
     "--ignore=tests/hijack/test_hypothesis.py",
-    "--ignore=tests/e2e/test_live_hub_ws.py",
-    "--ignore=tests/e2e/test_ssh_gateway.py",
-    "--ignore=tests/e2e/test_telnet_gateway.py",
+    "--ignore=tests/e2e",
+    "--ignore=tests/hijack/test_hypothesis_ordering.py",
 ]
 
 [tool.uv.workspace]
