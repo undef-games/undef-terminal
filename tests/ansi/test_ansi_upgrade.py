@@ -3,14 +3,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 
-"""Tests for the color-upgrade and preview_ansi additions to undef.terminal.ansi."""
+"""Tests for the color-upgrade and normalize_colors additions to undef.terminal.ansi."""
 
 from __future__ import annotations
 
 from undef.terminal.ansi import (
     DEFAULT_PALETTE,
     DEFAULT_RGB,
-    preview_ansi,
+    _handle_brace_tokens,
+    normalize_colors,
     upgrade_to_256,
     upgrade_to_truecolor,
 )
@@ -33,49 +34,47 @@ def test_default_rgb_tuples() -> None:
 
 
 # ---------------------------------------------------------------------------
-# preview_ansi
+# normalize_colors
 # ---------------------------------------------------------------------------
 
 
-def test_preview_ansi_twgs_tokens() -> None:
-    result = preview_ansi("{+r}text{-x}")
-    assert "\x1b[" in result
-    assert "text" in result
-    assert "{+r}" not in result
-    assert "{-x}" not in result
-
-
-def test_preview_ansi_tilde_codes() -> None:
-    result = preview_ansi("~1text~0")
+def test_normalize_colors_tilde_codes() -> None:
+    result = normalize_colors("~1text~0")
     assert "\x1b[" in result
     assert "text" in result
     assert "~1" not in result
     assert "~0" not in result
 
 
-def test_preview_ansi_pt_tokens() -> None:
+def test_normalize_colors_pt_tokens() -> None:
     # {P3} is a foreground palette token → SGR code
-    result = preview_ansi("{P3}text")
+    result = normalize_colors("{P3}text")
     assert "\x1b[" in result
     assert "text" in result
     assert "{P3}" not in result
 
 
-def test_preview_ansi_fb_tokens() -> None:
+def test_normalize_colors_fb_tokens() -> None:
     # {F196} is a 256-color foreground token
-    result = preview_ansi("{F196}text")
+    result = normalize_colors("{F196}text")
     assert "\x1b[38;5;196m" in result
     assert "text" in result
 
 
-def test_preview_ansi_b_token() -> None:
-    result = preview_ansi("{B45}text")
+def test_normalize_colors_b_token() -> None:
+    result = normalize_colors("{B45}text")
     assert "\x1b[48;5;45m" in result
 
 
-def test_preview_ansi_passthrough_plain() -> None:
-    result = preview_ansi("no tokens here")
+def test_normalize_colors_passthrough_plain() -> None:
+    result = normalize_colors("no tokens here")
     assert result == "no tokens here"
+
+
+def test_normalize_colors_pipe_codes() -> None:
+    result = normalize_colors("|04red|00")
+    assert "\x1b[31m" in result
+    assert "\x1b[30m" in result
 
 
 # ---------------------------------------------------------------------------
@@ -243,17 +242,17 @@ def test_upgrade_to_truecolor_p_token() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _emit_color edge cases (via preview_ansi / _handle_twgs_tokens)
+# _emit_color edge cases (via _handle_brace_tokens)
 # ---------------------------------------------------------------------------
 
 
-def test_preview_ansi_unknown_twgs_color_char() -> None:
+def test_brace_tokens_unknown_color_char() -> None:
     # {+z}: unknown color char → _emit_color returns "" → literal fallthrough
-    result = preview_ansi("{+z}")
+    result = _handle_brace_tokens("{+z}")
     assert "{" in result  # literal brace preserved
 
 
-def test_preview_ansi_dim_known_color() -> None:
-    # {-r}: polarity "-" with known color → \x1b[0;31m  (line 306 in ansi.py)
-    result = preview_ansi("{-r}")
+def test_brace_tokens_dim_known_color() -> None:
+    # {-r}: polarity "-" with known color → \x1b[0;31m
+    result = _handle_brace_tokens("{-r}")
     assert "\x1b[0;31m" in result
