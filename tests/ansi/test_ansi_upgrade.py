@@ -10,7 +10,11 @@ from __future__ import annotations
 from undef.terminal.ansi import (
     DEFAULT_PALETTE,
     DEFAULT_RGB,
+    _color256_to_rgb,
+    _emit_color,
     _handle_brace_tokens,
+    _handle_extended_tokens,
+    _handle_tilde_codes,
     normalize_colors,
     upgrade_to_256,
     upgrade_to_truecolor,
@@ -256,3 +260,251 @@ def test_brace_tokens_dim_known_color() -> None:
     # {-r}: polarity "-" with known color → \x1b[0;31m
     result = _handle_brace_tokens("{-r}")
     assert "\x1b[0;31m" in result
+
+
+# ---------------------------------------------------------------------------
+# Mutant-killing tests: exact boundary + value assertions
+# ---------------------------------------------------------------------------
+
+
+class TestMapIndexExactBoundaries:
+    """Pin exact SGR -> 256/truecolor output to kill off-by-one boundary mutations."""
+
+    def test_256_fg_black_code30(self) -> None:
+        assert upgrade_to_256("\x1b[30m") == "\x1b[38;5;0m"
+
+    def test_256_fg_white_code37(self) -> None:
+        assert upgrade_to_256("\x1b[37m") == "\x1b[38;5;252m"
+
+    def test_256_bright_fg_black_code90(self) -> None:
+        assert upgrade_to_256("\x1b[90m") == "\x1b[38;5;244m"
+
+    def test_256_bright_fg_white_code97(self) -> None:
+        assert upgrade_to_256("\x1b[97m") == "\x1b[38;5;231m"
+
+    def test_256_bg_black_code40(self) -> None:
+        assert upgrade_to_256("\x1b[40m") == "\x1b[48;5;0m"
+
+    def test_256_bg_white_code47(self) -> None:
+        assert upgrade_to_256("\x1b[47m") == "\x1b[48;5;252m"
+
+    def test_256_bright_bg_black_code100(self) -> None:
+        assert upgrade_to_256("\x1b[100m") == "\x1b[48;5;244m"
+
+    def test_256_bright_bg_white_code107(self) -> None:
+        assert upgrade_to_256("\x1b[107m") == "\x1b[48;5;231m"
+
+    def test_tc_fg_black_code30(self) -> None:
+        assert upgrade_to_truecolor("\x1b[30m") == "\x1b[38;2;0;0;0m"
+
+    def test_tc_fg_white_code37(self) -> None:
+        assert upgrade_to_truecolor("\x1b[37m") == "\x1b[38;2;208;208;208m"
+
+    def test_tc_bright_fg_black_code90(self) -> None:
+        assert upgrade_to_truecolor("\x1b[90m") == "\x1b[38;2;128;128;128m"
+
+    def test_tc_bright_fg_white_code97(self) -> None:
+        assert upgrade_to_truecolor("\x1b[97m") == "\x1b[38;2;255;255;255m"
+
+    def test_tc_bg_black_code40(self) -> None:
+        assert upgrade_to_truecolor("\x1b[40m") == "\x1b[48;2;0;0;0m"
+
+    def test_tc_bg_white_code47(self) -> None:
+        assert upgrade_to_truecolor("\x1b[47m") == "\x1b[48;2;208;208;208m"
+
+    def test_tc_bright_bg_black_code100(self) -> None:
+        assert upgrade_to_truecolor("\x1b[100m") == "\x1b[48;2;128;128;128m"
+
+    def test_tc_bright_bg_white_code107(self) -> None:
+        assert upgrade_to_truecolor("\x1b[107m") == "\x1b[48;2;255;255;255m"
+
+    def test_256_code29_not_mapped(self) -> None:
+        assert upgrade_to_256("\x1b[29m") == "\x1b[29m"
+
+    def test_256_code39_not_mapped(self) -> None:
+        assert upgrade_to_256("\x1b[39m") == "\x1b[39m"
+
+    def test_256_code89_not_mapped(self) -> None:
+        assert upgrade_to_256("\x1b[89m") == "\x1b[89m"
+
+    def test_256_code98_not_mapped(self) -> None:
+        assert upgrade_to_256("\x1b[98m") == "\x1b[98m"
+
+    def test_256_code99_not_mapped(self) -> None:
+        assert upgrade_to_256("\x1b[99m") == "\x1b[99m"
+
+    def test_256_code108_not_mapped(self) -> None:
+        assert upgrade_to_256("\x1b[108m") == "\x1b[108m"
+
+    def test_256_fg_vs_bg_exact(self) -> None:
+        assert upgrade_to_256("\x1b[30m") == "\x1b[38;5;0m"
+        assert upgrade_to_256("\x1b[40m") == "\x1b[48;5;0m"
+
+    def test_tc_fg_vs_bg_exact(self) -> None:
+        assert upgrade_to_truecolor("\x1b[30m") == "\x1b[38;2;0;0;0m"
+        assert upgrade_to_truecolor("\x1b[40m") == "\x1b[48;2;0;0;0m"
+
+
+class TestHandleExtendedTokensExact:
+    """Pin exact P/T token output to kill string and boundary mutations."""
+
+    def test_p0_fg_non_bright(self) -> None:
+        assert _handle_extended_tokens("{P0}") == "\x1b[30m"
+
+    def test_p7_fg_non_bright_upper(self) -> None:
+        assert _handle_extended_tokens("{P7}") == "\x1b[37m"
+
+    def test_p8_fg_bright_lower(self) -> None:
+        assert _handle_extended_tokens("{P8}") == "\x1b[90m"
+
+    def test_p15_fg_bright_upper(self) -> None:
+        assert _handle_extended_tokens("{P15}") == "\x1b[97m"
+
+    def test_t0_bg_non_bright(self) -> None:
+        assert _handle_extended_tokens("{T0}") == "\x1b[40m"
+
+    def test_t7_bg_non_bright_upper(self) -> None:
+        assert _handle_extended_tokens("{T7}") == "\x1b[47m"
+
+    def test_t8_bg_bright_lower(self) -> None:
+        assert _handle_extended_tokens("{T8}") == "\x1b[100m"
+
+    def test_t15_bg_bright_upper(self) -> None:
+        assert _handle_extended_tokens("{T15}") == "\x1b[107m"
+
+    def test_p_modulo_wraps(self) -> None:
+        assert _handle_extended_tokens("{P16}") == "\x1b[30m"
+
+    def test_t_modulo_wraps(self) -> None:
+        assert _handle_extended_tokens("{T16}") == "\x1b[40m"
+
+
+class TestEmitColorExact:
+    """Pin exact _emit_color return values."""
+
+    def test_reset_exact(self) -> None:
+        assert _emit_color("-", "x") == "\x1b[0m"
+
+    def test_bright_fg_exact(self) -> None:
+        assert _emit_color("+", "r") == "\x1b[0;1;31m"
+
+    def test_dim_fg_exact(self) -> None:
+        assert _emit_color("-", "r") == "\x1b[0;31m"
+
+    def test_unknown_char_empty(self) -> None:
+        assert _emit_color("+", "z") == ""
+
+
+class TestColor256ToRgbLevels:
+    """Pin exact RGB values for 256-color cube to kill levels-tuple constant mutations."""
+
+    def test_index_17_levels_1_blue(self) -> None:
+        assert _color256_to_rgb(17) == (0, 0, 95)
+
+    def test_index_18_levels_2_blue(self) -> None:
+        assert _color256_to_rgb(18) == (0, 0, 135)
+
+    def test_index_19_levels_3_blue(self) -> None:
+        assert _color256_to_rgb(19) == (0, 0, 175)
+
+    def test_index_20_levels_4_blue(self) -> None:
+        assert _color256_to_rgb(20) == (0, 0, 215)
+
+    def test_index_21_levels_5_blue(self) -> None:
+        assert _color256_to_rgb(21) == (0, 0, 255)
+
+    def test_index_22_levels_1_green(self) -> None:
+        assert _color256_to_rgb(22) == (0, 95, 0)
+
+    def test_index_88_levels_2_red(self) -> None:
+        assert _color256_to_rgb(88) == (135, 0, 0)
+
+    def test_index_112_levels_mixed(self) -> None:
+        assert _color256_to_rgb(112) == (135, 215, 0)
+
+
+class TestHandleBraceTokensExact:
+    """Pin exact brace token output and boundary passthrough."""
+
+    def test_plus_r_exact(self) -> None:
+        assert _handle_brace_tokens("{+r}") == "\x1b[0;1;31m"
+
+    def test_minus_x_exact(self) -> None:
+        assert _handle_brace_tokens("{-x}") == "\x1b[0m"
+
+    def test_minus_r_exact(self) -> None:
+        assert _handle_brace_tokens("{-r}") == "\x1b[0;31m"
+
+    def test_truncated_no_closing_brace(self) -> None:
+        assert _handle_brace_tokens("{+r") == "{+r"
+
+    def test_brace_as_only_char(self) -> None:
+        assert _handle_brace_tokens("{") == "{"
+
+    def test_invalid_polarity_passthrough(self) -> None:
+        assert _handle_brace_tokens("{xr}") == "{xr}"
+
+    def test_surrounding_text_preserved(self) -> None:
+        assert _handle_brace_tokens("A{+r}B") == "A\x1b[0;1;31mB"
+
+
+class TestHandleTildeCodesExact:
+    """Pin exact tilde code output and boundary passthrough."""
+
+    def test_tilde_1_exact(self) -> None:
+        assert _handle_tilde_codes("~1") == "\x1b[0;1;32m"
+
+    def test_tilde_at_end_passthrough(self) -> None:
+        assert _handle_tilde_codes("~") == "~"
+
+    def test_tilde_0_exact(self) -> None:
+        assert _handle_tilde_codes("~0") == "\x1b[0m"
+
+    def test_tilde_7_exact(self) -> None:
+        assert _handle_tilde_codes("~7") == "\x1b[0;37m"
+
+    def test_tilde_unknown_passthrough(self) -> None:
+        assert _handle_tilde_codes("~Z") == "~Z"
+
+    def test_tilde_in_context(self) -> None:
+        assert _handle_tilde_codes("A~ZB") == "A~ZB"
+
+
+class TestConvertTokensExact:
+    """Pin exact token conversion output for upgrade functions."""
+
+    def test_256_p3_produces_f184(self) -> None:
+        assert upgrade_to_256("{P3}") == "{F184}"
+
+    def test_256_t3_produces_b184(self) -> None:
+        assert upgrade_to_256("{T3}") == "{B184}"
+
+    def test_256_p0_produces_f0(self) -> None:
+        assert upgrade_to_256("{P0}") == "{F0}"
+
+    def test_256_t0_produces_b0(self) -> None:
+        assert upgrade_to_256("{T0}") == "{B0}"
+
+    def test_256_p8_produces_f244(self) -> None:
+        assert upgrade_to_256("{P8}") == "{F244}"
+
+    def test_256_t8_produces_b244(self) -> None:
+        assert upgrade_to_256("{T8}") == "{B244}"
+
+    def test_256_p15_produces_f231(self) -> None:
+        assert upgrade_to_256("{P15}") == "{F231}"
+
+    def test_256_t15_produces_b231(self) -> None:
+        assert upgrade_to_256("{T15}") == "{B231}"
+
+    def test_tc_p3_exact_rgb(self) -> None:
+        assert upgrade_to_truecolor("{P3}") == "\x1b[38;2;215;215;0m"
+
+    def test_tc_t3_exact_rgb(self) -> None:
+        assert upgrade_to_truecolor("{T3}") == "\x1b[48;2;215;215;0m"
+
+    def test_tc_p0_exact_rgb(self) -> None:
+        assert upgrade_to_truecolor("{P0}") == "\x1b[38;2;0;0;0m"
+
+    def test_tc_t8_exact_rgb(self) -> None:
+        assert upgrade_to_truecolor("{T8}") == "\x1b[48;2;128;128;128m"
