@@ -250,7 +250,7 @@ do_not_mutate = [
     "src/undef/terminal/gateway.py",
     "src/undef/terminal/server/connectors/",
 ]
-pytest_add_cli_args = ["-o", "addopts=", "--import-mode=importlib", "--no-cov"]
+pytest_add_cli_args = ["--no-cov"]
 pytest_add_cli_args_test_selection = [
     "-m",
     "not playwright",
