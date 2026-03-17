@@ -508,3 +508,84 @@ class TestConvertTokensExact:
 
     def test_tc_t8_exact_rgb(self) -> None:
         assert upgrade_to_truecolor("{T8}") == "\x1b[48;2;128;128;128m"
+
+
+# ---------------------------------------------------------------------------
+# Mutant-killing round 2: the stubborn 18
+# ---------------------------------------------------------------------------
+
+
+class TestMultiPartSgr:
+    """Multi-code SGR sequences to kill continue→break, join-separator, and
+    upper-bound +1 mutations inside _convert_sgr_256 / _convert_sgr_tc."""
+
+    def test_256_bold_plus_red_fg(self) -> None:
+        # \x1b[1;31m: code 1 (bold, unmapped) + code 31 (red fg → 38;5;160)
+        # continue→break on code 1 would skip processing code 31
+        # ';'.join→'XX;XX'.join would corrupt the separator
+        result = upgrade_to_256("\x1b[1;31m")
+        assert result == "\x1b[1;38;5;160m"
+
+    def test_256_bold_plus_bg_green(self) -> None:
+        # \x1b[1;42m: code 1 (bold) + code 42 (green bg → 48;5;34)
+        result = upgrade_to_256("\x1b[1;42m")
+        assert result == "\x1b[1;48;5;34m"
+
+    def test_tc_bold_plus_red_fg(self) -> None:
+        # \x1b[1;31m → code 1 + code 31 → 1;38;2;215;0;0
+        result = upgrade_to_truecolor("\x1b[1;31m")
+        assert result == "\x1b[1;38;2;215;0;0m"
+
+    def test_tc_bold_plus_bg_green(self) -> None:
+        # \x1b[1;42m → code 1 + code 42 → 1;48;2;0;175;0
+        result = upgrade_to_truecolor("\x1b[1;42m")
+        assert result == "\x1b[1;48;2;0;175;0m"
+
+
+class TestEmptySeqAndPassthroughGuards:
+    """Kill seq=="" → "XXXX" and "48" → "XX48XX" string mutations."""
+
+    def test_256_empty_sgr_exact_match(self) -> None:
+        # \x1b[m has seq="" — must return the exact original match
+        text = "\x1b[m"
+        assert upgrade_to_256(text) == text
+
+    def test_tc_empty_sgr_exact_match(self) -> None:
+        text = "\x1b[m"
+        assert upgrade_to_truecolor(text) == text
+
+    def test_256_existing_48_passthrough(self) -> None:
+        # "48" in parts guard — must pass through unchanged
+        text = "\x1b[48;5;100m"
+        assert upgrade_to_256(text) == text
+
+    def test_tc_existing_48_passthrough(self) -> None:
+        text = "\x1b[48;5;100m"
+        assert upgrade_to_truecolor(text) == text
+
+    def test_256_existing_48_2_passthrough(self) -> None:
+        text = "\x1b[48;2;10;20;30m"
+        assert upgrade_to_256(text) == text
+
+    def test_tc_existing_48_2_passthrough(self) -> None:
+        text = "\x1b[48;2;10;20;30m"
+        assert upgrade_to_truecolor(text) == text
+
+
+class TestTokenModulo16:
+    """Kill % 16 → % 17 mutations in _convert_tokens_256 / _convert_tokens_tc."""
+
+    def test_256_p16_wraps_to_0(self) -> None:
+        # {P16}: 16%16=0 → palette[0]=0 → {F0}
+        # With %17: 16%17=16 → palette[16] → IndexError or wrong value
+        assert upgrade_to_256("{P16}") == "{F0}"
+
+    def test_256_t16_wraps_to_0(self) -> None:
+        assert upgrade_to_256("{T16}") == "{B0}"
+
+    def test_tc_p16_wraps_to_0(self) -> None:
+        # {P16}: 16%16=0 → rgb_palette[0] = _color256_to_rgb(0) = (0,0,0)
+        assert upgrade_to_truecolor("{P16}") == "\x1b[38;2;0;0;0m"
+
+    def test_tc_t16_wraps_to_0(self) -> None:
+        assert upgrade_to_truecolor("{T16}") == "\x1b[48;2;0;0;0m"
