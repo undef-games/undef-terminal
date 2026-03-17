@@ -70,6 +70,18 @@ class SqliteStateStore:
         # Add input_mode column if it does not exist yet (idempotent migration).
         with contextlib.suppress(Exception):
             self._run("ALTER TABLE session_state ADD COLUMN input_mode TEXT NOT NULL DEFAULT 'hijack'")
+        self._run(
+            """
+            CREATE TABLE IF NOT EXISTS resume_tokens (
+                token TEXT PRIMARY KEY,
+                worker_id TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'viewer',
+                was_hijack_owner INTEGER NOT NULL DEFAULT 0,
+                created_at REAL NOT NULL,
+                expires_at REAL NOT NULL
+            )
+            """
+        )
 
     def load_session(self, worker_id: str) -> dict[str, Any] | None:
         rows = self._rows(
@@ -272,6 +284,62 @@ class SqliteStateStore:
             }
             for row in rows
         ]
+
+    # ------------------------------------------------------------------
+    # Resume tokens
+    # ------------------------------------------------------------------
+
+    def create_resume_token(self, token: str, worker_id: str, role: str, ttl_s: float) -> None:
+        now = time.time()
+        self._run(
+            """
+            INSERT INTO resume_tokens(token, worker_id, role, was_hijack_owner, created_at, expires_at)
+            VALUES(?, ?, ?, 0, ?, ?)
+            """,
+            token,
+            worker_id,
+            role,
+            now,
+            now + ttl_s,
+        )
+
+    def get_resume_token(self, token: str) -> dict[str, Any] | None:
+        rows = self._rows(
+            self._run(
+                "SELECT token, worker_id, role, was_hijack_owner, created_at, expires_at FROM resume_tokens WHERE token = ?",
+                token,
+            )
+        )
+        if not rows:
+            return None
+        row = rows[0]
+        expires_at = float(self._row_value(row, "expires_at", 5) or 0)
+        if time.time() > expires_at:
+            self.revoke_resume_token(token)
+            return None
+        return {
+            "token": self._row_value(row, "token", 0),
+            "worker_id": self._row_value(row, "worker_id", 1),
+            "role": str(self._row_value(row, "role", 2) or "viewer"),
+            "was_hijack_owner": bool(int(self._row_value(row, "was_hijack_owner", 3) or 0)),
+            "created_at": float(self._row_value(row, "created_at", 4) or 0),
+            "expires_at": expires_at,
+        }
+
+    def mark_resume_hijack_owner(self, token: str, is_owner: bool) -> None:
+        self._run(
+            "UPDATE resume_tokens SET was_hijack_owner = ? WHERE token = ?",
+            1 if is_owner else 0,
+            token,
+        )
+
+    def revoke_resume_token(self, token: str) -> None:
+        self._run("DELETE FROM resume_tokens WHERE token = ?", token)
+
+    def cleanup_expired_tokens(self) -> int:
+        now = time.time()
+        self._run("DELETE FROM resume_tokens WHERE expires_at <= ?", now)
+        return 0  # row count not available through all executors
 
     @classmethod
     def _row_value(cls, row: Any, key: str, idx: int) -> Any:

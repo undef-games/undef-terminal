@@ -263,6 +263,10 @@ class SessionRuntime(_WsHelperMixin, DurableObject):
 
             # Send hello in fetch() before 101 — webSocketOpen() may be dropped after hibernation.
             if socket_role == "browser":
+                # Issue a resume token for this browser session
+                resume_token = secrets.token_urlsafe(32)
+                resume_ttl_s = float(getattr(self.config, "resume_ttl_s", 300))
+                self.store.create_resume_token(resume_token, self.worker_id, browser_role, resume_ttl_s)
                 try:
                     server.send(
                         json.dumps(
@@ -275,6 +279,8 @@ class SessionRuntime(_WsHelperMixin, DurableObject):
                                 "role": browser_role,
                                 "hijack_control": "rest",
                                 "hijack_step_supported": True,
+                                "resume_supported": True,
+                                "resume_token": resume_token,
                                 "ts": time.time(),
                             },
                             ensure_ascii=True,
@@ -309,6 +315,10 @@ class SessionRuntime(_WsHelperMixin, DurableObject):
         else:
             self.browser_sockets[ws_id] = ws
             browser_role = self._socket_browser_role(ws)
+            # Issue a resume token for this browser session
+            _open_resume_token = secrets.token_urlsafe(32)
+            _open_resume_ttl = float(getattr(self.config, "resume_ttl_s", 300))
+            self.store.create_resume_token(_open_resume_token, self.worker_id, browser_role, _open_resume_ttl)
             await self.send_ws(
                 ws,
                 {
@@ -321,6 +331,8 @@ class SessionRuntime(_WsHelperMixin, DurableObject):
                     "role": browser_role,
                     "hijack_control": "rest",
                     "hijack_step_supported": True,
+                    "resume_supported": True,
+                    "resume_token": _open_resume_token,
                     "ts": time.time(),
                 },
             )
