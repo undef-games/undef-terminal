@@ -79,7 +79,7 @@ async def update_status(
     # Stale-report rejection
     try:
         incoming_reported_at = float(payload.get("reported_at") or 0.0)
-    except Exception:
+    except Exception:  # pragma: no cover — Pydantic validates float before reaching here
         incoming_reported_at = 0.0
     status_reported_at = getattr(bot, "status_reported_at", 0.0) or 0.0
     if incoming_reported_at > 0 and status_reported_at > 0 and incoming_reported_at < status_reported_at:

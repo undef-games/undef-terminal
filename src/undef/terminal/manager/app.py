@@ -108,7 +108,7 @@ def create_manager_app(
         except WebSocketDisconnect:
             async with manager._ws_lock:
                 manager.websocket_clients.discard(websocket)
-        except Exception as e:
+        except Exception as e:  # pragma: no cover — requires mid-stream WS failure
             logger.exception("websocket_error", error=str(e))
             async with manager._ws_lock:
                 manager.websocket_clients.discard(websocket)

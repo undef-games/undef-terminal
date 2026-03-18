@@ -95,7 +95,7 @@ class TimeseriesManager:
                     pos -= read_size
                     f.seek(pos, os.SEEK_SET)
                     chunk = f.read(read_size)
-                    if not chunk:
+                    if not chunk:  # pragma: no cover — defensive; read(n>0) at valid pos never returns empty
                         break
                     buf = chunk + buf
                     newline_count = buf.count(b"\n")
