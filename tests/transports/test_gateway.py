@@ -904,6 +904,36 @@ class TestIacStripping:
         await _tcp_to_ws(reader, MockWs(), telnet=True)
         assert sent == ["hi"]
 
+    async def test_telnet_ws_gateway_strips_iac_by_default(self) -> None:
+        """TelnetWsGateway strips IAC automatically (telnet=True wired in _handle).
+
+        Send IAC WILL ECHO + "ping" from the telnet client. The echo server
+        reflects whatever it receives. If IAC is stripped, the echo arrives
+        as "ping" with no 0xFF bytes.
+        """
+        ws_srv, ws_port = await _start_ws_echo_server()
+        try:
+            gw = TelnetWsGateway(f"ws://127.0.0.1:{ws_port}")
+            tcp_srv = await gw.start("127.0.0.1", 0)
+            from asyncio import Server
+
+            assert isinstance(tcp_srv, Server)
+            assert tcp_srv.sockets is not None
+            tcp_port = tcp_srv.sockets[0].getsockname()[1]
+
+            reader, writer = await asyncio.open_connection("127.0.0.1", tcp_port)
+            writer.write(bytes([255, 251, 1]) + b"ping")  # IAC WILL ECHO + "ping"
+            await writer.drain()
+            data = await asyncio.wait_for(reader.read(256), timeout=2.0)
+            writer.close()
+            tcp_srv.close()
+        finally:
+            ws_srv.close()
+
+        # IAC stripped → WS echoed "ping" → telnet gets "ping" back, no 0xFF
+        assert b"ping" in data
+        assert b"\xff" not in data
+
     async def test_telnet_false_does_not_strip(self) -> None:
         sent: list[str] = []
 
