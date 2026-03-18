@@ -12,7 +12,19 @@ import pytest
 import websockets
 import websockets.server
 
-from undef.terminal.gateway import TelnetWsGateway, _pipe_ws, _tcp_to_ws, _ws_to_tcp
+from undef.terminal.gateway import (
+    TelnetWsGateway,
+    _apply_color_mode,
+    _delete_token,
+    _handle_ws_control,
+    _normalize_crlf,
+    _pipe_ws,
+    _read_token,
+    _strip_iac,
+    _tcp_to_ws,
+    _write_token,
+    _ws_to_tcp,
+)
 
 # ---------------------------------------------------------------------------
 # Pump helper unit tests
@@ -435,3 +447,473 @@ class TestTelnetWsGatewayHandleException:
             await gw._handle(reader, writer)
 
         writer.close.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# Token file helpers
+# ---------------------------------------------------------------------------
+
+
+class TestTokenFileHelpers:
+    def test_read_missing_returns_none(self, tmp_path) -> None:
+        assert _read_token(tmp_path / "no_such_file") is None
+
+    def test_write_then_read(self, tmp_path) -> None:
+        p = tmp_path / "token"
+        _write_token(p, "mytoken")
+        assert _read_token(p) == "mytoken"
+
+    def test_write_empty_returns_none(self, tmp_path) -> None:
+        p = tmp_path / "token"
+        _write_token(p, "")
+        assert _read_token(p) is None
+
+    def test_write_creates_parent_dirs(self, tmp_path) -> None:
+        p = tmp_path / "nested" / "dir" / "token"
+        _write_token(p, "abc")
+        assert p.read_text() == "abc"
+
+    def test_delete_existing(self, tmp_path) -> None:
+        p = tmp_path / "token"
+        p.write_text("x")
+        _delete_token(p)
+        assert not p.exists()
+
+    def test_delete_missing_no_raise(self, tmp_path) -> None:
+        _delete_token(tmp_path / "no_such_file")  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# JSON control message handler
+# ---------------------------------------------------------------------------
+
+
+class TestHandleWsControl:
+    async def test_session_token_saves_file_and_returns_true(self, tmp_path) -> None:
+        token_file = tmp_path / "tok"
+        written: list[bytes] = []
+
+        async def _write_fn(data: bytes) -> None:
+            written.append(data)
+
+        result = await _handle_ws_control('{"type": "session_token", "token": "abc123"}', token_file, _write_fn)
+        assert result is True
+        assert token_file.read_text() == "abc123"
+        assert written == []
+
+    async def test_resume_ok_writes_text_and_returns_true(self) -> None:
+        written: list[bytes] = []
+
+        async def _write_fn(data: bytes) -> None:
+            written.append(data)
+
+        result = await _handle_ws_control('{"type": "resume_ok"}', None, _write_fn)
+        assert result is True
+        assert b"Session resumed" in written[0]
+
+    async def test_resume_failed_deletes_token_and_returns_true(self, tmp_path) -> None:
+        token_file = tmp_path / "tok"
+        token_file.write_text("old_token")
+        written: list[bytes] = []
+
+        async def _write_fn(data: bytes) -> None:
+            written.append(data)
+
+        result = await _handle_ws_control('{"type": "resume_failed"}', token_file, _write_fn)
+        assert result is True
+        assert not token_file.exists()
+
+    async def test_plain_text_returns_false(self) -> None:
+        async def _write_fn(data: bytes) -> None:
+            pass
+
+        assert await _handle_ws_control("hello world", None, _write_fn) is False
+
+    async def test_malformed_json_returns_false(self) -> None:
+        async def _write_fn(data: bytes) -> None:
+            pass
+
+        assert await _handle_ws_control("{not json}", None, _write_fn) is False
+
+    async def test_no_token_file_skips_write(self) -> None:
+        """session_token with token_file=None should not write or raise."""
+
+        async def _write_fn(data: bytes) -> None:
+            pass
+
+        result = await _handle_ws_control('{"type": "session_token", "token": "x"}', None, _write_fn)
+        assert result is False  # token_file is None → skip write
+
+    async def test_resume_failed_no_token_file_no_raise(self) -> None:
+        async def _write_fn(data: bytes) -> None:
+            pass
+
+        result = await _handle_ws_control('{"type": "resume_failed"}', None, _write_fn)
+        assert result is True
+
+
+# ---------------------------------------------------------------------------
+# _ws_to_tcp — resume/control integration
+# ---------------------------------------------------------------------------
+
+
+def _async_iter(items):
+    """Return an async iterator over *items*."""
+
+    async def _gen():
+        for item in items:
+            yield item
+
+    return _gen()
+
+
+class TestWsToTcpResume:
+    async def test_session_token_intercepted_not_forwarded(self, tmp_path) -> None:
+        token_file = tmp_path / "tok"
+        written: list[bytes] = []
+
+        class MockWriter:
+            def write(self, data: bytes) -> None:
+                written.append(data)
+
+            async def drain(self) -> None:
+                pass
+
+        from asyncio import StreamWriter
+        from typing import cast
+
+        msg = '{"type": "session_token", "token": "tok123"}'
+        await _ws_to_tcp(_async_iter([msg]), cast("StreamWriter", MockWriter()), token_file=token_file)
+        assert written == []
+        assert token_file.read_text() == "tok123"
+
+    async def test_resume_ok_sends_text_to_tcp(self) -> None:
+        written: list[bytes] = []
+
+        class MockWriter:
+            def write(self, data: bytes) -> None:
+                written.append(data)
+
+            async def drain(self) -> None:
+                pass
+
+        from asyncio import StreamWriter
+        from typing import cast
+
+        await _ws_to_tcp(_async_iter(['{"type": "resume_ok"}']), cast("StreamWriter", MockWriter()))
+        assert any(b"Session resumed" in w for w in written)
+
+    async def test_resume_failed_deletes_token(self, tmp_path) -> None:
+        token_file = tmp_path / "tok"
+        token_file.write_text("old")
+        written: list[bytes] = []
+
+        class MockWriter:
+            def write(self, data: bytes) -> None:
+                written.append(data)
+
+            async def drain(self) -> None:
+                pass
+
+        from asyncio import StreamWriter
+        from typing import cast
+
+        await _ws_to_tcp(
+            _async_iter(['{"type": "resume_failed"}']),
+            cast("StreamWriter", MockWriter()),
+            token_file=token_file,
+        )
+        assert not token_file.exists()
+
+    async def test_plain_text_forwarded(self) -> None:
+        written: list[bytes] = []
+
+        class MockWriter:
+            def write(self, data: bytes) -> None:
+                written.append(data)
+
+            async def drain(self) -> None:
+                pass
+
+        from asyncio import StreamWriter
+        from typing import cast
+
+        await _ws_to_tcp(_async_iter(["hello"]), cast("StreamWriter", MockWriter()))
+        assert b"hello" in written[0]
+
+
+# ---------------------------------------------------------------------------
+# _ws_to_tcp — CRLF normalization
+# ---------------------------------------------------------------------------
+
+
+class TestWsToTcpCrlf:
+    async def test_bare_lf_becomes_crlf(self) -> None:
+        written: list[bytes] = []
+
+        class MockWriter:
+            def write(self, data: bytes) -> None:
+                written.append(data)
+
+            async def drain(self) -> None:
+                pass
+
+        from asyncio import StreamWriter
+        from typing import cast
+
+        await _ws_to_tcp(_async_iter(["foo\nbar"]), cast("StreamWriter", MockWriter()))
+        assert written[0] == b"foo\r\nbar"
+
+    async def test_existing_crlf_not_doubled(self) -> None:
+        written: list[bytes] = []
+
+        class MockWriter:
+            def write(self, data: bytes) -> None:
+                written.append(data)
+
+            async def drain(self) -> None:
+                pass
+
+        from asyncio import StreamWriter
+        from typing import cast
+
+        await _ws_to_tcp(_async_iter(["foo\r\nbar"]), cast("StreamWriter", MockWriter()))
+        assert written[0] == b"foo\r\nbar"
+
+
+# ---------------------------------------------------------------------------
+# _normalize_crlf unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeCrlf:
+    def test_bare_lf_converted(self) -> None:
+        assert _normalize_crlf(b"a\nb") == b"a\r\nb"
+
+    def test_crlf_not_doubled(self) -> None:
+        assert _normalize_crlf(b"a\r\nb") == b"a\r\nb"
+
+    def test_no_newline_unchanged(self) -> None:
+        assert _normalize_crlf(b"hello") == b"hello"
+
+
+# ---------------------------------------------------------------------------
+# _ws_to_tcp — color mode
+# ---------------------------------------------------------------------------
+
+
+class TestWsToTcpColorMode:
+    async def _collect(self, messages: list, **kwargs) -> bytes:
+        written: list[bytes] = []
+
+        class MockWriter:
+            def write(self, data: bytes) -> None:
+                written.append(data)
+
+            async def drain(self) -> None:
+                pass
+
+        from asyncio import StreamWriter
+        from typing import cast
+
+        await _ws_to_tcp(_async_iter(messages), cast("StreamWriter", MockWriter()), **kwargs)
+        return b"".join(written)
+
+    async def test_passthrough_keeps_rgb(self) -> None:
+        msg = "\x1b[38;2;10;20;30mtext\x1b[0m"
+        out = await self._collect([msg], color_mode="passthrough")
+        assert b"38;2;10;20;30m" in out
+
+    async def test_256_transforms_rgb(self) -> None:
+        msg = "\x1b[38;2;10;20;30mtext\x1b[0m"
+        out = await self._collect([msg], color_mode="256")
+        assert b"38;2;" not in out
+        assert b"38;5;" in out
+
+    async def test_16_transforms_rgb(self) -> None:
+        msg = "\x1b[38;2;10;20;30mtext\x1b[0m"
+        out = await self._collect([msg], color_mode="16")
+        assert b"38;2;" not in out
+        assert b"38;5;" not in out
+
+
+# ---------------------------------------------------------------------------
+# _apply_color_mode unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestApplyColorMode:
+    def test_passthrough_unchanged(self) -> None:
+        raw = b"\x1b[38;2;10;20;30mtext\x1b[0m"
+        assert _apply_color_mode(raw, "passthrough") == raw
+
+    def test_256_rewrites_rgb_fg(self) -> None:
+        raw = b"\x1b[38;2;10;20;30mFG\x1b[0m"
+        out = _apply_color_mode(raw, "256")
+        assert b"38;2;" not in out
+        assert b"38;5;" in out
+
+    def test_256_rewrites_rgb_bg(self) -> None:
+        raw = b"\x1b[48;2;200;180;40mBG\x1b[0m"
+        out = _apply_color_mode(raw, "256")
+        assert b"48;2;" not in out
+        assert b"48;5;" in out
+
+    def test_16_rewrites_rgb_fg(self) -> None:
+        raw = b"\x1b[38;2;10;20;30mFG\x1b[0m"
+        out = _apply_color_mode(raw, "16")
+        assert b"38;2;" not in out
+        assert b"38;5;" not in out
+
+    def test_16_rewrites_rgb_bg(self) -> None:
+        raw = b"\x1b[48;2;200;180;40mBG\x1b[0m"
+        out = _apply_color_mode(raw, "16")
+        assert b"48;2;" not in out
+        assert b"48;5;" not in out
+
+
+# ---------------------------------------------------------------------------
+# _pipe_ws — resume token
+# ---------------------------------------------------------------------------
+
+
+class TestPipeWsResume:
+    async def test_token_file_present_sends_resume(self, tmp_path) -> None:
+        """When a token file exists, the first WS message should be a resume JSON."""
+        received: list[str] = []
+
+        async def handler(ws: websockets.ServerConnection) -> None:
+            received.extend([msg if isinstance(msg, str) else msg.decode() async for msg in ws])
+
+        srv = await websockets.serve(handler, "127.0.0.1", 0)
+        port = srv.sockets[0].getsockname()[1]
+        try:
+            token_file = tmp_path / "tok"
+            _write_token(token_file, "resume_tok_abc")
+
+            reader = asyncio.StreamReader()
+            reader.feed_eof()
+
+            class MockWriter:
+                def write(self, data: bytes) -> None:
+                    pass
+
+                async def drain(self) -> None:
+                    pass
+
+                def close(self) -> None:
+                    pass
+
+                async def wait_closed(self) -> None:
+                    pass
+
+            from asyncio import StreamWriter
+            from typing import cast
+
+            await asyncio.wait_for(
+                _pipe_ws(reader, cast("StreamWriter", MockWriter()), f"ws://127.0.0.1:{port}", token_file=token_file),
+                timeout=3.0,
+            )
+        finally:
+            srv.close()
+
+        import json
+
+        assert len(received) >= 1
+        first = json.loads(received[0])
+        assert first == {"type": "resume", "token": "resume_tok_abc"}
+
+    async def test_no_token_file_sends_no_resume(self) -> None:
+        """When no token file, no resume message is sent."""
+        received: list[str] = []
+
+        async def handler(ws: websockets.ServerConnection) -> None:
+            received.extend([msg if isinstance(msg, str) else msg.decode() async for msg in ws])
+
+        srv = await websockets.serve(handler, "127.0.0.1", 0)
+        port = srv.sockets[0].getsockname()[1]
+        try:
+            reader = asyncio.StreamReader()
+            reader.feed_eof()
+
+            class MockWriter:
+                def write(self, data: bytes) -> None:
+                    pass
+
+                async def drain(self) -> None:
+                    pass
+
+                def close(self) -> None:
+                    pass
+
+                async def wait_closed(self) -> None:
+                    pass
+
+            from asyncio import StreamWriter
+            from typing import cast
+
+            await asyncio.wait_for(
+                _pipe_ws(reader, cast("StreamWriter", MockWriter()), f"ws://127.0.0.1:{port}"),
+                timeout=3.0,
+            )
+        finally:
+            srv.close()
+
+        assert received == []
+
+
+# ---------------------------------------------------------------------------
+# IAC stripping
+# ---------------------------------------------------------------------------
+
+
+class TestIacStripping:
+    def test_plain_data_unchanged(self) -> None:
+        assert _strip_iac(b"hello") == b"hello"
+
+    def test_iac_will_stripped(self) -> None:
+        assert _strip_iac(bytes([255, 251, 1]) + b"hi") == b"hi"
+
+    def test_iac_do_stripped(self) -> None:
+        assert _strip_iac(bytes([255, 253, 3]) + b"x") == b"x"
+
+    def test_iac_sb_stripped(self) -> None:
+        data = bytes([255, 250, 1, 2, 3, 255, 240]) + b"after"
+        assert _strip_iac(data) == b"after"
+
+    def test_escaped_iac_preserved(self) -> None:
+        assert _strip_iac(bytes([255, 255])) == bytes([255])
+
+    def test_ip_maps_to_ctrl_c(self) -> None:
+        assert _strip_iac(bytes([255, 244])) == bytes([0x03])
+
+    def test_eof_maps_to_ctrl_d(self) -> None:
+        assert _strip_iac(bytes([255, 236])) == bytes([0x04])
+
+    async def test_telnet_true_strips_iac_in_tcp_to_ws(self) -> None:
+        sent: list[str] = []
+
+        class MockWs:
+            async def send(self, data: str) -> None:
+                sent.append(data)
+
+        reader = asyncio.StreamReader()
+        reader.feed_data(bytes([255, 251, 1]) + b"hi")
+        reader.feed_eof()
+
+        await _tcp_to_ws(reader, MockWs(), telnet=True)
+        assert sent == ["hi"]
+
+    async def test_telnet_false_does_not_strip(self) -> None:
+        sent: list[str] = []
+
+        class MockWs:
+            async def send(self, data: str) -> None:
+                sent.append(data)
+
+        reader = asyncio.StreamReader()
+        reader.feed_data(bytes([255, 251, 1]) + b"hi")
+        reader.feed_eof()
+
+        await _tcp_to_ws(reader, MockWs(), telnet=False)
+        assert sent[0] == bytes([255, 251, 1]).decode("latin-1") + "hi"

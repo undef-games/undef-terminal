@@ -159,7 +159,17 @@ def _cmd_listen(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     asyncio.run(  # pragma: no cover
-        _run_listen(args.ws_url, args.bind, telnet_port, ssh_port, args.server_key, TelnetWsGateway, SshWsGateway)
+        _run_listen(
+            args.ws_url,
+            args.bind,
+            telnet_port,
+            ssh_port,
+            args.server_key,
+            Path(args.token_file),
+            args.color_mode,
+            TelnetWsGateway,
+            SshWsGateway,
+        )
     )
 
 
@@ -169,20 +179,22 @@ async def _run_listen(
     telnet_port: int,
     ssh_port: int,
     server_key: str | None,
+    token_file: Path | None,
+    color_mode: str,
     TelnetWsGateway: type,  # noqa: N803
     SshWsGateway: type,  # noqa: N803
 ) -> None:
     servers = []
 
     if telnet_port:
-        gw = TelnetWsGateway(ws_url)
+        gw = TelnetWsGateway(ws_url, token_file=token_file, color_mode=color_mode)
         srv = await gw.start(bind, telnet_port)
         servers.append(srv)
         print(f"uterm listen  telnet://{bind}:{telnet_port}  →  {ws_url}")
 
     if ssh_port:
         try:
-            gw_ssh = SshWsGateway(ws_url, server_key=server_key)
+            gw_ssh = SshWsGateway(ws_url, server_key=server_key, token_file=token_file)
             srv_ssh = await gw_ssh.start(bind, ssh_port)
             servers.append(srv_ssh)
             print(f"uterm listen  ssh://{bind}:{ssh_port}     →  {ws_url}")
@@ -286,6 +298,18 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="FILE",
         default=None,
         help="SSH host private key file (ephemeral key used if omitted)",
+    )
+    listen_p.add_argument(
+        "--token-file",
+        metavar="FILE",
+        default=str(Path.home() / ".uterm" / "session_token"),
+        help="File to persist the resume token (default: ~/.uterm/session_token)",
+    )
+    listen_p.add_argument(
+        "--color-mode",
+        choices=["passthrough", "256", "16"],
+        default="passthrough",
+        help="ANSI color downgrade mode (default: passthrough)",
     )
     listen_p.set_defaults(func=_cmd_listen)
 
