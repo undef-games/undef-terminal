@@ -10,7 +10,50 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from undef.terminal.manager.config import ManagerConfig
+from undef.terminal.manager.core import SwarmManager
 from undef.terminal.manager.models import BotStatusBase
+from undef.terminal.manager.process import BotProcessManager
+
+
+class FakeWorkerPlugin:
+    @property
+    def worker_type(self) -> str:
+        return "test_game"
+
+    @property
+    def worker_module(self) -> str:
+        return "test_module"
+
+    def configure_worker_env(self, env, bot_status, manager, **kwargs):
+        env["CONFIGURED"] = "yes"
+
+
+@pytest.fixture
+def config(tmp_path):
+    return ManagerConfig(
+        state_file=str(tmp_path / "state.json"),
+        timeseries_dir=str(tmp_path / "metrics"),
+        log_dir=str(tmp_path / "logs"),
+        health_check_interval_s=0,
+        heartbeat_timeout_s=1,
+    )
+
+
+@pytest.fixture
+def manager(config):
+    return SwarmManager(config)
+
+
+@pytest.fixture
+def pm(manager, tmp_path):
+    pm = BotProcessManager(
+        manager,
+        worker_registry={"test_game": FakeWorkerPlugin()},
+        log_dir=str(tmp_path / "logs"),
+    )
+    manager.bot_process_manager = pm
+    return pm
 
 
 class TestKillBot:
