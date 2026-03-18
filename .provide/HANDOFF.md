@@ -2,7 +2,7 @@
 
 ## Current State
 
-- **Main package (`undef-terminal`)**: **~2060 tests passing** (excl. Playwright). **100% branch coverage** (5121 stmts, 1394 branches, 0 missing). Pre-commit hooks active.
+- **Main package (`undef-terminal`)**: **2126 tests passing** (excl. Playwright). **100% branch coverage** (5472 stmts, 1510 branches, 0 missing). Pre-commit hooks active.
 - **CF package (`undef-terminal-cloudflare`)**: **469 unit tests passing**. **100% branch coverage** (1536 stmts, 524 branches, 0 missing).
 - **Playwright**: **39 tests passing** (4 resume + 4 auto-reconnect + existing hijack/server/example tests).
 - **CF E2E**: 14/14 passing against live worker (incl. 4 resume tests).
@@ -10,7 +10,7 @@
 - **Both packages at version 0.3.0** — bump to **0.4.0** before release (WS session resumption is a new public API).
 - **Dependency**: `undef-telemetry>=0.3` (structured logging via structlog)
 - **Branch**: `feat/ws-session-resumption` — not yet merged or pushed to origin.
-- **Note**: A separate LLM session is refactoring telnet/SSH proxying code; expect churn in `tests/cli/` and gateway-related tests.
+- **Note**: Telnet/SSH proxy migration from `uwarp-space/scripts/proxy/terminal_proxy.py` into `uterm listen` is complete (committed as `feat(gateway)` + `refactor(gateway)` on this branch). `gateway.py` is now a package (`gateway/`).
 
 ---
 
@@ -48,6 +48,37 @@ role and hijack ownership within a configurable TTL.
 
 **Deployed to production**: `https://undef-terminal-cloudflare.neurotic.workers.dev`
 All 4 CF E2E resume tests pass against live worker.
+
+### Gateway: Resume Tokens + Proxy Feature Migration
+
+Migrated all extra features from `uwarp-space/scripts/proxy/terminal_proxy.py` into
+`src/undef/terminal/gateway/` (now a package, previously a single file).
+
+**New features in `uterm listen`:**
+- `--token-file FILE` (default `~/.uterm/session_token`) — persists session resume token
+- `--color-mode passthrough|256|16` — ANSI color downgrade
+
+**New gateway behaviors:**
+- **Session tokens**: WS `{"type":"session_token"}` saved; reconnect sends `{"type":"resume"}` first
+- **Resume OK**: WS `{"type":"resume_ok"}` forwarded as `\r\n[Session resumed]\r\n` to telnet client
+- **Resume failed**: token file deleted
+- **IAC stripping**: telnet negotiation bytes stripped before forwarding to WS (always active for `TelnetWsGateway`)
+- **CRLF normalization**: bare `\n` → `\r\n` on WS→TCP path
+- **DEL→BS**: 0x7F remapped to 0x08 on WS→TCP path
+- **Color downgrade**: regex-based RGB→256/16 rewriting
+
+**Bug fixed**: `TelnetWsGateway._handle` was not passing `telnet=True` to `_pipe_ws`, so IAC
+stripping was never active on the normal gateway code path.
+
+**`gateway.py` → package:**
+- `gateway/__init__.py` — re-exports all public symbols
+- `gateway/_gateway.py` — all gateway logic (was `gateway.py`)
+- `gateway/_colors.py` — color downgrade helpers (extracted for clarity)
+
+**Tests split:** `test_gateway.py` (949 lines) → `test_gateway_pump.py` + `test_gateway_helpers_iac.py`
++ `test_gateway_ssh.py` (1119 lines total, more focused).
+
+All 9 behaviors proven end-to-end with subprocess `uterm listen` + async TCP client.
 
 ---
 
@@ -91,7 +122,7 @@ cd packages/undef-terminal-cloudflare && \
 - [ ] Version bump: `0.3.0` → `0.4.0` in both `pyproject.toml` files and `VERSION` files
 - [ ] `git push` (branch ahead of origin)
 - [ ] PR: `feat/ws-session-resumption` → `main`
-- [ ] Merge telnet/SSH refactor (separate LLM session in progress — watch `tests/cli/` failures)
+- [x] ~~Merge telnet/SSH refactor~~ — complete; `feat(gateway)` + `refactor(gateway)` committed
 - [ ] CHANGELOG.md (optional — all context is in commit messages and proposal doc)
 - [ ] CF Access Application in Zero Trust dashboard (browser login redirect for production)
 - [ ] Mutation score improvement (67.3% → target TBD; survivors in connectors, CLI, UI, bridge)
