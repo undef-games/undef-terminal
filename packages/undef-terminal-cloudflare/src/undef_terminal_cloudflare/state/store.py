@@ -190,54 +190,45 @@ class SqliteStateStore:
         )
 
     def append_event(self, worker_id: str, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
-        # Wrapped in SAVEPOINT for crash atomicity — prevents orphan events
-        # if the DO crashes between INSERT and UPDATE/DELETE.  SAVEPOINT works
-        # inside existing transactions (Python sqlite3 auto-begins), unlike
-        # bare BEGIN which would fail.
+        # CF DO SQLite does not support SAVEPOINT/BEGIN/ROLLBACK — the storage
+        # API auto-coalesces writes atomically.  Run statements directly.
         current_seq = self.current_event_seq(worker_id)
         seq = current_seq + 1
         ts = time.time()
         serialized_payload = json.dumps(payload, ensure_ascii=True)
-        self._run("SAVEPOINT append_event")
-        try:
-            self._run(
-                """
-                INSERT INTO session_events(worker_id, seq, ts, event_type, payload_json)
-                VALUES(?, ?, ?, ?, ?)
-                """,
-                worker_id,
-                seq,
-                ts,
-                event_type,
-                serialized_payload,
-            )
-            self._run(
-                """
-                INSERT INTO session_state(worker_id, event_seq, updated_at)
-                VALUES(?, ?, ?)
-                ON CONFLICT(worker_id) DO UPDATE SET
-                    event_seq = excluded.event_seq,
-                    updated_at = excluded.updated_at
-                """,
-                worker_id,
-                seq,
-                ts,
-            )
-            # Prune oldest rows so the table never exceeds max_events_per_worker.
-            self._run(
-                """
-                DELETE FROM session_events
-                WHERE worker_id = ? AND seq <= ? - ?
-                """,
-                worker_id,
-                seq,
-                self._max_events,
-            )
-            self._run("RELEASE SAVEPOINT append_event")
-        except Exception:
-            with contextlib.suppress(Exception):
-                self._run("ROLLBACK TO SAVEPOINT append_event")
-            raise
+        self._run(
+            """
+            INSERT INTO session_events(worker_id, seq, ts, event_type, payload_json)
+            VALUES(?, ?, ?, ?, ?)
+            """,
+            worker_id,
+            seq,
+            ts,
+            event_type,
+            serialized_payload,
+        )
+        self._run(
+            """
+            INSERT INTO session_state(worker_id, event_seq, updated_at)
+            VALUES(?, ?, ?)
+            ON CONFLICT(worker_id) DO UPDATE SET
+                event_seq = excluded.event_seq,
+                updated_at = excluded.updated_at
+            """,
+            worker_id,
+            seq,
+            ts,
+        )
+        # Prune oldest rows so the table never exceeds max_events_per_worker.
+        self._run(
+            """
+            DELETE FROM session_events
+            WHERE worker_id = ? AND seq <= ? - ?
+            """,
+            worker_id,
+            seq,
+            self._max_events,
+        )
         return {"seq": seq, "ts": ts, "type": event_type, "data": payload}
 
     def current_event_seq(self, worker_id: str) -> int:

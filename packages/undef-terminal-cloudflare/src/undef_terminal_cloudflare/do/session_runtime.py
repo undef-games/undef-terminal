@@ -445,10 +445,13 @@ class SessionRuntime(_WsHelperMixin, DurableObject):
 
     async def broadcast_to_browsers(self, payload: dict[str, Any]) -> None:
         # After CF hibernation, in-memory dicts are reset. Use ctx.getWebSockets()
-        # to enumerate all live sockets; fall back to the in-memory dict if unavailable.
+        # to enumerate all live sockets. In local pywrangler dev, ctx.getWebSockets()
+        # returns [] (no hibernation state) — fall back to the in-memory dict when empty.
         try:
             all_ws = list(self.ctx.getWebSockets())
         except Exception:
+            all_ws = []
+        if not all_ws:
             all_ws = list(self.browser_sockets.values())
         for ws in all_ws:
             if self._socket_role(ws) != "browser":
