@@ -245,6 +245,7 @@ max_modules = "B"
 max_average = "A"
 
 [tool.mutmut]
+max_children = 6
 paths_to_mutate = ["src/undef/terminal/"]
 tests_dir = ["tests/"]
 also_copy = ["scripts/"]
