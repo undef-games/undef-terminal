@@ -2,46 +2,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-"""Reverse-direction gateway classes for undef-terminal.
-
-These accept inbound raw TCP (telnet) or SSH connections and proxy all I/O
-outbound to a WebSocket terminal server — the mirror image of
-:class:`~undef.terminal.fastapi.WsTerminalProxy`.
-
-:class:`TelnetWsGateway`
-    Raw TCP listener → WebSocket client.  Traditional telnet clients connect
-    on a plain TCP port; the gateway opens a WebSocket to the upstream server
-    and pipes both directions.
-
-:class:`SshWsGateway`
-    SSH server → WebSocket client.  SSH clients connect with standard
-    ``ssh`` or ``putty``; the gateway accepts the shell channel and proxies
-    it through a WebSocket to the upstream server.
-
-Requires ``websockets`` (included in ``[cli]``)::
-
-    pip install 'undef-terminal[cli]'
-
-:class:`SshWsGateway` additionally requires the ``[ssh]`` extra::
-
-    pip install 'undef-terminal[cli,ssh]'
-
-Example — serve both telnet and SSH clients against a WS game endpoint::
-
-    gw_telnet = TelnetWsGateway("wss://warp.undef.games/ws/terminal")
-    gw_ssh    = SshWsGateway("wss://warp.undef.games/ws/terminal")
-
-    async with asyncio.TaskGroup() as tg:
-        tg.create_task((await gw_telnet.start("0.0.0.0", 2112)).serve_forever())
-        tg.create_task((await gw_ssh.start("0.0.0.0", 2222)).wait_closed())
-"""
+"""Gateway classes: TelnetWsGateway and SshWsGateway."""
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import json
-import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -51,6 +18,7 @@ if TYPE_CHECKING:
 from undef.telemetry import get_logger
 
 from undef.terminal.defaults import TerminalDefaults
+from undef.terminal.gateway._colors import _apply_color_mode
 
 logger = get_logger(__name__)
 
@@ -129,108 +97,6 @@ async def _handle_ws_control(
 def _normalize_crlf(raw: bytes) -> bytes:
     """Normalize bare \\n → \\r\\n for telnet clients."""
     return raw.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
-
-
-# ---------------------------------------------------------------------------
-# Color downgrade
-# ---------------------------------------------------------------------------
-
-_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
-
-
-def _clamp8(v: int) -> int:
-    return 0 if v < 0 else 255 if v > 255 else v
-
-
-def _rgb_to_256(r: int, g: int, b: int) -> int:
-    if r == g == b:
-        if r < 8:
-            return 16
-        if r > 248:
-            return 231
-        return 232 + int((r - 8) / 247 * 24)
-    rc = round(_clamp8(r) / 255 * 5)
-    gc = round(_clamp8(g) / 255 * 5)
-    bc = round(_clamp8(b) / 255 * 5)
-    return 16 + 36 * rc + 6 * gc + bc
-
-
-_FG_16 = [30, 34, 32, 36, 31, 35, 33, 37, 90, 94, 92, 96, 91, 95, 93, 97]
-_BG_16 = [40, 44, 42, 46, 41, 45, 43, 47, 100, 104, 102, 106, 101, 105, 103, 107]
-
-
-def _rgb_to_16_index(r: int, g: int, b: int) -> int:
-    table = [
-        (0, 0, 0),
-        (0, 0, 205),
-        (0, 205, 0),
-        (0, 205, 205),
-        (205, 0, 0),
-        (205, 0, 205),
-        (205, 205, 0),
-        (229, 229, 229),
-        (127, 127, 127),
-        (92, 92, 255),
-        (92, 255, 92),
-        (92, 255, 255),
-        (255, 92, 92),
-        (255, 92, 255),
-        (255, 255, 92),
-        (255, 255, 255),
-    ]
-    best_i, best_d = 0, 10**9
-    rr, gg, bb = _clamp8(r), _clamp8(g), _clamp8(b)
-    for i, (tr, tg, tb) in enumerate(table):
-        d = (rr - tr) * (rr - tr) + (gg - tg) * (gg - tg) + (bb - tb) * (bb - tb)
-        if d < best_d:
-            best_d = d
-            best_i = i
-    return best_i
-
-
-def _apply_color_mode(raw: bytes, mode: str) -> bytes:
-    """Downgrade truecolor ANSI SGR codes to 256-color or 16-color.
-
-    mode: "passthrough" | "256" | "16"
-    """
-    if mode == "passthrough":
-        return raw
-
-    text = raw.decode("latin-1", errors="replace")
-
-    def rewrite_sgr(match: re.Match[str]) -> str:
-        params = match.group(1)
-        if not params:
-            return match.group(0)
-        parts = params.split(";")
-        out: list[str] = []
-        i = 0
-        while i < len(parts):
-            if (
-                i + 4 < len(parts)
-                and parts[i] in {"38", "48"}
-                and parts[i + 1] == "2"
-                and parts[i + 2].isdigit()
-                and parts[i + 3].isdigit()
-                and parts[i + 4].isdigit()
-            ):
-                r = int(parts[i + 2])
-                g = int(parts[i + 3])
-                b = int(parts[i + 4])
-                is_fg = parts[i] == "38"
-                if mode == "256":
-                    code = _rgb_to_256(r, g, b)
-                    out.extend(["38" if is_fg else "48", "5", str(code)])
-                else:
-                    idx = _rgb_to_16_index(r, g, b)
-                    out.append(str(_FG_16[idx] if is_fg else _BG_16[idx]))
-                i += 5
-                continue
-            out.append(parts[i])
-            i += 1
-        return f"\x1b[{';'.join(out)}m"
-
-    return _SGR_RE.sub(rewrite_sgr, text).encode("latin-1", errors="replace")
 
 
 # ---------------------------------------------------------------------------
@@ -366,6 +232,99 @@ async def _pipe_ws(
 
 
 # ---------------------------------------------------------------------------
+# SSH pump helpers
+# ---------------------------------------------------------------------------
+
+
+async def _ssh_to_ws(process: object, ws: object) -> None:
+    """Forward SSH stdin → WebSocket text frames."""
+    stdin = process.stdin  # type: ignore[attr-defined]
+    while True:
+        try:
+            data = await stdin.read(4096)
+        except Exception:
+            break
+        if not data:
+            break
+        await ws.send(data if isinstance(data, str) else data.decode("latin-1", errors="replace"))  # type: ignore[attr-defined]
+
+
+async def _ws_to_ssh(
+    ws: object,
+    process: object,
+    *,
+    token_file: Path | None = None,
+    color_mode: str = "passthrough",
+) -> None:
+    """Forward WebSocket messages → SSH stdout."""
+    stdout = process.stdout  # type: ignore[attr-defined]
+
+    async def _write_fn(data: bytes) -> None:
+        stdout.write(data.decode("utf-8", errors="replace"))
+
+    async for message in ws:  # type: ignore[attr-defined]
+        if isinstance(message, str):
+            if await _handle_ws_control(message, token_file, _write_fn):
+                continue
+            raw = message.encode("latin-1", errors="replace")
+            raw = _apply_color_mode(raw, color_mode)
+            stdout.write(raw.decode("latin-1", errors="replace"))
+        else:
+            raw = _apply_color_mode(message, color_mode)
+            stdout.write(raw.decode("latin-1", errors="replace"))
+
+
+# ---------------------------------------------------------------------------
+# SSH server helpers (module-level for testability)
+# ---------------------------------------------------------------------------
+
+
+def _make_no_auth_server_class() -> type:
+    """Return an asyncssh.SSHServer subclass that accepts all connections."""
+    import asyncssh
+
+    class _NoAuthServer(asyncssh.SSHServer):
+        # begin_auth returns False → no credentials required from any SSH
+        # client.  This is intentional: the gateway trusts the caller to
+        # provide network-level access control.  Do NOT bind host="0.0.0.0"
+        # on a public interface without an external firewall or auth layer.
+        def begin_auth(self, username: str) -> bool:  # noqa: ARG002
+            return False
+
+    return _NoAuthServer
+
+
+async def _make_process_handler(
+    ws_url: str,
+    token_file: Path | None,
+    color_mode: str,
+) -> collections.abc.Callable[[object], collections.abc.Coroutine[object, object, None]]:
+    """Return an asyncssh process_factory coroutine bound to ws_url/token_file/color_mode."""
+
+    async def _process_handler(process: object) -> None:
+        try:
+            import websockets
+
+            async with websockets.connect(ws_url) as ws:
+                token = _read_token(token_file) if token_file else None
+                if token:
+                    await ws.send(json.dumps({"type": "resume", "token": token}))
+                t1 = asyncio.create_task(_ssh_to_ws(process, ws))
+                t2 = asyncio.create_task(_ws_to_ssh(ws, process, token_file=token_file, color_mode=color_mode))
+                _done, pending = await asyncio.wait([t1, t2], return_when=asyncio.FIRST_COMPLETED)
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*[*_done, *pending], return_exceptions=True)
+        except Exception as exc:
+            logger.debug("ssh_ws_session_ended: %s", exc)
+        finally:
+            with contextlib.suppress(Exception):
+                process.exit(0)  # type: ignore[attr-defined]
+
+    return _process_handler
+
+
+# ---------------------------------------------------------------------------
 # TelnetWsGateway
 # ---------------------------------------------------------------------------
 
@@ -462,6 +421,8 @@ class SshWsGateway:
         server_key: Path to a PEM-encoded SSH host private key file.
             If ``None`` an ephemeral RSA key is generated for each run.
         token_file: Path to persist the resume token.
+        color_mode: ANSI color downgrade mode — ``"passthrough"`` (default),
+            ``"256"``, or ``"16"``.
 
     Example::
 
@@ -476,6 +437,7 @@ class SshWsGateway:
         *,
         server_key: str | Path | None = None,
         token_file: Path | None = None,
+        color_mode: str = "passthrough",
     ) -> None:
         _require_websockets()
         try:
@@ -487,6 +449,7 @@ class SshWsGateway:
         self._ws_url = ws_url
         self._server_key = server_key
         self._token_file = token_file
+        self._color_mode = color_mode
 
     async def start(self, host: str = "0.0.0.0", port: int = TerminalDefaults.GATEWAY_SSH_PORT) -> object:  # nosec B104
         """Start the SSH server and return the server object.
@@ -501,17 +464,6 @@ class SshWsGateway:
         """
         import asyncssh
 
-        ws_url = self._ws_url
-        token_file = self._token_file
-
-        class _NoAuthServer(asyncssh.SSHServer):
-            # begin_auth returns False → no credentials required from any SSH
-            # client.  This is intentional: the gateway trusts the caller to
-            # provide network-level access control.  Do NOT bind host="0.0.0.0"
-            # on a public interface without an external firewall or auth layer.
-            def begin_auth(self, username: str) -> bool:  # noqa: ARG002  # pragma: no cover
-                return False
-
         if self._server_key:
             key_path = Path(self._server_key)
             if not key_path.exists():
@@ -522,59 +474,13 @@ class SshWsGateway:
         else:
             host_keys = [asyncssh.generate_private_key("ssh-ed25519")]
 
-        async def _process_handler(process: asyncssh.SSHServerProcess[bytes]) -> None:  # pragma: no cover
-            try:
-                import websockets
-
-                async with websockets.connect(ws_url) as ws:
-                    token = _read_token(token_file) if token_file else None
-                    if token:
-                        await ws.send(json.dumps({"type": "resume", "token": token}))
-                    t1 = asyncio.create_task(_ssh_to_ws(process, ws))
-                    t2 = asyncio.create_task(_ws_to_ssh(ws, process, token_file=token_file))
-                    _done, pending = await asyncio.wait([t1, t2], return_when=asyncio.FIRST_COMPLETED)
-                    for task in pending:
-                        task.cancel()
-                    await asyncio.gather(*[*_done, *pending], return_exceptions=True)
-            except Exception as exc:
-                logger.debug("ssh_ws_session_ended: %s", exc)
-            finally:
-                with contextlib.suppress(Exception):
-                    process.exit(0)
+        no_auth_server_cls = _make_no_auth_server_class()
+        process_handler = await _make_process_handler(self._ws_url, self._token_file, self._color_mode)
 
         return await asyncssh.create_server(
-            _NoAuthServer,
+            no_auth_server_cls,
             host,
             port,
             server_host_keys=host_keys,
-            process_factory=_process_handler,
+            process_factory=process_handler,
         )
-
-
-async def _ssh_to_ws(process: object, ws: object) -> None:
-    """Forward SSH stdin → WebSocket text frames."""
-    stdin = process.stdin  # type: ignore[attr-defined]
-    while True:
-        try:
-            data = await stdin.read(4096)
-        except Exception:
-            break
-        if not data:
-            break
-        await ws.send(data if isinstance(data, str) else data.decode("latin-1", errors="replace"))  # type: ignore[attr-defined]
-
-
-async def _ws_to_ssh(ws: object, process: object, *, token_file: Path | None = None) -> None:
-    """Forward WebSocket messages → SSH stdout."""
-    stdout = process.stdout  # type: ignore[attr-defined]
-
-    async def _write_fn(data: bytes) -> None:
-        stdout.write(data.decode("utf-8", errors="replace"))
-
-    async for message in ws:  # type: ignore[attr-defined]
-        if isinstance(message, str):
-            if await _handle_ws_control(message, token_file, _write_fn):
-                continue
-            stdout.write(message)
-        else:
-            stdout.write(message.decode("latin-1", errors="replace"))
