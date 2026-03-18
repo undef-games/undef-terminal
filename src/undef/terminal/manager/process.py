@@ -390,6 +390,8 @@ class BotProcessManager:
                         bot.error_message = (
                             f"No heartbeat in {heartbeat_timeout:.0f}s - bot process may have crashed or is stuck"
                         )
+                        bot.error_type = "HeartbeatTimeout"
+                        bot.error_timestamp = time.time()
                         bot.exit_reason = "heartbeat_timeout"
                         bot.stopped_at = time.time()
                         if bot.bot_id in self.manager.processes:
