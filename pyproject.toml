@@ -258,7 +258,7 @@ do_not_mutate = [
 pytest_add_cli_args = ["--no-cov"]
 pytest_add_cli_args_test_selection = [
     "-m",
-    "not playwright",
+    "not playwright and not mutant",
     "--ignore=tests/example/test_server_e2e.py",
     "--ignore=tests/hijack/test_hypothesis.py",
     "--ignore=tests/hijack/test_hypothesis_ordering.py",
