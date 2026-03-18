@@ -2,52 +2,62 @@
 
 ## Current State
 
-- **Main package (`undef-terminal`)**: **1931 tests passing** (excl. Playwright). **100% branch coverage** (5121 stmts, 1394 branches, 0 missing). Pre-commit hooks active.
-- **CF package (`undef-terminal-cloudflare`)**: **449 unit tests passing** + 20 skipped. **100% branch coverage** (1536 stmts, 524 branches, 0 missing).
-- **Playwright**: **35 tests passing** (9 example/proxy/coverage + 6 server pages + 20 hijack).
-- **CF E2E**: 14/14 passing against live worker.
-- **Mutation score**: 67.3% (5972 killed, 2777 survived across 8877 mutants). Survivors concentrated in connectors, CLI, UI, bridge.
-- **Both packages at version 0.3.0**
+- **Main package (`undef-terminal`)**: **~2060 tests passing** (excl. Playwright). **100% branch coverage** (5121 stmts, 1394 branches, 0 missing). Pre-commit hooks active.
+- **CF package (`undef-terminal-cloudflare`)**: **469 unit tests passing**. **100% branch coverage** (1536 stmts, 524 branches, 0 missing).
+- **Playwright**: **39 tests passing** (4 resume + 4 auto-reconnect + existing hijack/server/example tests).
+- **CF E2E**: 14/14 passing against live worker (incl. 4 resume tests).
+- **Mutation score**: 67.3% (5972 killed, 2777 survived across 8877 mutants).
+- **Both packages at version 0.3.0** — bump to **0.4.0** before release (WS session resumption is a new public API).
 - **Dependency**: `undef-telemetry>=0.3` (structured logging via structlog)
+- **Branch**: `feat/ws-session-resumption` — not yet merged or pushed to origin.
+- **Note**: A separate LLM session is refactoring telnet/SSH proxying code; expect churn in `tests/cli/` and gateway-related tests.
 
 ---
 
 ## Completed in This Session
 
-### LLM Review Implementation (Plan B/C)
+### WS Session Resumption
 
-- **JWKS `time.monotonic()`**: Replaced `time.time()` with `time.monotonic()` in CF auth/jwt.py cache TTL (2 sites). Consistent with http_routes.py.
-- **Inline styles round 2**: Extracted 15 CSS utility classes (`.select-sm`, `.filter-input`, `.status-dot`, `.card`, `.page-shell`, `.pre-block`, `.preset-card`, `.nav-btn`, `.btn-sm`, `.metric-grid`, etc.) across 13 component files.
+Full implementation of browser WS session resumption across both backends.
+When a browser WS drops (CF idle timeout, network blip, mobile backgrounded),
+the reconnecting browser can prove it was the same session and reclaim its
+role and hijack ownership within a configurable TTL.
 
-### Replay Improvements
+**New files:**
+- `src/undef/terminal/hijack/hub/resume.py` — `ResumeSession` dataclass, `ResumeTokenStore` Protocol, `InMemoryResumeStore`
+- `tests/hijack/test_resume.py` — 18 unit tests for store
+- `tests/hijack/test_ws_resume.py` — 19 WS integration tests
+- `tests/playwright/test_resume.py` — 4 Playwright E2E tests
+- `packages/undef-terminal-cloudflare/tests/test_cf_resume.py` — 20 CF unit tests
+- `docs/cf-do-architecture.md` — full DO architecture reference (344 lines)
+- `docs/proposal-ws-session-resumption.md` — design rationale
 
-- **ANSI color rendering**: Added `ansiToHtml.ts` utility (SGR parser: 16/256/truecolor, bold/dim/italic/underline/inverse). `ScreenPreview` now defaults to "Rendered" mode with Raw/Rendered toggle.
-- **Playback timer**: Fixed play button (was no-op). Uses real-time deltas between event timestamps, scaled by speed selector (0.5x/1x/2x/4x). Gaps clamped to 2s max.
+**Modified files:**
+- `src/undef/terminal/hijack/hub/core.py` — `resume_store`, `resume_ttl_s`, `on_resume` constructor params
+- `src/undef/terminal/hijack/hub/connections.py` — token creation in `register_browser()`, ownership marking in `cleanup_browser_disconnect()`
+- `src/undef/terminal/hijack/hub/__init__.py` — exports `InMemoryResumeStore`, `ResumeSession`, `ResumeTokenStore`, `ResumeCallback`
+- `src/undef/terminal/hijack/routes/websockets.py` — resume dispatch in message loop
+- `src/undef/terminal/hijack/routes/browser_handlers.py` — `_handle_resume()` function
+- `packages/undef-terminal-frontend/src/hijack.js` — sessionStorage token persistence, auto-send on reconnect
+- `src/undef/terminal/frontend/hijack.js` — compiled output
+- `packages/undef-terminal-cloudflare/src/undef_terminal_cloudflare/state/store.py` — `resume_tokens` SQLite table + CRUD
+- `packages/undef-terminal-cloudflare/src/undef_terminal_cloudflare/do/session_runtime.py` — token issuance in browser hello
+- `packages/undef-terminal-cloudflare/src/undef_terminal_cloudflare/api/ws_routes.py` — `_handle_resume()` dispatch
+- `packages/undef-terminal-cloudflare/src/undef_terminal_cloudflare/contracts.py` — `"resume"` frame type in `parse_frame()`
+- `packages/undef-terminal-cloudflare/tests/test_e2e_ws.py` — 4 new E2E resume tests
 
-### undef-telemetry Integration
+**Deployed to production**: `https://undef-terminal-cloudflare.neurotic.workers.dev`
+All 4 CF E2E resume tests pass against live worker.
 
-- **Replaced all stdlib logging**: 22 source files migrated from `import logging` / `logging.getLogger(__name__)` to `from undef.telemetry import get_logger` / `get_logger(__name__)`. Zero `import logging` remaining.
-- **Namespace package fix**: Removed `src/undef/__init__.py` so `undef.terminal` and `undef.telemetry` coexist as implicit namespace packages.
-- **pytest11 plugin**: Added entry point to undef-telemetry so caplog auto-works when installed. Removed manual structlog conftest config from undef-terminal.
-- **Pre-commit hooks**: Added `undef-telemetry` + `structlog` to mypy/ty additional_dependencies.
-- **Coverage scoping**: Changed `--cov=undef` to `--cov=undef.terminal` so coverage doesn't measure telemetry code.
-- **Default fix in undef-telemetry**: `strict_event_name` default changed from `True` to `False` (opt-in, not opt-out).
+---
 
-### Security & Deployment
+## Documentation Updated
 
-- **Production auth**: `AUTH_MODE=jwt` in wrangler.toml (was `dev`). Local dev uses `.dev.vars` with `AUTH_MODE=dev`.
-- **CF Access**: Worker rejects unauthenticated requests. CF Access Application needs manual setup in Zero Trust dashboard for login redirect.
-- **Deployed**: `https://undef-terminal-cloudflare.neurotic.workers.dev` with JWT auth.
-
-### Build & Tooling
-
-- **pywrangler dev loop fix**: Set `watch_dir = "../../src/undef/terminal/frontend"` to prevent infinite rebuild (cp target was inside watched dir).
-- **SPDX headers**: Added to all 56 TS/TSX/JS source files in both frontend packages.
-- **Playwright tests**: Updated for new React app UI (breadcrumbs, comboboxes, split operator/replay tests).
-- **Stale assets**: Cleaned old frontend build artifacts.
-- **Hypothesis fix**: Suppressed `HealthCheck.differing_executors` for async hypothesis tests.
-- **Mutmut config**: Excluded e2e tests (macOS CPython segfault in proxy_bypass under forked processes).
-- **Dead code**: Removed redundant `if output != "raw"` guard in `_clean_snapshot`.
+- `docs/cf-do-architecture.md` — new; full DO architecture with Mermaid diagrams
+- `docs/protocol-matrix.md` — added session resumption section
+- `docs/production-readiness-pass2.md` — version updated to 0.3.0/0.4.0, Gate 2 notes resumption parity
+- `README.md` — highlights updated (resumption, 2000+ tests)
+- `packages/undef-terminal-cloudflare/README.md` — WS session resumption in key features
 
 ---
 
@@ -60,25 +70,29 @@ uv run pytest tests/ --ignore=tests/playwright -q
 # CF package (100% coverage)
 cd packages/undef-terminal-cloudflare && uv run pytest tests/ --no-cov -q
 
-# Playwright (all 35)
+# Playwright (all, incl. resume tests)
 uv run pytest tests/playwright/ -v --headed --no-cov -p no:randomly
-uv run pytest tests/playwright/test_server.py tests/playwright/test_hijack.py -v --headed --no-cov -p no:randomly
 
 # CF E2E (production)
 REAL_CF=1 REAL_CF_URL=https://undef-terminal-cloudflare.neurotic.workers.dev \
   uv run pytest packages/undef-terminal-cloudflare/tests/test_e2e_wrangler.py \
   packages/undef-terminal-cloudflare/tests/test_e2e_ws.py -v -p no:randomly -p no:xdist --no-cov
 
-# Mutation testing
-uv run mutmut run
+# CF E2E (local pywrangler dev — no JWT required)
+cd packages/undef-terminal-cloudflare && \
+  uv run pywrangler dev --port 8787 &
+  E2E=1 uv run pytest tests/test_e2e_ws.py -v -p no:randomly -p no:xdist --no-cov
 ```
 
 ---
 
 ## Remaining for Release
 
-- [ ] `git push` (12 commits ahead of origin)
-- [ ] CF Access Application in Zero Trust dashboard (browser login redirect)
-- [ ] Mutation score improvement (67.3% → target TBD; 2777 survivors across 43 files)
+- [ ] Version bump: `0.3.0` → `0.4.0` in both `pyproject.toml` files and `VERSION` files
+- [ ] `git push` (branch ahead of origin)
+- [ ] PR: `feat/ws-session-resumption` → `main`
+- [ ] Merge telnet/SSH refactor (separate LLM session in progress — watch `tests/cli/` failures)
+- [ ] CHANGELOG.md (optional — all context is in commit messages and proposal doc)
+- [ ] CF Access Application in Zero Trust dashboard (browser login redirect for production)
+- [ ] Mutation score improvement (67.3% → target TBD; survivors in connectors, CLI, UI, bridge)
 - [ ] PyPI publish (`uv build && uv publish`)
-- [ ] CHANGELOG.md (optional — info is here)

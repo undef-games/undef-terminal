@@ -1,6 +1,6 @@
 # Production Readiness
 
-This document tracks the release hardening gates. **0.1.0 has shipped.** Gates 0–3 are implemented. Gates 4–6 define the ongoing release bar for future RCs.
+This document tracks the release hardening gates. **0.3.0 has shipped. 0.4.0 in progress (WS session resumption).** Gates 0–3 are implemented. Gates 4–6 define the ongoing release bar for future RCs.
 
 ## Gate 0 (P0): Freeze and Reproducible Baseline
 
@@ -43,6 +43,13 @@ Implemented:
 - Both backends now advertise capabilities in WS `hello`.
 - Cloudflare includes REST `step` route.
 - Frontend hijack widget dynamically chooses WS or REST control by handshake.
+
+Implemented (0.4.0 addition):
+- WS session resumption parity: both backends issue resume tokens in `hello`,
+  accept `{"type":"resume","token":"…"}` frames, rotate tokens on success, and
+  restore role + hijack ownership. CF uses DO SQLite; FastAPI uses pluggable
+  `ResumeTokenStore` (default: `InMemoryResumeStore`).
+- Protocol matrix updated: see `docs/protocol-matrix.md`.
 
 Known gaps:
 - Cloudflare and FastAPI are not yet identical in every hijack REST edge case.

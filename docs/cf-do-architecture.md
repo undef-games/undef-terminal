@@ -7,16 +7,42 @@ The DO acts as the central arbitration point for one worker channel: it holds We
 connections for the runtime worker and any number of browser clients, persists hijack leases
 and snapshots in SQLite, and publishes events to all connected browsers.
 
+```mermaid
+graph LR
+    B1[Browser A] -->|WS /ws/browser/…| DW[Default Worker]
+    B2[Browser B] -->|WS /ws/browser/…| DW
+    B1 -->|REST /hijack/…| DW
+    DW -->|DO stub| DO[SessionRuntime DO]
+    W[TermBridge worker] -->|WS /ws/worker/…| DW
+    DO <-->|KV.put/delete| KV[(SESSION_REGISTRY KV)]
+    DO <-->|SQLite| DB[(DO SQLite)]
+    subgraph DO[SessionRuntime DO]
+        SR[session_runtime.py]
+        SS[SqliteStateStore]
+        HC[HijackCoordinator]
+    end
 ```
-Browser(s)          Default Worker              DO (SessionRuntime)
-   |                      |                            |
-   |-- GET /api/sessions ->|-- KV.list(session:*) ---> KV
-   |                      |                            |
-   |-- WS /ws/browser/… -->|-- DO.fetch() ------------>|-- serializeAttachment
-   |<- hello (token) ------|<--------------------------|
-   |                       |                           |
-   |                       |     Worker (TermBridge)   |
-   |                       |<- WS /ws/worker/… ------->|-- KV.put(session:id)
+
+### Request flow for a browser WS connection
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant DW as Default Worker
+    participant DO as SessionRuntime DO
+    participant KV as KV Registry
+
+    B->>DW: GET /ws/browser/{id}/term (Upgrade: websocket)
+    DW->>DO: fetch(request)
+    DO->>DO: _lazy_init_worker_id()
+    DO->>DO: _resolve_principal() [JWT check]
+    DO->>DO: WebSocketPair.new()
+    DO->>DO: serializeAttachment("browser:admin:worker-id")
+    DO->>B: server.send(hello + resume_token)  [before 101]
+    DO->>DW: Response(101, web_socket=client)
+    DW->>B: 101 Switching Protocols
+    Note over DO,B: webSocketOpen() fires (may be skipped after hibernation)
+    DO->>B: send(hello + hijack_state + snapshot)  [belt-and-suspenders]
 ```
 
 ---
@@ -37,6 +63,31 @@ Browser(s)          Default Worker              DO (SessionRuntime)
 ---
 
 ## Lifecycle: `fetch()` → Hibernation Handlers
+
+```mermaid
+stateDiagram-v2
+    [*] --> fetch: HTTP/WS request
+    fetch --> webSocketOpen: 101 returned (may be skipped post-hibernation)
+    webSocketOpen --> webSocketMessage: socket active
+    webSocketMessage --> webSocketMessage: more frames
+    webSocketMessage --> webSocketClose: client closes
+    webSocketMessage --> webSocketError: transport error
+    webSocketClose --> [*]
+    webSocketError --> [*]
+    fetch --> alarm: setAlarm() scheduled
+    alarm --> alarm: reschedule (KV heartbeat)
+    alarm --> [*]: no active lease or worker
+
+    note right of fetch
+        KV write (worker connect)
+        browser hello + resume token
+        serializeAttachment
+    end note
+    note right of alarm
+        auto-release expired lease
+        KV heartbeat refresh
+    end note
+```
 
 CF Hibernation API splits the WS lifecycle across five entry points. Understanding
 why logic lives where it does requires knowing when each fires.
@@ -283,6 +334,36 @@ status under `session:{worker_id}`.
 
 When a browser connects, `fetch()` creates a resume token in SQLite and includes
 it in the hello message. The browser stores it in `sessionStorage`.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant DO as SessionRuntime DO
+    participant DB as DO SQLite
+
+    Note over B,DO: Initial connect
+    B->>DO: WS connect /ws/browser/{id}/term
+    DO->>DB: create_resume_token(token, worker_id, role, ttl)
+    DO->>B: hello {resume_supported: true, resume_token: "abc…"}
+    B->>B: sessionStorage.setItem("uterm_resume_id", "abc…")
+
+    Note over B,DO: WS drops (network blip / CF idle timeout)
+    B--xDO: connection lost
+
+    Note over B,DO: Reconnect
+    B->>DO: WS connect (new socket)
+    DO->>DB: create_resume_token(token2, …)  [fresh token for new session]
+    DO->>B: hello {resume_supported: true, resume_token: "tmp…", resumed: false}
+    B->>DO: {"type": "resume", "token": "abc…"}
+    DO->>DB: get_resume_token("abc…")  [validate + TTL check]
+    DO->>DB: revoke_resume_token("abc…")
+    DO->>DO: serializeAttachment("browser:admin:worker-id")  [restore role]
+    DO->>DB: create_resume_token(token3, worker_id, role, ttl)
+    DO->>B: hello {resumed: true, role: "admin", resume_token: "xyz…"}
+    DO->>B: hijack_state
+    DO->>B: last_snapshot
+    B->>B: sessionStorage.setItem("uterm_resume_id", "xyz…")
+```
 
 On reconnect, the browser sends `{"type": "resume", "token": "…"}` as its first
 message. `_handle_resume()` in `ws_routes.py`:
