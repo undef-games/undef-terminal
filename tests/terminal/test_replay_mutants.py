@@ -170,13 +170,13 @@ class TestReplayLogMutants:
         # Write a log with non-ASCII content
         log = tmp_path / "s.jsonl"
         log.write_text(
-            json.dumps({"ts": 1.0, "event": "screen", "data": {"screen": "bonjour world"}}) + "\n",
+            json.dumps({"ts": 1.0, "event": "screen", "data": {"screen": "ma\u00f1ana"}}) + "\n",
             encoding="utf-8",
         )
         buf = io.StringIO()
         replay_log(log, output=buf)
-        # Should not raise and should produce output
-        assert "\u00e9" in buf.getvalue()
+        # Should not raise and must preserve non-ASCII (U+00F1 = ñ)
+        assert "\u00f1" in buf.getvalue()
 
     def test_lineno_starts_at_1(self, tmp_path: Path, monkeypatch) -> None:
         """mutmut_21,22: enumerate must start at 1 (default or explicit), not 0 or 2."""

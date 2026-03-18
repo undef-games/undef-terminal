@@ -277,6 +277,7 @@ class TestRuntimeStop:
                 raise
 
         rt._task = asyncio.create_task(_long_run())
+        await asyncio.sleep(0)  # let the task start and reach its first await
         with patch.object(rt, "_stop_connector", new_callable=AsyncMock):
             await rt.stop()
         # After stop() awaits the task, cancellation must have propagated

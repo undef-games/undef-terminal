@@ -922,16 +922,16 @@ class TestTelnetTransportNegotiate:
             await srv.wait_closed()
         return client_sent
 
-    def test_negotiate_direct_do_adds_to_negotiated(self) -> None:
+    async def test_negotiate_direct_do_adds_to_negotiated(self) -> None:
         """Kills mutmut_2 (cmd != DO) and mutmut_3 (add(None)).
         After processing DO, negotiated['do'] must contain opt."""
         t = TelnetTransport()
-        # Set up a mock writer to prevent 'not connected' bail
         t._writer = MagicMock()
         t._writer.is_closing = MagicMock(return_value=False)
         t._writer.write = MagicMock()
         t._writer.drain = AsyncMock()
-        asyncio.get_event_loop()
+        await t._negotiate(DO, ECHO)
+        assert ECHO in t._negotiated["do"]
 
     async def test_negotiate_do_adds_to_do_set(self) -> None:
         """Kills mutmut_2 (!=), mutmut_3 (add None), mutmut_4 (wrong key 'XXdoXX' wait that's
