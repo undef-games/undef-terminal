@@ -2950,6 +2950,7 @@ all = [
     { name = "httpx" },
     { name = "pyjwt" },
     { name = "pyte" },
+    { name = "pyyaml" },
     { name = "uvicorn" },
     { name = "websockets" },
 ]
@@ -2963,6 +2964,11 @@ client = [
 ]
 emulator = [
     { name = "pyte" },
+]
+manager = [
+    { name = "fastapi" },
+    { name = "pyyaml" },
+    { name = "uvicorn" },
 ]
 mcp = [
     { name = "fastmcp" },
@@ -3005,6 +3011,7 @@ dev = [
     { name = "pytest-randomly" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
+    { name = "pyyaml" },
     { name = "reuse" },
     { name = "ruff" },
     { name = "ty" },
@@ -3021,6 +3028,7 @@ requires-dist = [
     { name = "asyncssh", marker = "extra == 'ssh'", specifier = ">=2.14" },
     { name = "fastapi", marker = "extra == 'all'", specifier = ">=0.110" },
     { name = "fastapi", marker = "extra == 'cli'", specifier = ">=0.110" },
+    { name = "fastapi", marker = "extra == 'manager'", specifier = ">=0.110" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.110" },
     { name = "fastapi", marker = "extra == 'websocket'", specifier = ">=0.110" },
     { name = "fastmcp", marker = "extra == 'all'", specifier = ">=2.0" },
@@ -3031,15 +3039,18 @@ requires-dist = [
     { name = "pyjwt", marker = "extra == 'server'", specifier = ">=2.9" },
     { name = "pyte", marker = "extra == 'all'", specifier = ">=0.8" },
     { name = "pyte", marker = "extra == 'emulator'", specifier = ">=0.8" },
+    { name = "pyyaml", marker = "extra == 'all'", specifier = ">=6.0" },
+    { name = "pyyaml", marker = "extra == 'manager'", specifier = ">=6.0" },
     { name = "undef-telemetry", editable = "../undef-telemetry" },
     { name = "uvicorn", marker = "extra == 'all'", specifier = ">=0.24" },
     { name = "uvicorn", marker = "extra == 'cli'", specifier = ">=0.24" },
+    { name = "uvicorn", marker = "extra == 'manager'", specifier = ">=0.24" },
     { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.24" },
     { name = "websockets", marker = "extra == 'all'", specifier = ">=12.0" },
     { name = "websockets", marker = "extra == 'cli'", specifier = ">=12.0" },
     { name = "websockets", marker = "extra == 'websocket'", specifier = ">=12.0" },
 ]
-provides-extras = ["websocket", "ssh", "emulator", "server", "cli", "client", "all", "mcp"]
+provides-extras = ["websocket", "ssh", "emulator", "server", "cli", "client", "manager", "all", "mcp"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -3066,6 +3077,7 @@ dev = [
     { name = "pytest-randomly", specifier = ">=3.15.0" },
     { name = "pytest-timeout", specifier = ">=2.4.0" },
     { name = "pytest-xdist", specifier = ">=3.8" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "reuse", specifier = ">=6.2.0" },
     { name = "ruff", specifier = ">=0.15" },
     { name = "ty", specifier = ">=0.0.17" },
