@@ -11,6 +11,7 @@ import hashlib
 import time
 from typing import Any
 
+from undef.terminal.defaults import TerminalDefaults
 from undef.terminal.screen import decode_cp437
 from undef.terminal.server.connectors.base import SessionConnector
 from undef.terminal.transports.telnet import TelnetTransport
@@ -30,8 +31,8 @@ class TelnetSessionConnector(SessionConnector):
             raise ValueError(f"unknown telnet connector_config keys: {sorted(unknown)}")
         self._session_id = session_id
         self._display_name = display_name
-        self._host = str(config.get("host", "127.0.0.1"))
-        self._port = int(config.get("port", 23))
+        self._host = str(config.get("host", TerminalDefaults.TELNET_HOST))
+        self._port = int(config.get("port", TerminalDefaults.TELNET_REMOTE_PORT))
         self._transport = TelnetTransport()
         self._connected = False
         self._input_mode = str(config.get("input_mode", "open"))

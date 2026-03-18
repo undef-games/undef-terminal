@@ -43,10 +43,10 @@ if TYPE_CHECKING:
 
     from undef.terminal.transports.base import ConnectionTransport
 
+from undef.terminal.defaults import TerminalDefaults
+from undef.terminal.server.models import FITADDON_CDN_DEFAULT, FONTS_CDN_DEFAULT, XTERM_CDN_DEFAULT
+
 _FRONTEND_DIR = Path(__file__).parent / "frontend"
-_XTERM_CDN = "https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0"
-_FITADDON_CDN = "https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.11.0"
-_FONTS_CDN = "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&display=swap"
 
 # ---------------------------------------------------------------------------
 # Subcommand: proxy  (WS server → outbound telnet/SSH)
@@ -113,12 +113,12 @@ def _cmd_proxy(args: argparse.Namespace) -> None:
             '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">'
             f"<title>{safe_title}</title>"
             '<link rel="stylesheet" href="/static/terminal-page.css">'
-            f'<link rel="stylesheet" href="{_XTERM_CDN}/css/xterm.css">'
-            f'<link href="{_FONTS_CDN}" rel="stylesheet">'
+            f'<link rel="stylesheet" href="{XTERM_CDN_DEFAULT}/css/xterm.css">'
+            f'<link href="{FONTS_CDN_DEFAULT}" rel="stylesheet">'
             '<link rel="stylesheet" href="/static/terminal.css">'
             '</head><body><div id="app"></div>'
-            f'<script src="{_XTERM_CDN}/lib/xterm.js"></script>'
-            f'<script src="{_FITADDON_CDN}/lib/addon-fit.js"></script>'
+            f'<script src="{XTERM_CDN_DEFAULT}/lib/xterm.js"></script>'
+            f'<script src="{FITADDON_CDN_DEFAULT}/lib/addon-fit.js"></script>'
             '<script src="/static/terminal.js"></script>'
             "<script>"
             "new window.UndefTerminal(document.getElementById('app'),"
@@ -240,20 +240,20 @@ def _build_parser() -> argparse.ArgumentParser:
         "-p",
         metavar="PORT",
         type=int,
-        default=8765,
-        help="local HTTP listen port (default: 8765)",
+        default=TerminalDefaults.PROXY_PORT,
+        help=f"local HTTP listen port (default: {TerminalDefaults.PROXY_PORT})",
     )
     proxy_p.add_argument(
         "--bind",
         metavar="ADDR",
-        default="0.0.0.0",  # nosec B104
-        help="bind address (default: 0.0.0.0)",
+        default=TerminalDefaults.BIND_ALL,  # nosec B104
+        help=f"bind address (default: {TerminalDefaults.BIND_ALL})",
     )
     proxy_p.add_argument(
         "--path",
         metavar="PATH",
-        default="/ws/terminal",
-        help="WebSocket endpoint path (default: /ws/terminal)",
+        default=TerminalDefaults.PROXY_WS_PATH,
+        help=f"WebSocket endpoint path (default: {TerminalDefaults.PROXY_WS_PATH})",
     )
     proxy_p.add_argument(
         "--transport",
@@ -277,8 +277,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "-p",
         metavar="PORT",
         type=int,
-        default=2112,
-        help="telnet TCP listen port (0 to disable, default: 2112)",
+        default=TerminalDefaults.GATEWAY_TELNET_PORT,
+        help=f"telnet TCP listen port (0 to disable, default: {TerminalDefaults.GATEWAY_TELNET_PORT})",
     )
     listen_p.add_argument(
         "--ssh-port",
@@ -290,8 +290,8 @@ def _build_parser() -> argparse.ArgumentParser:
     listen_p.add_argument(
         "--bind",
         metavar="ADDR",
-        default="0.0.0.0",  # nosec B104
-        help="bind address (default: 0.0.0.0)",
+        default=TerminalDefaults.BIND_ALL,  # nosec B104
+        help=f"bind address (default: {TerminalDefaults.BIND_ALL})",
     )
     listen_p.add_argument(
         "--server-key",
@@ -302,7 +302,7 @@ def _build_parser() -> argparse.ArgumentParser:
     listen_p.add_argument(
         "--token-file",
         metavar="FILE",
-        default=str(Path.home() / ".uterm" / "session_token"),
+        default=str(TerminalDefaults.token_file()),
         help="File to persist the resume token (default: ~/.uterm/session_token)",
     )
     listen_p.add_argument(

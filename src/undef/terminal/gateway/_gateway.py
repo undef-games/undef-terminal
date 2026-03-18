@@ -367,8 +367,8 @@ class TelnetWsGateway:
 
     async def start(
         self,
-        host: str = "0.0.0.0",
-        port: int = TerminalDefaults.GATEWAY_TELNET_PORT,  # nosec B104
+        host: str = TerminalDefaults.BIND_ALL,  # nosec B104
+        port: int = TerminalDefaults.GATEWAY_TELNET_PORT,
     ) -> asyncio.AbstractServer:
         """Start the TCP listener and return the server object.
 
@@ -451,7 +451,9 @@ class SshWsGateway:
         self._token_file = token_file
         self._color_mode = color_mode
 
-    async def start(self, host: str = "0.0.0.0", port: int = TerminalDefaults.GATEWAY_SSH_PORT) -> object:  # nosec B104
+    async def start(
+        self, host: str = TerminalDefaults.BIND_ALL, port: int = TerminalDefaults.GATEWAY_SSH_PORT
+    ) -> object:  # nosec B104
         """Start the SSH server and return the server object.
 
         Args:
