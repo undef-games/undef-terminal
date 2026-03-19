@@ -318,7 +318,6 @@ class TestProcessTreeHelpers:
         mock_taskkill.assert_awaited_once_with(987)
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(os.name == "nt", reason="process-tree integration test is POSIX-specific")
     async def test_kill_bot_terminates_spawned_child_process_tree(self, pm, manager, tmp_path):
         parent_script = tmp_path / "parent.py"
         child_script = tmp_path / "child.py"
@@ -377,7 +376,7 @@ class TestProcessTreeHelpers:
             await pm.kill_bot("bot_123")
 
             stopped_mtime = heartbeat_file.stat().st_mtime_ns
-            await asyncio.sleep(0.25)
+            await asyncio.sleep(0.5 if os.name == "nt" else 0.25)
             assert heartbeat_file.stat().st_mtime_ns == stopped_mtime, "child heartbeat kept advancing after kill_bot()"
             assert process.poll() is not None
         finally:
