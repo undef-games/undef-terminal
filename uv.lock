@@ -2893,46 +2893,14 @@ wheels = [
 
 [[package]]
 name = "undef-telemetry"
-source = { editable = "../undef-telemetry" }
+version = "0.3.17"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "structlog" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.115.0" },
-    { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.27.0" },
-    { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'otel'", specifier = ">=1.27.0" },
-    { name = "opentelemetry-instrumentation-logging", marker = "extra == 'otel'", specifier = ">=0.61b0" },
-    { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.27.0" },
-    { name = "starlette", marker = "extra == 'fastapi'", specifier = ">=0.40.0" },
-    { name = "structlog", specifier = ">=24.0.0" },
-    { name = "undef-telemetry", extras = ["fastapi", "otel"], marker = "extra == 'all'" },
-]
-provides-extras = ["otel", "fastapi", "all"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "bandit", specifier = ">=1.8.6" },
-    { name = "build", specifier = ">=1.2.2" },
-    { name = "codespell", specifier = ">=2.4.1" },
-    { name = "hypothesis", specifier = ">=6.130.0" },
-    { name = "mutmut", specifier = ">=3.3.1" },
-    { name = "mypy", specifier = ">=1.18.0" },
-    { name = "pip-audit", specifier = ">=2.7.0" },
-    { name = "pip-licenses", specifier = ">=5.0.0" },
-    { name = "pre-commit", specifier = ">=4.0.1" },
-    { name = "pytest", specifier = ">=8.3.0" },
-    { name = "pytest-asyncio", specifier = ">=0.24.0" },
-    { name = "pytest-cov", specifier = ">=6.1.1" },
-    { name = "pytest-randomly", specifier = ">=3.15.0" },
-    { name = "pytest-xdist", specifier = ">=3.8.0" },
-    { name = "reuse", specifier = ">=6.2.0" },
-    { name = "ruff", specifier = ">=0.14.5" },
-    { name = "twine", specifier = ">=5.1.1" },
-    { name = "ty", specifier = ">=0.0.18" },
-    { name = "vulture", specifier = ">=2.14" },
-    { name = "xenon", specifier = ">=0.9.3" },
+sdist = { url = "https://files.pythonhosted.org/packages/c3/37/af1cd5f507f583f78bc951e14782d77bce07d37edbfcb87892edb52eb8b2/undef_telemetry-0.3.17.tar.gz", hash = "sha256:e659b109332773e6290ddba8b4cadf0ebddb86c041866332b86f073f51e2282d", size = 39226, upload-time = "2026-03-16T22:37:02.455Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b1/5a/2b48b99829436e5de9a99ce3424f1cca2e154f2e0fdf55b6ce53131e4db5/undef_telemetry-0.3.17-py3-none-any.whl", hash = "sha256:0cc36fc38848f761dc8bd6655ebf9d3f039757667081ec6a962a486ad75c0999", size = 50425, upload-time = "2026-03-16T22:37:03.589Z" },
 ]
 
 [[package]]
@@ -3041,7 +3009,7 @@ requires-dist = [
     { name = "pyte", marker = "extra == 'emulator'", specifier = ">=0.8" },
     { name = "pyyaml", marker = "extra == 'all'", specifier = ">=6.0" },
     { name = "pyyaml", marker = "extra == 'manager'", specifier = ">=6.0" },
-    { name = "undef-telemetry", editable = "../undef-telemetry" },
+    { name = "undef-telemetry", specifier = ">=0.3" },
     { name = "uvicorn", marker = "extra == 'all'", specifier = ">=0.24" },
     { name = "uvicorn", marker = "extra == 'cli'", specifier = ">=0.24" },
     { name = "uvicorn", marker = "extra == 'manager'", specifier = ">=0.24" },

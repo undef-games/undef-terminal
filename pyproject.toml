@@ -275,4 +275,3 @@ members = [
 [tool.uv.sources]
 undef-terminal = { workspace = true }
 undef-terminal-cloudflare = { workspace = true }
-undef-telemetry = { path = "../undef-telemetry", editable = true }
