@@ -114,6 +114,10 @@ to read-only (`viewer`).
 If `resolve_browser_role` raises an exception, the browser WebSocket is rejected
 and closed. Resolver failures do not fall back to `viewer`.
 
+WebSocket session resumption is opt-in on raw `TermHub` instances. Resume tokens
+are opaque session handles that restore the prior browser role unless the
+consumer supplies stricter validation via `on_resume`.
+
 ### Frontend — UndefHijack
 
 Embed the hijack control widget in any HTML page:
@@ -176,6 +180,7 @@ This is the canonical hosted-app example for the library. It demonstrates:
 - named sessions above `TermHub`
 - browser session pages and operator pages
 - server-side role resolution and policy
+- WS session resumption with in-memory token storage
 - hosted connectors (`shell`, `telnet`, `ssh`)
 - session APIs, mode switching, and optional file-backed recording
 

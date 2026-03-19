@@ -16,6 +16,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from undef.terminal.client import connect_test_ws
 from undef.terminal.hijack.hub import InMemoryResumeStore, TermHub
 
 # ---------------------------------------------------------------------------
@@ -67,7 +68,7 @@ class TestResumeTokenIssuance:
         store = InMemoryResumeStore()
         app, hub = make_app(role="admin", resume_store=store)
         client = TestClient(app)
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             hello, _ = _read_initial(ws)
             assert hello["resume_supported"] is True
             assert hello["resume_token"] is not None
@@ -77,7 +78,7 @@ class TestResumeTokenIssuance:
     def test_hello_no_resume_token_without_store(self) -> None:
         app, hub = make_app(role="admin")
         client = TestClient(app)
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             hello, _ = _read_initial(ws)
             assert hello["resume_supported"] is False
             assert hello["resume_token"] is None
@@ -88,7 +89,7 @@ class TestResumeTokenIssuance:
         client = TestClient(app)
         tokens = []
         for _ in range(3):
-            with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+            with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
                 hello, _ = _read_initial(ws)
                 tokens.append(hello["resume_token"])
         assert len(set(tokens)) == 3
@@ -107,12 +108,12 @@ class TestResumeFlow:
         client = TestClient(app)
 
         # First connection — get token
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             hello, _ = _read_initial(ws)
             token = hello["resume_token"]
 
         # Reconnect and resume
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             hello1, _ = _read_initial(ws)
             ws.send_json({"type": "resume", "token": token})
             resumed_hello = ws.receive_json()
@@ -130,7 +131,7 @@ class TestResumeFlow:
         app, hub = make_app(role="admin", resume_store=store)
         client = TestClient(app)
 
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             hello, _ = _read_initial(ws)
             token = hello["resume_token"]
 
@@ -138,7 +139,7 @@ class TestResumeFlow:
         store.revoke(token)
         assert store.get(token) is None
 
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             hello2, _ = _read_initial(ws)
             # Send resume with revoked/expired token — should be silently ignored
             ws.send_json({"type": "resume", "token": token})
@@ -153,12 +154,12 @@ class TestResumeFlow:
         app, hub = make_app(role="admin", resume_store=store)
         client = TestClient(app)
 
-        with client.websocket_connect("/ws/browser/worker-a/term") as ws:
+        with connect_test_ws(client, "/ws/browser/worker-a/term") as ws:
             hello, _ = _read_initial(ws)
             token = hello["resume_token"]
 
         # Connect to different worker — resume should be silently ignored
-        with client.websocket_connect("/ws/browser/worker-b/term") as ws:
+        with connect_test_ws(client, "/ws/browser/worker-b/term") as ws:
             hello2, _ = _read_initial(ws)
             ws.send_json({"type": "resume", "token": token})
             ws.send_json({"type": "ping"})
@@ -171,12 +172,12 @@ class TestResumeFlow:
         app, hub = make_app(role="admin", resume_store=store)
         client = TestClient(app)
 
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             hello, _ = _read_initial(ws)
             token = hello["resume_token"]
 
         # Resume once — should succeed
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             _read_initial(ws)
             ws.send_json({"type": "resume", "token": token})
             resumed = ws.receive_json()
@@ -192,12 +193,12 @@ class TestResumeFlow:
         app, hub = make_app(role="admin", resume_store=store)
         client = TestClient(app)
 
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             hello, _ = _read_initial(ws)
             token = hello["resume_token"]
 
         # Tab A resumes successfully
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws_a:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws_a:
             _read_initial(ws_a)
             ws_a.send_json({"type": "resume", "token": token})
             resumed = ws_a.receive_json()
@@ -212,7 +213,7 @@ class TestResumeFlow:
         app, hub = make_app(role="admin", resume_store=store)
         client = TestClient(app)
 
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             hello, _ = _read_initial(ws)
             assert hello["resume_token"] is not None
             ws.send_json({"type": "ping"})
@@ -225,7 +226,7 @@ class TestResumeFlow:
         app, hub = make_app(role="admin", resume_store=store)
         client = TestClient(app)
 
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             _read_initial(ws)
             ws.send_json({"type": "resume", "token": ""})
             ws.send_json({"type": "ping"})
@@ -249,25 +250,79 @@ class TestResumeHijackReclaim:
         app, hub = make_app(role="admin", resume_store=store)
         client = TestClient(app)
 
-        # Connect browser, get token
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
-            hello, _ = _read_initial(ws)
-            token = hello["resume_token"]
+        with connect_test_ws(client, f"/ws/worker/{WID}/term") as worker:
+            _read_worker_snapshot_req(worker)
+            worker.send_json({"type": "snapshot", "screen": "ready", "ts": 1.0})
 
-        # Simulate that this session was a hijack owner at disconnect
-        store.mark_hijack_owner(token, True)
+            # Connect browser, get token
+            with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
+                hello, _ = _read_initial(ws)
+                token = hello["resume_token"]
+                snapshot = ws.receive_json()
+                assert snapshot["type"] == "snapshot"
 
-        # Reconnect and resume — should reclaim hijack (no active hijack exists)
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws2:
-            hello2, _ = _read_initial(ws2)
-            ws2.send_json({"type": "resume", "token": token})
-            resumed = ws2.receive_json()
-            assert resumed["type"] == "hello"
-            assert resumed["resumed"] is True
-            assert resumed["hijacked_by_me"] is True
-            hs = ws2.receive_json()
-            assert hs["type"] == "hijack_state"
-            assert hs["owner"] == "me"
+            # Simulate that this session was a hijack owner at disconnect
+            store.mark_hijack_owner(token, True)
+
+            # Reconnect and resume — should reclaim hijack (no active hijack exists)
+            with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws2:
+                _read_initial(ws2)
+                snapshot2 = ws2.receive_json()
+                assert snapshot2["type"] == "snapshot"
+                ws2.send_json({"type": "resume", "token": token})
+                pause = worker.receive_json()
+                assert pause["type"] == "control"
+                assert pause["action"] == "pause"
+                resumed = ws2.receive_json()
+                assert resumed["type"] == "hello"
+                assert resumed["resumed"] is True
+                assert resumed["hijacked_by_me"] is True
+                hs = ws2.receive_json()
+                assert hs["type"] == "hijack_state"
+                assert hs["owner"] == "me"
+
+    def test_resume_repauses_worker_when_hijack_is_reclaimed(self) -> None:
+        """A resumed hijack should restore the worker-side paused state."""
+        store = InMemoryResumeStore()
+        app, hub = make_app(role="admin", resume_store=store)
+        client = TestClient(app)
+
+        with connect_test_ws(client, f"/ws/worker/{WID}/term") as worker:
+            _read_worker_snapshot_req(worker)
+            worker.send_json({"type": "snapshot", "screen": "ready", "ts": 1.0})
+
+            with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
+                hello, _ = _read_initial(ws)
+                token = hello["resume_token"]
+                snapshot = ws.receive_json()
+                assert snapshot["type"] == "snapshot"
+                ws.send_json({"type": "hijack_request"})
+                pause = worker.receive_json()
+                assert pause["type"] == "control"
+                assert pause["action"] == "pause"
+                state = ws.receive_json()
+                assert state["type"] == "hijack_state"
+                assert state["owner"] == "me"
+
+            released = worker.receive_json()
+            assert released["type"] == "control"
+            assert released["action"] == "resume"
+
+            with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws2:
+                _read_initial(ws2)
+                snapshot2 = ws2.receive_json()
+                assert snapshot2["type"] == "snapshot"
+                ws2.send_json({"type": "resume", "token": token})
+                reparsed_pause = worker.receive_json()
+                assert reparsed_pause["type"] == "control"
+                assert reparsed_pause["action"] == "pause"
+                resumed = ws2.receive_json()
+                assert resumed["type"] == "hello"
+                assert resumed["resumed"] is True
+                assert resumed["hijacked_by_me"] is True
+                hs = ws2.receive_json()
+                assert hs["type"] == "hijack_state"
+                assert hs["owner"] == "me"
 
 
 # ---------------------------------------------------------------------------
@@ -277,50 +332,44 @@ class TestResumeHijackReclaim:
 
 class TestResumeRoleRestoration:
     def test_resume_restores_different_role(self) -> None:
-        """Connect as admin → get token → reconnect as viewer → resume → role restored to admin."""
+        """Connect as viewer → get token → reconnect as admin → resume → role stays viewer (downgrade preserved)."""
         store = InMemoryResumeStore()
-        # First connection: resolver returns admin
         hub = TermHub(
-            resolve_browser_role=lambda _ws, _wid: "admin",
+            resolve_browser_role=lambda _ws, _wid: "viewer",
             resume_store=store,
         )
         app = FastAPI()
         app.include_router(hub.create_router())
         client = TestClient(app)
 
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             hello, _ = _read_initial(ws)
             token = hello["resume_token"]
-            assert hello["role"] == "admin"
+            assert hello["role"] == "viewer"
 
-        # Now manually change the token's role to "admin" (it already is)
-        # But for the resume, we need the RESOLVER to return a different role.
-        # So create a new app where the resolver returns "viewer"
+        # Reconnect as admin — stored viewer role should be preserved (not escalated to admin)
         hub2 = TermHub(
-            resolve_browser_role=lambda _ws, _wid: "viewer",
+            resolve_browser_role=lambda _ws, _wid: "admin",
             resume_store=store,  # same store
         )
         app2 = FastAPI()
         app2.include_router(hub2.create_router())
         client2 = TestClient(app2)
 
-        with client2.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client2, f"/ws/browser/{WID}/term") as ws:
             hello2, _ = _read_initial(ws)
-            # Resolver gave "viewer"
-            assert hello2["role"] == "viewer"
-            # Resume with admin token
+            assert hello2["role"] == "admin"
             ws.send_json({"type": "resume", "token": token})
             resumed = ws.receive_json()
             assert resumed["type"] == "hello"
             assert resumed["resumed"] is True
-            # Role restored to admin from the token
-            assert resumed["role"] == "admin"
-            assert resumed["can_hijack"] is True
+            # Stored viewer role is restored (downgrade preserved; stored <= current)
+            assert resumed["role"] == "viewer"
+            assert resumed["can_hijack"] is False
 
     def test_resume_restores_operator_role(self) -> None:
-        """Resume restores operator role when reconnecting as viewer."""
+        """Connect as operator → reconnect as admin → resume → role stays operator (downgrade preserved)."""
         store = InMemoryResumeStore()
-        # First: connect as operator
         hub = TermHub(
             resolve_browser_role=lambda _ws, _wid: "operator",
             resume_store=store,
@@ -329,11 +378,44 @@ class TestResumeRoleRestoration:
         app.include_router(hub.create_router())
         client = TestClient(app)
 
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             hello, _ = _read_initial(ws)
             token = hello["resume_token"]
 
-        # Reconnect as viewer — resume should restore operator
+        # Reconnect as admin — stored operator role should be preserved
+        hub2 = TermHub(
+            resolve_browser_role=lambda _ws, _wid: "admin",
+            resume_store=store,
+        )
+        app2 = FastAPI()
+        app2.include_router(hub2.create_router())
+        client2 = TestClient(app2)
+
+        with connect_test_ws(client2, f"/ws/browser/{WID}/term") as ws:
+            hello2, _ = _read_initial(ws)
+            ws.send_json({"type": "resume", "token": token})
+            resumed = ws.receive_json()
+            assert resumed["resumed"] is True
+            assert resumed["role"] == "operator"
+            assert resumed["can_hijack"] is False
+
+    def test_resume_does_not_escalate_stored_admin_to_current_viewer(self) -> None:
+        """Stored admin role is NOT restored when current role is viewer (escalation blocked)."""
+        store = InMemoryResumeStore()
+        hub = TermHub(
+            resolve_browser_role=lambda _ws, _wid: "admin",
+            resume_store=store,
+        )
+        app = FastAPI()
+        app.include_router(hub.create_router())
+        client = TestClient(app)
+
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
+            hello, _ = _read_initial(ws)
+            token = hello["resume_token"]
+            assert hello["role"] == "admin"
+
+        # Reconnect as viewer — stored admin role must NOT be granted back
         hub2 = TermHub(
             resolve_browser_role=lambda _ws, _wid: "viewer",
             resume_store=store,
@@ -342,13 +424,59 @@ class TestResumeRoleRestoration:
         app2.include_router(hub2.create_router())
         client2 = TestClient(app2)
 
-        with client2.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client2, f"/ws/browser/{WID}/term") as ws:
             hello2, _ = _read_initial(ws)
+            assert hello2["role"] == "viewer"
             ws.send_json({"type": "resume", "token": token})
             resumed = ws.receive_json()
+            assert resumed["type"] == "hello"
             assert resumed["resumed"] is True
-            assert resumed["role"] == "operator"
+            assert resumed["role"] == "viewer"
             assert resumed["can_hijack"] is False
+
+    def test_resume_hijack_not_reclaimed_when_role_downgraded(self) -> None:
+        """was_hijack_owner=True in token but current role is viewer → hijack NOT reclaimed."""
+        store = InMemoryResumeStore()
+        hub = TermHub(
+            resolve_browser_role=lambda _ws, _wid: "admin",
+            resume_store=store,
+        )
+        app = FastAPI()
+        app.include_router(hub.create_router())
+        client = TestClient(app)
+
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
+            hello, _ = _read_initial(ws)
+            token = hello["resume_token"]
+
+        # Mark the token as a former hijack owner
+        store.mark_hijack_owner(token, True)
+
+        # Reconnect with viewer role — hijack must not be reclaimed
+        hub2 = TermHub(
+            resolve_browser_role=lambda _ws, _wid: "viewer",
+            resume_store=store,
+        )
+        app2 = FastAPI()
+        app2.include_router(hub2.create_router())
+        client2 = TestClient(app2)
+
+        with connect_test_ws(client2, f"/ws/worker/{WID}/term") as worker:
+            _read_worker_snapshot_req(worker)
+            worker.send_json({"type": "snapshot", "screen": "ready", "ts": 1.0})
+
+            with connect_test_ws(client2, f"/ws/browser/{WID}/term") as ws:
+                _read_initial(ws)
+                ws.receive_json()  # snapshot
+                ws.send_json({"type": "resume", "token": token})
+                resumed = ws.receive_json()
+                assert resumed["type"] == "hello"
+                assert resumed["resumed"] is True
+                assert resumed["can_hijack"] is False
+                assert resumed["hijacked_by_me"] is False
+                hs = ws.receive_json()
+                assert hs["type"] == "hijack_state"
+                assert hs["owner"] != "me"
 
 
 class TestResumeBranchCoverage:
@@ -380,7 +508,7 @@ class TestNoResumeStore:
     def test_no_resume_token_in_hello(self) -> None:
         app, hub = make_app(role="admin")
         client = TestClient(app)
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             hello, _ = _read_initial(ws)
             assert hello["resume_supported"] is False
             assert hello["resume_token"] is None
@@ -389,7 +517,7 @@ class TestNoResumeStore:
         """Without a resume store, resume messages are ignored gracefully."""
         app, hub = make_app(role="admin")
         client = TestClient(app)
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             _read_initial(ws)
             # Send resume — should be ignored (no store configured)
             ws.send_json({"type": "resume", "token": "fake-token"})
@@ -421,11 +549,11 @@ class TestOnResumeCallback:
         app.include_router(hub.create_router())
         client = TestClient(app)
 
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             hello, _ = _read_initial(ws)
             token = hello["resume_token"]
 
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             _read_initial(ws)
             ws.send_json({"type": "resume", "token": token})
             # Rejected — no resumed hello, but connection still works
@@ -449,13 +577,105 @@ class TestOnResumeCallback:
         app.include_router(hub.create_router())
         client = TestClient(app)
 
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             hello, _ = _read_initial(ws)
             token = hello["resume_token"]
 
-        with client.websocket_connect(f"/ws/browser/{WID}/term") as ws:
+        with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
             _read_initial(ws)
             ws.send_json({"type": "resume", "token": token})
             resumed = ws.receive_json()
             assert resumed["type"] == "hello"
             assert resumed["resumed"] is True
+
+
+# ---------------------------------------------------------------------------
+# Tests: Open-mode guard on hijack reclaim (Fix 1)
+# ---------------------------------------------------------------------------
+
+
+class TestResumeOpenModeGuard:
+    def test_resume_does_not_reclaim_hijack_in_open_mode(self) -> None:
+        """was_hijack_owner=True but input_mode='open' → hijack not reclaimed on resume."""
+        store = InMemoryResumeStore()
+        app, hub = make_app(role="admin", resume_store=store)
+        client = TestClient(app)
+
+        with connect_test_ws(client, f"/ws/worker/{WID}/term") as worker:
+            _read_worker_snapshot_req(worker)
+            worker.send_json({"type": "snapshot", "screen": "ready", "ts": 1.0})
+
+            with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws:
+                hello, _ = _read_initial(ws)
+                token = hello["resume_token"]
+                ws.receive_json()  # snapshot
+
+            store.mark_hijack_owner(token, True)
+
+            # Switch to open mode via REST (synchronous — processed before resume attempt)
+            resp = client.post(f"/worker/{WID}/input_mode", json={"input_mode": "open"})
+            assert resp.status_code == 200
+
+            with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws2:
+                _read_initial(ws2)
+                ws2.receive_json()  # snapshot
+                ws2.send_json({"type": "resume", "token": token})
+                resumed = ws2.receive_json()
+                assert resumed["type"] == "hello"
+                assert resumed["resumed"] is True
+                # Open mode: hijack reclaim must be blocked
+                assert resumed["hijacked_by_me"] is False
+                hs = ws2.receive_json()
+                assert hs["type"] == "hijack_state"
+                assert hs["owner"] != "me"
+
+
+# ---------------------------------------------------------------------------
+# Tests: Broadcast to observers after hijack reclaim (Fix 4)
+# ---------------------------------------------------------------------------
+
+
+class TestResumeHijackReclaimBroadcast:
+    def test_resume_hijack_reclaim_broadcasts_to_other_browsers(self) -> None:
+        """A second browser observer sees the hijack_state update when the first reclaims on resume."""
+        store = InMemoryResumeStore()
+        app, hub = make_app(role="admin", resume_store=store)
+        client = TestClient(app)
+
+        with connect_test_ws(client, f"/ws/worker/{WID}/term") as worker:
+            _read_worker_snapshot_req(worker)
+            worker.send_json({"type": "snapshot", "screen": "ready", "ts": 1.0})
+
+            # Browser A connects and disconnects — keeps its resume token
+            with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws_a:
+                hello_a, _ = _read_initial(ws_a)
+                token_a = hello_a["resume_token"]
+                ws_a.receive_json()  # snapshot
+
+            store.mark_hijack_owner(token_a, True)
+
+            # Browser B is an observer that stays connected
+            with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws_b:
+                _read_initial(ws_b)
+                ws_b.receive_json()  # snapshot
+
+                # Browser A reconnects and resumes — reclaims hijack
+                with connect_test_ws(client, f"/ws/browser/{WID}/term") as ws_a2:
+                    _read_initial(ws_a2)
+                    ws_a2.receive_json()  # snapshot
+                    ws_a2.send_json({"type": "resume", "token": token_a})
+
+                    # Worker receives pause
+                    pause = worker.receive_json()
+                    assert pause["action"] == "pause"
+
+                    # A gets resumed hello
+                    resumed = ws_a2.receive_json()
+                    assert resumed["resumed"] is True
+                    assert resumed["hijacked_by_me"] is True
+                    ws_a2.receive_json()  # hijack_state for A
+
+                    # B must receive a hijack_state broadcast reflecting the reclaim
+                    hs_b = ws_b.receive_json()
+                    assert hs_b["type"] == "hijack_state"
+                    assert hs_b["hijacked"] is True

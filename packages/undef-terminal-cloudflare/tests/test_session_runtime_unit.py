@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import time
 from types import SimpleNamespace
@@ -18,6 +17,8 @@ import pytest
 from undef_terminal_cloudflare.bridge.hijack import HijackSession
 from undef_terminal_cloudflare.do.session_runtime import SessionRuntime
 from undef_terminal_cloudflare.state.store import LeaseRecord
+
+from undef.terminal.control_stream import ControlChunk, ControlStreamDecoder, DataChunk
 
 _KEY = "test-secret-key-32-bytes-minimum!"
 
@@ -56,6 +57,19 @@ def _make_runtime(worker_id: str = "test-worker", mode: str = "dev") -> SessionR
     ctx = _make_ctx(worker_id)
     env = _make_env(mode)
     return SessionRuntime(ctx, env)
+
+
+def _decode_sent(raw: str, *, data_frame_type: str | None = None) -> dict:
+    decoder = ControlStreamDecoder()
+    events = decoder.feed(raw)
+    events.extend(decoder.finish())
+    assert len(events) == 1
+    event = events[0]
+    if isinstance(event, ControlChunk):
+        return event.control
+    if isinstance(event, DataChunk):
+        return {"type": data_frame_type or "term", "data": event.data}
+    raise AssertionError("unexpected decoder event")
 
 
 class _MockWs:
@@ -483,7 +497,7 @@ async def test_websocket_open_browser_sends_hello() -> None:
     rt = _make_runtime()
     ws = _MockWs(attachment="browser:admin:test-worker")
     await rt.webSocketOpen(ws)
-    types = [json.loads(m).get("type") for m in ws.sent]
+    types = [_decode_sent(m).get("type") for m in ws.sent]
     assert "hello" in types
 
 
@@ -517,7 +531,7 @@ async def test_websocket_message_raw_text() -> None:
     worker_ws = _MockWs()
     rt.worker_ws = worker_ws
     await rt.webSocketMessage(ws, "ls\r\n")
-    assert any("ls" in json.loads(m).get("data", "") for m in worker_ws.sent)
+    assert any("ls" in _decode_sent(m, data_frame_type="input").get("data", "") for m in worker_ws.sent)
 
 
 async def test_websocket_message_raw_bytes() -> None:
@@ -528,7 +542,7 @@ async def test_websocket_message_raw_bytes() -> None:
     worker_ws = _MockWs()
     rt.worker_ws = worker_ws
     await rt.webSocketMessage(ws, b"cmd\r")
-    assert any("cmd" in json.loads(m).get("data", "") for m in worker_ws.sent)
+    assert any("cmd" in _decode_sent(m, data_frame_type="input").get("data", "") for m in worker_ws.sent)
 
 
 async def test_websocket_message_worker_calls_handle_socket_message() -> None:
@@ -583,7 +597,7 @@ async def test_websocket_close_worker_broadcasts_disconnected() -> None:
     rt.ctx.getWebSockets = _raise
     await rt.webSocketClose(ws, 1000, "normal", True)
     assert rt.worker_ws is None
-    types = [json.loads(m).get("type") for m in browser.sent]
+    types = [_decode_sent(m).get("type") for m in browser.sent]
     assert "worker_disconnected" in types
 
 
@@ -609,7 +623,7 @@ async def test_websocket_error_worker_broadcasts_disconnected() -> None:
 
     rt.ctx.getWebSockets = _raise
     await rt.webSocketError(ws, "timeout")
-    types = [json.loads(m).get("type") for m in browser.sent]
+    types = [_decode_sent(m).get("type") for m in browser.sent]
     assert "worker_disconnected" in types
 
 
@@ -677,7 +691,7 @@ async def test_send_ws_serializes_and_sends() -> None:
     rt = _make_runtime()
     ws = _MockWs()
     await rt.send_ws(ws, {"type": "test"})
-    assert ws.sent and json.loads(ws.sent[0])["type"] == "test"
+    assert ws.sent and _decode_sent(ws.sent[0])["type"] == "test"
 
 
 async def test_send_text_async_ws_is_awaited() -> None:
@@ -693,7 +707,7 @@ async def test_send_hijack_state_no_session() -> None:
     rt = _make_runtime()
     ws = _MockWs()
     await rt.send_hijack_state(ws)
-    data = json.loads(ws.sent[0])
+    data = _decode_sent(ws.sent[0])
     assert data["type"] == "hijack_state" and data["hijacked"] is False
 
 
@@ -705,7 +719,7 @@ async def test_send_hijack_state_with_session_me() -> None:
     ws = _MockWs()
     rt.browser_hijack_owner[rt.ws_key(ws)] = "h1"
     await rt.send_hijack_state(ws)
-    data = json.loads(ws.sent[0])
+    data = _decode_sent(ws.sent[0])
     assert data["hijacked"] is True and data["owner"] == "me"
 
 
@@ -715,7 +729,7 @@ async def test_send_hijack_state_with_session_other() -> None:
     rt.hijack._session = HijackSession(hijack_id="h1", owner="alice", lease_expires_at=time.time() + 300)
     ws = _MockWs()
     await rt.send_hijack_state(ws)
-    data = json.loads(ws.sent[0])
+    data = _decode_sent(ws.sent[0])
     assert data["owner"] == "other"
 
 
@@ -746,7 +760,7 @@ async def test_push_worker_control_sends_frame() -> None:
     ws = _MockWs()
     rt.worker_ws = ws
     assert await rt.push_worker_control("pause", owner="a", lease_s=60) is True
-    assert json.loads(ws.sent[0])["type"] == "control"
+    assert _decode_sent(ws.sent[0])["type"] == "control"
 
 
 async def test_push_worker_input_no_ws_returns_false() -> None:
@@ -761,7 +775,7 @@ async def test_push_worker_input_sends_frame() -> None:
     ws = _MockWs()
     rt.worker_ws = ws
     assert await rt.push_worker_input("ls\r") is True
-    assert json.loads(ws.sent[0])["type"] == "input"
+    assert _decode_sent(ws.sent[0], data_frame_type="input")["type"] == "input"
 
 
 # ---------------------------------------------------------------------------
@@ -864,7 +878,7 @@ async def test_alarm_releases_expired_lease() -> None:
         await rt.alarm()
     assert rt.hijack._session is None  # released
     # worker should receive a "resume" control frame
-    control = [json.loads(m) for m in ws.sent if json.loads(m).get("type") == "control"]
+    control = [_decode_sent(m) for m in ws.sent if _decode_sent(m).get("type") == "control"]
     assert any(f.get("action") == "resume" for f in control)
 
 

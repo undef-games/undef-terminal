@@ -349,10 +349,8 @@ class TestAnsiCoverage:
         """Line 348->351: seq is empty → the continue is skipped."""
         from undef.terminal.ansi import _handle_brace_tokens
 
-        with patch("undef.terminal.ansi._emit_color", return_value=""):
-            result = _handle_brace_tokens("{+g}rest")
-        # When seq is "", continue is skipped, the chars are NOT consumed
-        # The code falls through to out.append(text[i]) for the '{' char
+        # An unrecognised brace sequence falls through: '{' is emitted literally.
+        result = _handle_brace_tokens("{??}rest")
         assert "{" in result
 
 

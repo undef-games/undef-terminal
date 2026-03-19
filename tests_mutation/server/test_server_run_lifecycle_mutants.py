@@ -136,19 +136,17 @@ def _make_jwt_token(
 class TestRun:
     async def test_run_uses_correct_backoff_values(self) -> None:
         """mutmut_2/3/4/5/6: backoff_s values mutated."""
-        # Access the function directly via source inspection is fragile,
-        # so we patch asyncio.sleep and verify calls match expected delays.
+        # Patch asyncio.sleep and verify calls match expected delays.
         rt = _make_runtime()
         sleep_calls: list[float] = []
+        attempt_count = 0
 
         import websockets
-
-        attempt_count = 0
 
         async def _fake_sleep(delay: float) -> None:
             sleep_calls.append(delay)
 
-        async def _fail_connect(*args: Any, **kwargs: Any) -> None:
+        def _fail_connect(*args: Any, **kwargs: Any) -> None:
             nonlocal attempt_count
             attempt_count += 1
             if attempt_count >= 3:
@@ -163,24 +161,20 @@ class TestRun:
             mock_connector = AsyncMock()
             mock_connector.is_connected.return_value = False
             mock_build.return_value = mock_connector
-            with pytest.raises(Exception, match=".+"):
-                await rt._run()
+            await rt._run()
 
         # First retry: delay=0.25; second retry: delay=0.5
         if sleep_calls:
             assert sleep_calls[0] == pytest.approx(0.25)
 
     async def test_run_sets_state_error_on_value_error(self) -> None:
-        """mutmut_28/29/30: state set to None/XXerrorXX/ERROR instead of 'error'."""
+        """mutmut_28/29/30: _last_error not set or set to wrong string."""
         rt = _make_runtime()
-
-        async def _bad_connector() -> None:
-            raise ValueError("bad config")
 
         with patch("undef.terminal.server.runtime.build_connector", side_effect=ValueError("bad config")):
             await rt._run()
 
-        assert rt._state == "error"
+        assert rt._last_error == "bad config"
 
     async def test_run_sets_connected_false_on_value_error(self) -> None:
         """mutmut_31/32: _connected set to None or True instead of False."""
@@ -202,15 +196,12 @@ class TestRun:
         assert rt._last_error == "specific error"
 
     async def test_run_sets_state_error_on_generic_exception(self) -> None:
-        """mutmut_56/57/58: _state mutated on general exception path."""
+        """mutmut_56/57/58: _last_error not set on general exception path."""
         rt = _make_runtime()
 
         import websockets
 
-        called = [0]
-
-        async def _fail(*args: Any, **kwargs: Any) -> None:
-            called[0] += 1
+        def _fail(*args: Any, **kwargs: Any) -> None:
             rt._stop.set()
             raise OSError("network error")
 
@@ -224,7 +215,7 @@ class TestRun:
             with patch("asyncio.sleep", new_callable=AsyncMock):
                 await rt._run()
 
-        assert rt._state in ("error", "stopped")
+        assert rt._last_error == "network error"
 
     async def test_run_sets_connected_false_on_generic_exception(self) -> None:
         """mutmut_59/60: _connected set to None or True on generic exception."""
@@ -233,7 +224,7 @@ class TestRun:
 
         import websockets
 
-        async def _fail(*args: Any, **kwargs: Any) -> None:
+        def _fail(*args: Any, **kwargs: Any) -> None:
             rt._stop.set()
             raise OSError("network error")
 
@@ -278,7 +269,7 @@ class TestRun:
         exc_404 = Exception("Not Found")
         exc_404.status_code = 404  # type: ignore[attr-defined]
 
-        async def _fail(*args: Any, **kwargs: Any) -> None:
+        def _fail(*args: Any, **kwargs: Any) -> None:
             raise exc_404
 
         with (
@@ -304,7 +295,7 @@ class TestRun:
         exc_401 = Exception("Unauthorized")
         exc_401.status_code = 401  # type: ignore[attr-defined]
 
-        async def _fail(*args: Any, **kwargs: Any) -> None:
+        def _fail(*args: Any, **kwargs: Any) -> None:
             raise exc_401
 
         with (
@@ -333,7 +324,7 @@ class TestRun:
             if call_count >= 2:
                 rt._stop.set()
 
-        async def _fail(*args: Any, **kwargs: Any) -> None:
+        def _fail(*args: Any, **kwargs: Any) -> None:
             nonlocal call_count
             call_count += 1
             if call_count >= 3:
@@ -367,7 +358,7 @@ class TestRun:
         class _FakeExcWithRespError(Exception):
             response = _FakeResp()
 
-        async def _fail(*args: Any, **kwargs: Any) -> None:
+        def _fail(*args: Any, **kwargs: Any) -> None:
             raise _FakeExcWithRespError("auth error")
 
         with (
@@ -394,7 +385,7 @@ class TestRun:
         async def _fake_sleep(delay: float) -> None:
             sleep_calls.append(delay)
 
-        async def _fail(*args: Any, **kwargs: Any) -> None:
+        def _fail(*args: Any, **kwargs: Any) -> None:
             nonlocal call_count
             call_count += 1
             if call_count >= 8:

@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -16,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.helpers import decode_chunk, encode_frame
 from undef.terminal.server.models import RecordingConfig, SessionDefinition
 from undef.terminal.server.runtime import HostedSessionRuntime
 
@@ -230,6 +230,31 @@ class TestStartConnectorRecording:
 
         await rt._stop_connector()
 
+    async def test_recording_wire_mode_passed_to_logger(self, tmp_path: Path) -> None:
+        session = SessionDefinition(
+            session_id="wire-rec",
+            display_name="Wire Recording Test",
+            connector_type="shell",
+            recording_enabled=True,
+            auto_start=False,
+        )
+        recording = RecordingConfig(
+            enabled_by_default=True,
+            directory=tmp_path,
+            max_bytes=10_000,
+            control_channel_mode="wire",
+        )
+        rt = HostedSessionRuntime(session, public_base_url="http://localhost:9999", recording=recording)
+
+        connector = _make_connector()
+        with patch("undef.terminal.server.runtime.build_connector", return_value=connector):
+            await rt._start_connector()
+
+        assert rt._logger is not None
+        assert rt._logger._control_channel_mode == "wire"
+
+        await rt._stop_connector()
+
 
 # ---------------------------------------------------------------------------
 # _bridge_session — message type paths and edge cases
@@ -250,7 +275,7 @@ class _MockWS:
         self.sent: list[dict[str, Any]] = []
 
     async def send(self, data: str) -> None:
-        self.sent.append(json.loads(data))
+        self.sent.extend(decode_chunk(data, data_type="term"))
 
     async def recv(self) -> str:
         if self._msg_idx < len(self._messages):
@@ -291,7 +316,7 @@ class TestBridgeSession:
         connector.handle_input = AsyncMock(return_value=[])
         rt._connector = connector
 
-        ws = _MockWS(rt, messages=[json.dumps({"type": "input", "data": "hello\r"})])
+        ws = _MockWS(rt, messages=[encode_frame({"type": "input", "data": "hello\r"})])
         await rt._bridge_session(ws)
         connector.handle_input.assert_called_with("hello\r")
 
@@ -303,7 +328,7 @@ class TestBridgeSession:
         connector.handle_control = AsyncMock(return_value=[])
         rt._connector = connector
 
-        ws = _MockWS(rt, messages=[json.dumps({"type": "control", "action": "pause"})])
+        ws = _MockWS(rt, messages=[encode_frame({"type": "control", "action": "pause"})])
         await rt._bridge_session(ws)
         connector.handle_control.assert_called_with("pause")
 
@@ -314,7 +339,7 @@ class TestBridgeSession:
         connector = _make_connector()
         rt._connector = connector
 
-        ws = _MockWS(rt, messages=[json.dumps({"type": "snapshot_req"})])
+        ws = _MockWS(rt, messages=[encode_frame({"type": "snapshot_req"})])
         await rt._bridge_session(ws)
         # get_snapshot called at least once for startup + once for req
         assert connector.get_snapshot.call_count >= 2
@@ -327,7 +352,7 @@ class TestBridgeSession:
         connector.get_analysis = AsyncMock(return_value="analysis result")
         rt._connector = connector
 
-        ws = _MockWS(rt, messages=[json.dumps({"type": "analyze_req"})])
+        ws = _MockWS(rt, messages=[encode_frame({"type": "analyze_req"})])
         await rt._bridge_session(ws)
         connector.get_analysis.assert_called()
 
@@ -351,7 +376,7 @@ class TestBridgeSession:
         mock_logger = AsyncMock()
         rt._logger = mock_logger
 
-        ws = _MockWS(rt, messages=[json.dumps({"type": "input", "data": "typed text"})])
+        ws = _MockWS(rt, messages=[encode_frame({"type": "input", "data": "typed text"})])
         await rt._bridge_session(ws)
         mock_logger.log_send.assert_called_with("typed text")
 
@@ -421,6 +446,27 @@ class TestBridgeSession:
         ws = _MockWS(rt)
         await rt._bridge_session(ws)
         assert any(m.get("screen") == "polled" for m in ws.sent)
+
+    async def test_wire_mode_logs_wire_and_control_events(self) -> None:
+        rt = _make_runtime()
+        rt._recording_cfg.control_channel_mode = "wire"
+        rt._queue = asyncio.Queue()
+        rt._stop = asyncio.Event()
+        connector = _make_connector()
+        connector.handle_control = AsyncMock(return_value=[])
+        rt._connector = connector
+        mock_logger = AsyncMock()
+        rt._logger = mock_logger
+
+        ws = _MockWS(rt, messages=[encode_frame({"type": "control", "action": "pause"})])
+        await rt._bridge_session(ws)
+
+        wire_directions = [call.args[0] for call in mock_logger.log_wire.call_args_list]
+        control_directions = [call.args[0] for call in mock_logger.log_control.call_args_list]
+        assert "recv" in wire_directions
+        assert "send" in wire_directions
+        assert "recv" in control_directions
+        assert "send" in control_directions
 
 
 # ---------------------------------------------------------------------------

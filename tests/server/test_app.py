@@ -8,18 +8,22 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import socket
 import threading
 import time
 from typing import TYPE_CHECKING, Any
+from weakref import WeakKeyDictionary
 
 import asyncssh
 import httpx
 import pytest
 import uvicorn
 import websockets
+from fastapi.testclient import TestClient
 
+from undef.terminal.client import connect_test_ws
+from undef.terminal.control_stream import ControlChunk, ControlStreamDecoder, DataChunk
+from undef.terminal.hijack.hub import ResumeSession
 from undef.terminal.server import create_server_app, default_server_config
 from undef.terminal.transports.ssh import start_ssh_server
 
@@ -32,12 +36,31 @@ def _ws_url(base_url: str, path: str) -> str:
     return base_url.replace("http://", "ws://") + path
 
 
+_WS_DECODERS: WeakKeyDictionary[Any, ControlStreamDecoder] = WeakKeyDictionary()
+_WS_PENDING: WeakKeyDictionary[Any, list[dict[str, Any]]] = WeakKeyDictionary()
+
+
 async def _drain_until(ws: Any, type_: str, timeout: float = 3.0) -> dict[str, Any] | None:
     deadline = asyncio.get_running_loop().time() + timeout
     while asyncio.get_running_loop().time() < deadline:
         try:
+            pending = _WS_PENDING.setdefault(ws, [])
+            if pending:
+                msg = pending.pop(0)
+                if msg.get("type") == type_:
+                    return msg
+                continue
             raw = await asyncio.wait_for(ws.recv(), timeout=0.3)
-            msg = json.loads(raw)
+            decoder = _WS_DECODERS.setdefault(ws, ControlStreamDecoder())
+            events = decoder.feed(raw)
+            for event in events:
+                if isinstance(event, ControlChunk):
+                    pending.append(event.control)
+                elif isinstance(event, DataChunk):
+                    pending.append({"type": "term", "data": event.data})
+            if not pending:
+                continue
+            msg = pending.pop(0)
             if msg.get("type") == type_:
                 return msg
         except TimeoutError:
@@ -148,6 +171,9 @@ class TestReferenceServerApp:
             assert hello is not None
             assert hello["worker_online"] is True
             assert hello["input_mode"] == "open"
+            assert hello["resume_supported"] is True
+            assert isinstance(hello["resume_token"], str)
+            assert len(hello["resume_token"]) > 10
 
     async def test_metrics_prometheus_endpoint(self, live_reference_server: str) -> None:
         async with httpx.AsyncClient(base_url=live_reference_server) as http:
@@ -415,3 +441,113 @@ class TestReferenceServerApp:
         finally:
             ssh_server.close()
             await ssh_server.wait_closed()
+
+
+class TestOnResumeCallback:
+    """Tests for the _on_resume callback wired by create_server_app."""
+
+    def _make_app(self):
+        config = default_server_config()
+        config.auth.mode = "dev"
+        config.sessions = []  # no auto-start — keeps tests deterministic
+        return create_server_app(config)
+
+    def _read_hello_and_state(self, ws: Any) -> dict:
+        hello = ws.receive_json()
+        assert hello["type"] == "hello"
+        hs = ws.receive_json()
+        assert hs["type"] == "hijack_state"
+        return hello
+
+    def test_on_resume_rejects_resume_when_session_deleted(self) -> None:
+        """on_resume blocks resume after the backing session is deleted from registry."""
+        app = self._make_app()
+        with TestClient(app) as client:
+            client.post(
+                "/api/sessions",
+                json={"session_id": "temp-sess", "display_name": "Temp", "connector_type": "shell"},
+            )
+
+            with connect_test_ws(client, "/ws/browser/temp-sess/term") as ws:
+                hello = self._read_hello_and_state(ws)
+                assert hello["resume_supported"] is True
+                token = hello["resume_token"]
+
+            client.delete("/api/sessions/temp-sess")
+
+            with connect_test_ws(client, "/ws/browser/temp-sess/term") as ws:
+                self._read_hello_and_state(ws)
+                ws.send_json({"type": "resume", "token": token})
+                # on_resume returns False (session gone) → resume silently ignored
+                ws.send_json({"type": "ping"})
+                pong = ws.receive_json()
+                assert pong["type"] == "pong"
+
+    def test_on_resume_allows_resume_when_session_exists(self) -> None:
+        """on_resume allows resume when the backing session still exists in registry."""
+        app = self._make_app()
+        with TestClient(app) as client:
+            client.post(
+                "/api/sessions",
+                json={"session_id": "perm-sess", "display_name": "Perm", "connector_type": "shell"},
+            )
+
+            with connect_test_ws(client, "/ws/browser/perm-sess/term") as ws:
+                hello = self._read_hello_and_state(ws)
+                token = hello["resume_token"]
+
+            with connect_test_ws(client, "/ws/browser/perm-sess/term") as ws:
+                self._read_hello_and_state(ws)
+                ws.send_json({"type": "resume", "token": token})
+                resumed = ws.receive_json()
+                assert resumed["type"] == "hello"
+                assert resumed["resumed"] is True
+
+    @pytest.mark.asyncio()
+    async def test_on_resume_allows_resume_when_no_registry(self) -> None:
+        """The _on_resume closure returns True when registry is None."""
+        registry = None
+
+        async def _on_resume(token: str, session: ResumeSession) -> bool:
+            if registry is None:
+                return True
+            return await registry.get_definition(session.worker_id) is not None  # type: ignore[union-attr]
+
+        import time as _time
+
+        now = _time.monotonic()
+        session = ResumeSession(token="tok", worker_id="w1", role="admin", created_at=now, expires_at=now + 300)
+        assert await _on_resume("tok", session) is True
+
+    def test_on_resume_rejects_stale_token_after_session_recreated(self) -> None:
+        """on_resume rejects a token if the session was deleted and recreated (same ID, newer created_at)."""
+        import time
+
+        app = self._make_app()
+        with TestClient(app) as client:
+            client.post(
+                "/api/sessions",
+                json={"session_id": "recreate-sess", "display_name": "R", "connector_type": "shell"},
+            )
+
+            with connect_test_ws(client, "/ws/browser/recreate-sess/term") as ws:
+                hello = self._read_hello_and_state(ws)
+                token = hello["resume_token"]
+
+            # Ensure time advances so the new session has a strictly later created_at
+            time.sleep(0.05)
+
+            # Delete and recreate with the same session_id
+            client.delete("/api/sessions/recreate-sess")
+            client.post(
+                "/api/sessions",
+                json={"session_id": "recreate-sess", "display_name": "R2", "connector_type": "shell"},
+            )
+
+            # Token was issued against the old session — should be rejected
+            with connect_test_ws(client, "/ws/browser/recreate-sess/term") as ws:
+                self._read_hello_and_state(ws)
+                ws.send_json({"type": "resume", "token": token})
+                ws.send_json({"type": "ping"})
+                pong = ws.receive_json()
+                assert pong["type"] == "pong"  # no "resumed" hello — token rejected

@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from undef.terminal.client import connect_test_ws
 from undef.terminal.hijack.hub import TermHub
 from undef.terminal.hijack.models import HijackSession, WorkerTermState
 
@@ -876,8 +877,8 @@ class TestWorkerHelloModeNotApplied:
             hub.broadcast_hijack_state = _capture_broadcast  # type: ignore[method-assign]
 
             with (
-                client.websocket_connect("/ws/worker/w1/term") as worker,
-                client.websocket_connect("/ws/browser/w1/term") as browser,
+                connect_test_ws(client, "/ws/worker/w1/term") as worker,
+                connect_test_ws(client, "/ws/browser/w1/term") as browser,
             ):
                 _read_initial_browser(browser)
 
@@ -910,8 +911,8 @@ class TestWorkerHelloNoInputMode:
         hub, app, client = _make_app(resolve_browser_role=lambda ws, wid: "admin")
 
         with (
-            client.websocket_connect("/ws/worker/w1/term") as worker,
-            client.websocket_connect("/ws/browser/w1/term") as browser,
+            connect_test_ws(client, "/ws/worker/w1/term") as worker,
+            connect_test_ws(client, "/ws/browser/w1/term") as browser,
         ):
             _read_initial_browser(browser)
             # Send worker_hello without input_mode (so _hello_mode=None)
@@ -949,7 +950,7 @@ class TestWorkerTermEmptyData:
 
         hub.broadcast = _capture_broadcast  # type: ignore[method-assign]
 
-        with client.websocket_connect("/ws/worker/w1/term") as worker:
+        with connect_test_ws(client, "/ws/worker/w1/term") as worker:
             worker.send_json({"type": "term", "data": ""})
             # No broadcast should occur for empty term data
 
@@ -967,8 +968,8 @@ class TestBrowserRoleInvalidFallsToViewer:
         hub, app, client = _make_app(resolve_browser_role=lambda ws, wid: "superadmin")
 
         with (
-            client.websocket_connect("/ws/worker/w1/term") as _worker,
-            client.websocket_connect("/ws/browser/w1/term") as browser,
+            connect_test_ws(client, "/ws/worker/w1/term") as _worker,
+            connect_test_ws(client, "/ws/browser/w1/term") as browser,
         ):
             hello, _ = _read_initial_browser(browser)
             # role should have been forced to "viewer"
@@ -992,10 +993,10 @@ class TestBrowserWasOwnerRecheckFindsHijack:
                     return msg
             raise AssertionError(f"Did not receive action={action!r}")
 
-        with client.websocket_connect("/ws/worker/w1/term") as worker:
+        with connect_test_ws(client, "/ws/worker/w1/term") as worker:
             worker.receive_json()  # snapshot_req
 
-            with client.websocket_connect("/ws/browser/w1/term") as browser:
+            with connect_test_ws(client, "/ws/browser/w1/term") as browser:
                 _read_initial_browser(browser)
 
                 # Browser acquires hijack
@@ -1027,11 +1028,11 @@ class TestBrowserWasOwnerRecheckHijackedPatched:
 
         with (
             patch.object(TermHub, "check_still_hijacked", new=AsyncMock(return_value=True)),
-            client.websocket_connect("/ws/worker/w1/term") as worker,
+            connect_test_ws(client, "/ws/worker/w1/term") as worker,
         ):
             worker.receive_json()  # snapshot_req
 
-            with client.websocket_connect("/ws/browser/w1/term") as browser:
+            with connect_test_ws(client, "/ws/browser/w1/term") as browser:
                 _read_initial_browser(browser)
 
                 # Browser acquires hijack
@@ -1067,10 +1068,10 @@ class TestResumeWithoutOwnerRecheckTrue:
                         return msg
                 raise AssertionError(f"Did not receive action={action!r}")
 
-            with client.websocket_connect("/ws/worker/w1/term") as worker:
+            with connect_test_ws(client, "/ws/worker/w1/term") as worker:
                 worker.receive_json()  # snapshot_req
 
-                with client.websocket_connect("/ws/browser/w1/term") as browser:
+                with connect_test_ws(client, "/ws/browser/w1/term") as browser:
                     _read_initial_browser(browser)
 
                     # Browser acquires hijack → owned_hijack=True in the route

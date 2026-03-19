@@ -44,6 +44,7 @@ from undef.terminal.server import create_server_app, default_server_config
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator
 
+
 # ---------------------------------------------------------------------------
 # Utility
 # ---------------------------------------------------------------------------

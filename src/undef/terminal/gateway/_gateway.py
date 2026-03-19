@@ -17,6 +17,14 @@ if TYPE_CHECKING:
 
 from undef.telemetry import get_logger
 
+from undef.terminal.control_stream import (
+    ControlChunk,
+    ControlStreamDecoder,
+    ControlStreamProtocolError,
+    DataChunk,
+    encode_control,
+    encode_data,
+)
 from undef.terminal.defaults import TerminalDefaults
 from undef.terminal.gateway._colors import _apply_color_mode
 
@@ -70,14 +78,41 @@ async def _handle_ws_control(
     token_file: Path | None,
     write_fn: collections.abc.Callable[[bytes], collections.abc.Coroutine[object, object, None]],
 ) -> bool:
-    """Return True if message was a JSON control frame (intercept it)."""
+    """Return True if *message* is a gateway control frame (intercept it)."""
     try:
-        data = json.loads(message)
-        msg_type = data.get("type") if isinstance(data, dict) else None
-    except (json.JSONDecodeError, ValueError):
+        decoder = ControlStreamDecoder()
+        events = decoder.feed(message)
+        events.extend(decoder.finish())
+    except ControlStreamProtocolError:
+        try:
+            data = json.loads(message)
+        except (json.JSONDecodeError, ValueError):
+            return False
+        if not isinstance(data, dict):
+            return False
+        return await _handle_ws_control_frame(data, token_file, write_fn)
+
+    if not events:
+        return False
+    handled = False
+    for event in events:
+        if isinstance(event, DataChunk):
+            return False
+        handled = await _handle_ws_control_frame(event.control, token_file, write_fn) or handled
+    return handled
+
+
+async def _handle_ws_control_frame(
+    data: dict[str, object],
+    token_file: Path | None,
+    write_fn: collections.abc.Callable[[bytes], collections.abc.Coroutine[object, object, None]],
+) -> bool:
+    try:
+        msg_type = data.get("type") if isinstance(data.get("type"), str) else None
+    except AttributeError:
         return False
     if msg_type == "session_token" and token_file and "token" in data:
-        _write_token(token_file, data["token"])
+        _write_token(token_file, str(data["token"]))
         return True
     if msg_type == "resume_ok":
         await write_fn(b"\r\n[Session resumed]\r\n")
@@ -177,7 +212,7 @@ async def _tcp_to_ws(reader: asyncio.StreamReader, ws: object, *, telnet: bool =
             data = _strip_iac(data)
             if not data:
                 continue
-        await ws.send(data.decode("latin-1", errors="replace"))  # type: ignore[attr-defined]
+        await ws.send(encode_data(data.decode("latin-1", errors="replace")))  # type: ignore[attr-defined]
 
 
 async def _ws_to_tcp(
@@ -188,6 +223,7 @@ async def _ws_to_tcp(
     color_mode: str = "passthrough",
 ) -> None:
     """Forward WebSocket messages → raw TCP bytes."""
+    decoder = ControlStreamDecoder()
 
     async def _write_fn(data: bytes) -> None:
         writer.write(data)
@@ -195,11 +231,22 @@ async def _ws_to_tcp(
 
     async for message in ws:  # type: ignore[attr-defined]
         if isinstance(message, str):
-            if await _handle_ws_control(message, token_file, _write_fn):
+            try:
+                events = decoder.feed(message)
+            except ControlStreamProtocolError:
                 continue
-            raw = message.encode("latin-1", errors="replace")
-        else:
-            raw = message
+            for event in events:
+                if isinstance(event, ControlChunk):
+                    await _handle_ws_control_frame(event.control, token_file, _write_fn)
+                    continue
+                raw = event.data.encode("latin-1", errors="replace")
+                raw = raw.replace(b"\x7f", b"\x08")  # DEL→BS
+                raw = _normalize_crlf(raw)
+                raw = _apply_color_mode(raw, color_mode)
+                writer.write(raw)
+                await writer.drain()
+            continue
+        raw = message
         raw = raw.replace(b"\x7f", b"\x08")  # DEL→BS
         raw = _normalize_crlf(raw)
         raw = _apply_color_mode(raw, color_mode)
@@ -222,7 +269,7 @@ async def _pipe_ws(
     async with websockets.connect(ws_url) as ws:
         token = _read_token(token_file) if token_file else None
         if token:
-            await ws.send(json.dumps({"type": "resume", "token": token}))
+            await ws.send(encode_control({"type": "resume", "token": token}))
         t1 = asyncio.create_task(_tcp_to_ws(reader, ws, telnet=telnet))
         t2 = asyncio.create_task(_ws_to_tcp(ws, writer, token_file=token_file, color_mode=color_mode))
         _done, pending = await asyncio.wait([t1, t2], return_when=asyncio.FIRST_COMPLETED)
@@ -246,7 +293,8 @@ async def _ssh_to_ws(process: object, ws: object) -> None:
             break
         if not data:
             break
-        await ws.send(data if isinstance(data, str) else data.decode("latin-1", errors="replace"))  # type: ignore[attr-defined]
+        payload = data if isinstance(data, str) else data.decode("latin-1", errors="replace")
+        await ws.send(encode_data(payload))  # type: ignore[attr-defined]
 
 
 async def _ws_to_ssh(
@@ -258,17 +306,24 @@ async def _ws_to_ssh(
 ) -> None:
     """Forward WebSocket messages → SSH stdout."""
     stdout = process.stdout  # type: ignore[attr-defined]
+    decoder = ControlStreamDecoder()
 
     async def _write_fn(data: bytes) -> None:
         stdout.write(data.decode("utf-8", errors="replace"))
 
     async for message in ws:  # type: ignore[attr-defined]
         if isinstance(message, str):
-            if await _handle_ws_control(message, token_file, _write_fn):
+            try:
+                events = decoder.feed(message)
+            except ControlStreamProtocolError:
                 continue
-            raw = message.encode("latin-1", errors="replace")
-            raw = _apply_color_mode(raw, color_mode)
-            stdout.write(raw.decode("latin-1", errors="replace"))
+            for event in events:
+                if isinstance(event, ControlChunk):
+                    await _handle_ws_control_frame(event.control, token_file, _write_fn)
+                    continue
+                raw = event.data.encode("latin-1", errors="replace")
+                raw = _apply_color_mode(raw, color_mode)
+                stdout.write(raw.decode("latin-1", errors="replace"))
         else:
             raw = _apply_color_mode(message, color_mode)
             stdout.write(raw.decode("latin-1", errors="replace"))
@@ -308,7 +363,7 @@ async def _make_process_handler(
             async with websockets.connect(ws_url) as ws:
                 token = _read_token(token_file) if token_file else None
                 if token:
-                    await ws.send(json.dumps({"type": "resume", "token": token}))
+                    await ws.send(encode_control({"type": "resume", "token": token}))
                 t1 = asyncio.create_task(_ssh_to_ws(process, ws))
                 t2 = asyncio.create_task(_ws_to_ssh(ws, process, token_file=token_file, color_mode=color_mode))
                 _done, pending = await asyncio.wait([t1, t2], return_when=asyncio.FIRST_COMPLETED)

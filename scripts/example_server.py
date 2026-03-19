@@ -23,7 +23,6 @@ import asyncio
 import contextlib
 import hashlib
 import importlib.resources
-import json
 import logging
 import os
 import time
@@ -36,6 +35,13 @@ import uvicorn
 from fastapi import Body, FastAPI, HTTPException
 from starlette.staticfiles import StaticFiles
 
+from undef.terminal.control_stream import (
+    ControlStreamDecoder,
+    ControlStreamProtocolError,
+    DataChunk,
+    encode_control,
+    encode_data,
+)
 from undef.terminal.hijack.hub import TermHub
 
 logger = logging.getLogger(__name__)
@@ -403,6 +409,11 @@ async def _run_session_worker(base_url: str, worker_id: str) -> None:
     """Continuously connect as a demo session worker, auto-reconnecting on failure."""
     import websockets
 
+    def _encode_frame(payload: dict[str, Any]) -> str:
+        if str(payload.get("type") or "") == "term":
+            return encode_data(str(payload.get("data", "")))
+        return encode_control(payload)
+
     ws_url = base_url.replace("http://", "ws://") + f"/ws/worker/{worker_id}/term"
     backoff_s = [0.5, 1.0, 2.0, 5.0, 10.0]
     attempt = 0
@@ -414,10 +425,11 @@ async def _run_session_worker(base_url: str, worker_id: str) -> None:
                 attempt = 0
                 session.connected = True
                 session.outbound_queue = asyncio.Queue()
+                decoder = ControlStreamDecoder()
                 logger.info("demo_session_connected worker_id=%s", worker_id)
 
-                await ws.send(json.dumps(_worker_hello(session)))
-                await ws.send(json.dumps(_make_snapshot(session)))
+                await ws.send(_encode_frame(_worker_hello(session)))
+                await ws.send(_encode_frame(_make_snapshot(session)))
 
                 while True:
                     recv_task = asyncio.create_task(ws.recv())
@@ -430,10 +442,10 @@ async def _run_session_worker(base_url: str, worker_id: str) -> None:
                     for task in pending:
                         task.cancel()
                     if not done:
-                        await ws.send(json.dumps(_make_snapshot(session)))
+                        await ws.send(_encode_frame(_make_snapshot(session)))
                         continue
                     if queue_task in done:
-                        await ws.send(json.dumps(queue_task.result()))
+                        await ws.send(_encode_frame(queue_task.result()))
                         with contextlib.suppress(asyncio.CancelledError):
                             await recv_task
                         continue
@@ -442,39 +454,45 @@ async def _run_session_worker(base_url: str, worker_id: str) -> None:
                         await queue_task
 
                     try:
-                        msg = json.loads(raw)
-                    except Exception:
+                        events = decoder.feed(raw)
+                    except ControlStreamProtocolError:
                         continue
 
-                    mtype = msg.get("type")
-                    if mtype == "snapshot_req":
-                        await ws.send(json.dumps(_make_snapshot(session)))
-                    elif mtype == "analyze_req":
-                        await ws.send(
-                            json.dumps(
-                                {
-                                    "type": "analysis",
-                                    "formatted": _make_analysis(session),
-                                    "ts": time.time(),
-                                }
+                    for event in events:
+                        if isinstance(event, DataChunk):
+                            msg: dict[str, Any] = {"type": "input", "data": event.data}
+                        else:
+                            msg = event.control
+
+                        mtype = msg.get("type")
+                        if mtype == "snapshot_req":
+                            await ws.send(_encode_frame(_make_snapshot(session)))
+                        elif mtype == "analyze_req":
+                            await ws.send(
+                                _encode_frame(
+                                    {
+                                        "type": "analysis",
+                                        "formatted": _make_analysis(session),
+                                        "ts": time.time(),
+                                    }
+                                )
                             )
-                        )
-                    elif mtype == "control":
-                        for outbound in _apply_control(session, str(msg.get("action", ""))):
-                            await ws.send(json.dumps(outbound))
-                    elif mtype == "input":
-                        raw_input = str(msg.get("data", ""))
-                        normalized = _normalize_input(raw_input)
-                        if normalized == "/mode open":
-                            released = await _force_release_hijack_for_shared_mode(worker_id)
-                            if released:
-                                session.paused = False
-                                session.status_line = "Live"
-                                _append_entry(session, "system", "control: released for shared input")
-                        for outbound in _apply_input(session, raw_input):
-                            await ws.send(json.dumps(outbound))
-                        if normalized in {"/mode open", "/mode hijack"}:
-                            await _sync_hub_input_mode(worker_id, session.input_mode)
+                        elif mtype == "control":
+                            for outbound in _apply_control(session, str(msg.get("action", ""))):
+                                await ws.send(_encode_frame(outbound))
+                        elif mtype == "input":
+                            raw_input = str(msg.get("data", ""))
+                            normalized = _normalize_input(raw_input)
+                            if normalized == "/mode open":
+                                released = await _force_release_hijack_for_shared_mode(worker_id)
+                                if released:
+                                    session.paused = False
+                                    session.status_line = "Live"
+                                    _append_entry(session, "system", "control: released for shared input")
+                            for outbound in _apply_input(session, raw_input):
+                                await ws.send(_encode_frame(outbound))
+                            if normalized in {"/mode open", "/mode hijack"}:
+                                await _sync_hub_input_mode(worker_id, session.input_mode)
         except asyncio.CancelledError:
             logger.info("demo_session_cancelled worker_id=%s", worker_id)
             session.connected = False

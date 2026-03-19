@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import json
 import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,6 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.helpers import decode_chunk
+from undef.terminal.client import connect_test_ws
 from undef.terminal.hijack.hub import TermHub
 from undef.terminal.hijack.models import HijackSession, WorkerTermState
 
@@ -210,7 +211,7 @@ class TestWsWorkerAuthRejection:
         """Lines 64-66: provided token != hub token → accept + close 1008."""
         hub, app, client = _make_app(worker_token="correct-token")
 
-        with client.websocket_connect("/ws/worker/w1/term", headers={"Authorization": "Bearer wrong-token"}) as ws:
+        with connect_test_ws(client, "/ws/worker/w1/term", headers={"Authorization": "Bearer wrong-token"}) as ws:
             # After auth rejection the server closes with 1008
             # The TestClient raises on disconnect, so we just check it was accepted
             # then closed (connection ends)
@@ -230,7 +231,7 @@ class TestWsWorkerIgnoredMessageType:
         """Lines 103-104: mtype not in allowed set → logged and continue."""
         hub, app, client = _make_app()
 
-        with client.websocket_connect("/ws/worker/w1/term") as worker:
+        with connect_test_ws(client, "/ws/worker/w1/term") as worker:
             # Send an unknown message type
             worker.send_json({"type": "unknown_type_xyz", "data": "test"})
             # Server should NOT close — send a snapshot so we get a response
@@ -259,8 +260,8 @@ class TestWsWorkerHelloMode:
         hub, app, client = _make_app(resolve_browser_role=lambda ws, wid: "admin")
 
         with (
-            client.websocket_connect("/ws/worker/w1/term") as worker,
-            client.websocket_connect("/ws/browser/w1/term") as browser,
+            connect_test_ws(client, "/ws/worker/w1/term") as worker,
+            connect_test_ws(client, "/ws/browser/w1/term") as browser,
         ):
             _hello, _hs = _read_initial(browser)
 
@@ -276,7 +277,7 @@ class TestWsWorkerHelloMode:
         """Lines 114->120: invalid mode → logged warning, continue (no crash)."""
         hub, app, client = _make_app()
 
-        with client.websocket_connect("/ws/worker/w1/term") as worker:
+        with connect_test_ws(client, "/ws/worker/w1/term") as worker:
             # Send invalid mode — server should not crash
             worker.send_json({"type": "worker_hello", "input_mode": "invalid_mode_xyz"})
             # Send a valid snapshot to confirm connection still alive
@@ -302,8 +303,8 @@ class TestWsWorkerTermEmptyData:
         hub, app, client = _make_app(resolve_browser_role=lambda ws, wid: "admin")
 
         with (
-            client.websocket_connect("/ws/worker/w1/term") as worker,
-            client.websocket_connect("/ws/browser/w1/term") as browser,
+            connect_test_ws(client, "/ws/worker/w1/term") as worker,
+            connect_test_ws(client, "/ws/browser/w1/term") as browser,
         ):
             _hello, _hs = _read_initial(browser)
 
@@ -338,8 +339,8 @@ class TestWsWorkerStatusMessage:
         hub, app, client = _make_app(resolve_browser_role=lambda ws, wid: "admin")
 
         with (
-            client.websocket_connect("/ws/worker/w1/term") as worker,
-            client.websocket_connect("/ws/browser/w1/term") as browser,
+            connect_test_ws(client, "/ws/worker/w1/term") as worker,
+            connect_test_ws(client, "/ws/browser/w1/term") as browser,
         ):
             _hello, _hs = _read_initial(browser)
 
@@ -358,7 +359,7 @@ class TestWsBrowserInvalidRole:
         """Line 216: role not in VALID_ROLES → role='viewer'."""
         hub, app, client = _make_app(resolve_browser_role=lambda ws, wid: "superadmin")
 
-        with client.websocket_connect("/ws/browser/w1/term") as browser:
+        with connect_test_ws(client, "/ws/browser/w1/term") as browser:
             hello, _hs = _read_initial(browser)
             # 'superadmin' is not a valid role → should fall back to 'viewer'
             assert hello["role"] == "viewer"
@@ -387,7 +388,7 @@ class TestWsBrowserNoInitialSnapshot:
 
         asyncio.run(_setup())
 
-        with client.websocket_connect("/ws/browser/w1/term") as browser:
+        with connect_test_ws(client, "/ws/browser/w1/term") as browser:
             hello, _hs = _read_initial(browser)
             # No snapshot message should follow (since last_snapshot was None)
             # The important thing is no crash occurred
@@ -411,11 +412,11 @@ class TestWsBrowserWasOwnerDisconnect:
                     return msg
             raise AssertionError(f"Did not receive action={action!r} within {max_msgs} messages")
 
-        with client.websocket_connect("/ws/worker/w1/term") as worker:
+        with connect_test_ws(client, "/ws/worker/w1/term") as worker:
             # Read initial snapshot_req
             worker.receive_json()  # snapshot_req
 
-            with client.websocket_connect("/ws/browser/w1/term") as browser:
+            with connect_test_ws(client, "/ws/browser/w1/term") as browser:
                 _hello, _hs = _read_initial(browser)
 
                 # Browser acquires hijack
@@ -446,7 +447,7 @@ class TestWsBrowserResumeWithoutOwner:
         """Lines 339->363: resume_without_owner=True → resume sent."""
         hub, app, client = _make_app(resolve_browser_role=lambda ws, wid: "admin")
 
-        with client.websocket_connect("/ws/worker/w1/term") as worker:
+        with connect_test_ws(client, "/ws/worker/w1/term") as worker:
             worker.receive_json()  # snapshot_req
 
             # Simulate: worker_hello with input_mode=hijack (default)
@@ -454,7 +455,7 @@ class TestWsBrowserResumeWithoutOwner:
             # Then disconnects — at disconnect time, owned_hijack=True but was_owner=False
             # This hits the resume_without_owner branch
 
-            with client.websocket_connect("/ws/browser/w1/term") as browser:
+            with connect_test_ws(client, "/ws/browser/w1/term") as browser:
                 _hello, _hs = _read_initial(browser)
 
                 # Acquire hijack
@@ -551,7 +552,11 @@ class TestBrowserHandlerHijackRelease:
 
         # Resume should have been sent (worker_ws.send_text called)
         worker_ws.send_text.assert_called()
-        calls_json = [json.loads(call.args[0]) for call in worker_ws.send_text.call_args_list]
+        calls_json = [
+            frame
+            for call in worker_ws.send_text.call_args_list
+            for frame in decode_chunk(call.args[0], data_type="input")
+        ]
         resume_sent = any(c.get("action") == "resume" for c in calls_json)
         assert resume_sent
 

@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import json
 import time
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any
@@ -26,6 +25,7 @@ try:
 except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required for TermHub: pip install 'undef-terminal[websocket]'") from _e
 
+from undef.terminal.control_stream import encode_control, encode_data
 from undef.terminal.hijack.hub.connections import _ConnectionMixin
 from undef.terminal.hijack.hub.ownership import _HijackOwnershipMixin
 from undef.terminal.hijack.hub.polling import _PollingMixin
@@ -40,6 +40,18 @@ BrowserRoleResolver = Callable[[WebSocket, str], str | None | Awaitable[str | No
 MetricCallback = Callable[[str, int], None]
 WorkerEmptyCallback = Callable[[str], Coroutine[Any, Any, None]]
 ResumeCallback = Callable[[str, ResumeSession], Awaitable[bool]]
+
+
+def _encode_browser_frame(msg: dict[str, Any]) -> str:
+    if str(msg.get("type") or "") == "term":
+        return encode_data(str(msg.get("data") or ""))
+    return encode_control(msg)
+
+
+def _encode_worker_frame(msg: dict[str, Any]) -> str:
+    if str(msg.get("type") or "") == "input":
+        return encode_data(str(msg.get("data") or ""))
+    return encode_control(msg)
 
 
 class BrowserRoleResolutionError(RuntimeError):
@@ -211,7 +223,7 @@ class TermHub(_PollingMixin, _HijackOwnershipMixin, _ConnectionMixin):
                 return
             browsers = list(st.browsers.keys())
         dead: set[WebSocket] = set()
-        payload = json.dumps(msg, ensure_ascii=True)
+        payload = _encode_browser_frame(msg)
         for ws in browsers:
             try:
                 await ws.send_text(payload)
@@ -245,15 +257,14 @@ class TermHub(_PollingMixin, _HijackOwnershipMixin, _ConnectionMixin):
                 owner = "other"
             else:
                 owner = None
-            payload = json.dumps(
+            payload = encode_control(
                 {
                     "type": "hijack_state",
                     "hijacked": is_hijacked,
                     "owner": owner,
                     "lease_expires_at": lease_expires_at,
                     "input_mode": input_mode,
-                },
-                ensure_ascii=True,
+                }
             )
             try:
                 await ws.send_text(payload)
@@ -330,7 +341,7 @@ class TermHub(_PollingMixin, _HijackOwnershipMixin, _ConnectionMixin):
                 return False
             ws = st.worker_ws
         try:
-            await ws.send_text(json.dumps(msg, ensure_ascii=True))
+            await ws.send_text(_encode_worker_frame(msg))
             return True
         except Exception as exc:
             logger.debug("send_worker_failed worker_id=%s: %s", worker_id, exc)

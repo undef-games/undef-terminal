@@ -117,7 +117,7 @@ filterwarnings = [
 ]
 markers = [
     "playwright: browser-based UI tests (deselected by default, run with -m playwright)",
-    "mutant: mutation-killing tests (heavy, deselected by default, run with -m mutant)",
+    "mutant: mutation-testing and mutmut-focused tests (deselected by default)",
 ]
 addopts = [
     "--import-mode=importlib",
@@ -127,7 +127,7 @@ addopts = [
     "--tb=short",
     "-ra",
     "-m",
-    "not playwright and not mutant",
+    "not playwright",
     "--cov=undef.terminal",
     "--cov-branch",
     "--cov-report=term-missing",
@@ -174,6 +174,7 @@ ignore = ["E501", "S104", "S112", "S311"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "RUF022"]
 "tests/**/*.py" = ["E402", "B905", "S101", "S105", "S106", "S110", "ARG", "TCH", "RUF003", "RUF012", "RUF015", "RUF043", "RUF059"]
+"tests_mutation/**/*.py" = ["E402", "B905", "S101", "S105", "S106", "S110", "ARG", "TCH", "RUF003", "RUF012", "RUF015", "RUF043", "RUF059"]
 "packages/**/tests/**/*.py" = ["E402", "B905", "S101", "S105", "S106", "S110", "ARG", "TCH", "RUF003", "RUF012", "RUF015", "RUF043", "RUF059"]
 
 [tool.coverage.run]
@@ -247,7 +248,7 @@ max_average = "A"
 [tool.mutmut]
 max_children = 6
 paths_to_mutate = ["src/undef/terminal/"]
-tests_dir = ["tests/"]
+tests_dir = ["tests/", "tests_mutation/"]
 also_copy = ["scripts/"]
 do_not_mutate = [
     "src/undef/terminal/frontend/",
@@ -255,7 +256,7 @@ do_not_mutate = [
     "src/undef/terminal/gateway.py",
     "src/undef/terminal/server/connectors/",
 ]
-pytest_add_cli_args = ["--no-cov"]
+pytest_add_cli_args = ["--no-cov", "--timeout=30"]
 pytest_add_cli_args_test_selection = [
     "-m",
     "not playwright",

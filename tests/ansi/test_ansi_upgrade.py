@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from undef.terminal import registered_dialects
 from undef.terminal.ansi import (
     DEFAULT_PALETTE,
     DEFAULT_RGB,
@@ -79,6 +80,18 @@ def test_normalize_colors_pipe_codes() -> None:
     result = normalize_colors("|04red|00")
     assert "\x1b[31m" in result
     assert "\x1b[30m" in result
+
+
+def test_normalize_colors_brace_tokens() -> None:
+    result = normalize_colors("{+Bw}Daily Journal{NK}")
+    assert "\x1b[1;37m" in result
+    assert "\x1b[0m" in result
+    assert "{+Bw}" not in result
+    assert "{NK}" not in result
+
+
+def test_brace_tokens_registered_builtin() -> None:
+    assert "brace_tokens" in registered_dialects()
 
 
 # ---------------------------------------------------------------------------
@@ -427,7 +440,7 @@ class TestHandleBraceTokensExact:
     """Pin exact brace token output and boundary passthrough."""
 
     def test_plus_r_exact(self) -> None:
-        assert _handle_brace_tokens("{+r}") == "\x1b[0;1;31m"
+        assert _handle_brace_tokens("{+r}") == "\x1b[1;31m"
 
     def test_minus_x_exact(self) -> None:
         assert _handle_brace_tokens("{-x}") == "\x1b[0m"
@@ -445,7 +458,13 @@ class TestHandleBraceTokensExact:
         assert _handle_brace_tokens("{xr}") == "{xr}"
 
     def test_surrounding_text_preserved(self) -> None:
-        assert _handle_brace_tokens("A{+r}B") == "A\x1b[0;1;31mB"
+        assert _handle_brace_tokens("A{+r}B") == "A\x1b[1;31mB"
+
+    def test_3char_token_bold(self) -> None:
+        assert _handle_brace_tokens("{T}") == "\x1b[1m"
+
+    def test_3char_token_reset(self) -> None:
+        assert _handle_brace_tokens("{t}") == "\x1b[0m"
 
 
 class TestHandleTildeCodesExact:

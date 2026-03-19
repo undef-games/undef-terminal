@@ -37,6 +37,118 @@ function _injectHijackCSS() {
   document.head.appendChild(link);
 }
 
+// ── Reconnect animation ───────────────────────────────────────────────────────
+const _RECONNECT_ANIM_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const _DLE = "\x10";
+const _STX = "\x02";
+const _CONTROL_LEN_RE = /^[0-9a-fA-F]{8}$/;
+
+/** @param {unknown} data */
+function _encodeDataFrame(data) {
+  return String(data ?? "")
+    .split(_DLE)
+    .join(_DLE + _DLE);
+}
+
+/** @param {Record<string, unknown>} payload */
+function _encodeControlFrame(payload) {
+  const json = JSON.stringify(payload);
+  return `${_DLE}${_STX}${json.length.toString(16).padStart(8, "0")}:${json}`;
+}
+
+/** @param {Record<string, unknown>} payload */
+function _encodeWsFrame(payload) {
+  const frameType = payload?.type;
+  if (frameType === "input" || frameType === "term") {
+    return _encodeDataFrame(payload.data ?? "");
+  }
+  return _encodeControlFrame(payload);
+}
+
+class _ControlStreamDecoder {
+  constructor(maxControlBytes = 1024 * 1024) {
+    this._buffer = "";
+    this._maxControlBytes = maxControlBytes;
+  }
+
+  reset() {
+    this._buffer = "";
+  }
+
+  /** @param {string} chunk */
+  feed(chunk) {
+    this._buffer += String(chunk ?? "");
+    const frames = [];
+    let cursor = 0;
+    let text = "";
+
+    while (cursor < this._buffer.length) {
+      const ch = this._buffer[cursor];
+      if (ch !== _DLE) {
+        text += ch;
+        cursor += 1;
+        continue;
+      }
+      if (cursor + 1 >= this._buffer.length) {
+        break;
+      }
+      const marker = this._buffer[cursor + 1];
+      if (marker === _DLE) {
+        text += _DLE;
+        cursor += 2;
+        continue;
+      }
+      if (marker !== _STX) {
+        throw new Error("invalid control stream prefix");
+      }
+      if (text) {
+        frames.push({ type: "data", data: text });
+        text = "";
+      }
+      if (cursor + 11 > this._buffer.length) {
+        break;
+      }
+      const header = this._buffer.slice(cursor + 2, cursor + 10);
+      if (!_CONTROL_LEN_RE.test(header)) {
+        throw new Error("invalid control stream length");
+      }
+      if (this._buffer[cursor + 10] !== ":") {
+        throw new Error("invalid control stream separator");
+      }
+      const payloadLength = Number.parseInt(header, 16);
+      if (!Number.isFinite(payloadLength) || payloadLength > this._maxControlBytes) {
+        throw new Error("control payload too large");
+      }
+      const payloadStart = cursor + 11;
+      const payloadEnd = payloadStart + payloadLength;
+      if (payloadEnd > this._buffer.length) {
+        break;
+      }
+      let control;
+      try {
+        control = JSON.parse(this._buffer.slice(payloadStart, payloadEnd));
+      } catch (_) {
+        throw new Error("invalid control payload");
+      }
+      if (!control || typeof control !== "object" || Array.isArray(control)) {
+        throw new Error("control payload must be an object");
+      }
+      frames.push({ type: "control", control });
+      cursor = payloadEnd;
+    }
+
+    if (cursor === this._buffer.length) {
+      if (text) {
+        frames.push({ type: "data", data: text });
+      }
+      this._buffer = "";
+    } else {
+      this._buffer = text + this._buffer.slice(cursor);
+    }
+    return frames;
+  }
+}
+
 // ── UndefHijack class ─────────────────────────────────────────────────────────
 class UndefHijack {
   /**
@@ -72,6 +184,7 @@ class UndefHijack {
     this._ro = null;
     this._heartbeatTimer = null;
     this._reconnectTimer = null;
+    this._reconnectAnimTimer = null;
     this._reconnectAttempt = 0;
     this._hijacked = false;
     this._hijackedByMe = false;
@@ -86,6 +199,7 @@ class UndefHijack {
     this._workerId = config.workerId || "default";
     this._mobileKeysVisible = false;
     this._root = null;
+    this._wsDecoder = new _ControlStreamDecoder();
 
     _injectHijackCSS();
     this._buildDOM();
@@ -304,7 +418,11 @@ class UndefHijack {
 
     // Forward keyboard input to WS when hijacked or in open mode
     this._term.onData((/** @type {string} */ data) => {
-      if (!this._ws || this._ws.readyState !== WebSocket.OPEN) return;
+      if (!this._ws || this._ws.readyState !== WebSocket.OPEN) {
+        this._nudgeReconnect();
+        this._startReconnectAnim();
+        return;
+      }
       if (this._inputMode !== "open" && !this._hijackedByMe) return;
       this._wsSend({ type: "input", data });
     });
@@ -319,7 +437,7 @@ class UndefHijack {
    */
   _wsSend(obj) {
     if (this._ws && this._ws.readyState === WebSocket.OPEN) {
-      this._ws.send(JSON.stringify(obj));
+      this._ws.send(_encodeWsFrame(obj));
     }
   }
 
@@ -366,9 +484,11 @@ class UndefHijack {
       return;
     }
     this._ws = ws;
+    this._wsDecoder.reset();
 
     ws.onopen = () => {
       if (ws !== this._ws) return; // stale handler: a newer socket already replaced this one
+      this._stopReconnectAnim();
       this._reconnectAttempt = 0;
       this._setStatus("live", "Connected (watching)");
       this._updateButtons();
@@ -382,14 +502,21 @@ class UndefHijack {
     };
 
     ws.onmessage = (e) => {
-      let msg;
       try {
-        msg = JSON.parse(e.data);
+        const frames = this._wsDecoder.feed(typeof e.data === "string" ? e.data : String(e.data));
+        for (const frame of frames) {
+          const msg = frame.type === "data" ? { type: "term", data: frame.data } : frame.control;
+          if (msg?.type) {
+            this._handleMessage(msg);
+          }
+        }
       } catch (_) {
+        this._setStatus("bad", "Protocol error");
+        try {
+          ws.close();
+        } catch (_) {}
         return;
       }
-      if (!msg || !msg.type) return;
-      this._handleMessage(msg);
     };
 
     ws.onclose = () => {
@@ -428,6 +555,43 @@ class UndefHijack {
       this._reconnectTimer = null;
       this._connectWs();
     }, delaySec * 1000);
+  }
+
+  /** Cancel any pending backoff timer and reconnect immediately. */
+  _nudgeReconnect() {
+    // Already actively connecting — don't pile on.
+    if (this._ws && this._ws.readyState === WebSocket.CONNECTING) return;
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+      this._connectWs();
+    }
+  }
+
+  /** Start a braille spinner rendered below the cursor via ANSI save/restore. */
+  _startReconnectAnim() {
+    if (this._reconnectAnimTimer || !this._term) return;
+    let i = 0;
+    this._reconnectAnimTimer = setInterval(() => {
+      if (!this._term) return;
+      const ch = _RECONNECT_ANIM_FRAMES[i % _RECONNECT_ANIM_FRAMES.length];
+      i++;
+      try {
+        this._term.write(`\x1b7\x1b[B\x1b[G\x1b[2;36m${ch}\x1b[0m\x1b8`);
+      } catch (_) {}
+    }, 80);
+  }
+
+  /** Stop the spinner and erase the character it left behind. */
+  _stopReconnectAnim() {
+    if (!this._reconnectAnimTimer) return;
+    clearInterval(this._reconnectAnimTimer);
+    this._reconnectAnimTimer = null;
+    if (this._term) {
+      try {
+        this._term.write("\x1b7\x1b[B\x1b[G \x1b8");
+      } catch (_) {}
+    }
   }
 
   _buildMobileKeys() {
@@ -473,6 +637,7 @@ class UndefHijack {
         break;
 
       case "snapshot": {
+        this._stopReconnectAnim();
         this._workerOnline = true;
         const promptId = msg.prompt_detected?.prompt_id;
         this._setPromptId(promptId || "");

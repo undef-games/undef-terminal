@@ -35,6 +35,8 @@ except Exception:
     from state.registry import KV_REFRESH_S, update_kv_session  # type: ignore[import-not-found]
     from state.store import LeaseRecord, SqliteStateStore  # type: ignore[import-not-found]
 
+from undef.terminal.control_stream import encode_control
+
 logger = logging.getLogger(__name__)
 
 _MAX_REQUEST_BODY = 65_536  # 64 KB — guard against memory exhaustion in DO sandbox
@@ -269,7 +271,7 @@ class SessionRuntime(_WsHelperMixin, DurableObject):
                 self.store.create_resume_token(resume_token, self.worker_id, browser_role, resume_ttl_s)
                 try:
                     server.send(
-                        json.dumps(
+                        encode_control(
                             {
                                 "type": "hello",
                                 "worker_id": self.worker_id,
@@ -282,8 +284,7 @@ class SessionRuntime(_WsHelperMixin, DurableObject):
                                 "resume_supported": True,
                                 "resume_token": resume_token,
                                 "ts": time.time(),
-                            },
-                            ensure_ascii=True,
+                            }
                         )
                     )
                 except Exception as exc:
