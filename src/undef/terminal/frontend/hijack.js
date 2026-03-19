@@ -1,12 +1,24 @@
-"use strict";
 //
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
+/**
+ * UndefHijack - Embeddable terminal hijack control widget.
+ *
+ * Connects to the TermHub browser WebSocket endpoint (/ws/browser/{workerId}/term)
+ * and provides live terminal viewing plus hijack controls (pause/step/release).
+ *
+ * Usage:
+ *   const w = new UndefHijack(containerEl, { workerId: 'myworker' });
+ *   w.connect();    // called automatically on construction
+ *   w.disconnect(); // close WS
+ *   w.dispose();    // tear down entirely
+ */
+import { _RECONNECT_ANIM_FRAMES, ControlStreamDecoder, encodeWsFrame, } from "./hijack-codec.js";
 // ── Module-level guards ───────────────────────────────────────────────────────
 let _hijackCssInjected = false;
 let _hijackInstanceCount = 0;
-// Capture script element synchronously (available only during initial parse)
+// Capture script element synchronously (only available for classic scripts, not modules)
 const _hijackScriptEl = typeof document !== "undefined" && document.currentScript instanceof HTMLScriptElement
     ? document.currentScript
     : null;
@@ -20,110 +32,8 @@ function _injectHijackCSS() {
     link.href = _hijackScriptEl?.src ? `${_hijackScriptEl.src.replace(/[^/]*$/, "")}hijack.css` : "hijack.css";
     document.head.appendChild(link);
 }
-// ── Reconnect animation ───────────────────────────────────────────────────────
-const _RECONNECT_ANIM_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const _DLE = "\x10";
-const _STX = "\x02";
-const _CONTROL_LEN_RE = /^[0-9a-fA-F]{8}$/;
-function _encodeDataFrame(data) {
-    return String(data ?? "")
-        .split(_DLE)
-        .join(_DLE + _DLE);
-}
-function _encodeControlFrame(payload) {
-    const json = JSON.stringify(payload);
-    return `${_DLE}${_STX}${json.length.toString(16).padStart(8, "0")}:${json}`;
-}
-function _encodeWsFrame(payload) {
-    const frameType = payload["type"];
-    if (frameType === "input" || frameType === "term") {
-        return _encodeDataFrame(payload["data"] ?? "");
-    }
-    return _encodeControlFrame(payload);
-}
-// ── Control stream decoder ────────────────────────────────────────────────────
-class _ControlStreamDecoder {
-    constructor(maxControlBytes = 1024 * 1024) {
-        this._buffer = "";
-        this._maxControlBytes = maxControlBytes;
-    }
-    reset() {
-        this._buffer = "";
-    }
-    feed(chunk) {
-        this._buffer += String(chunk ?? "");
-        const frames = [];
-        let cursor = 0;
-        let text = "";
-        while (cursor < this._buffer.length) {
-            const ch = this._buffer[cursor];
-            if (ch !== _DLE) {
-                text += ch;
-                cursor += 1;
-                continue;
-            }
-            if (cursor + 1 >= this._buffer.length) {
-                break;
-            }
-            const marker = this._buffer[cursor + 1];
-            if (marker === _DLE) {
-                text += _DLE;
-                cursor += 2;
-                continue;
-            }
-            if (marker !== _STX) {
-                throw new Error("invalid control stream prefix");
-            }
-            if (text) {
-                frames.push({ type: "data", data: text });
-                text = "";
-            }
-            if (cursor + 11 > this._buffer.length) {
-                break;
-            }
-            const header = this._buffer.slice(cursor + 2, cursor + 10);
-            if (!_CONTROL_LEN_RE.test(header)) {
-                throw new Error("invalid control stream length");
-            }
-            if (this._buffer[cursor + 10] !== ":") {
-                throw new Error("invalid control stream separator");
-            }
-            const payloadLength = Number.parseInt(header, 16);
-            if (!Number.isFinite(payloadLength) || payloadLength > this._maxControlBytes) {
-                throw new Error("control payload too large");
-            }
-            const payloadStart = cursor + 11;
-            const payloadEnd = payloadStart + payloadLength;
-            if (payloadEnd > this._buffer.length) {
-                break;
-            }
-            let parsed;
-            try {
-                parsed = JSON.parse(this._buffer.slice(payloadStart, payloadEnd));
-            }
-            catch {
-                throw new Error("invalid control payload");
-            }
-            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-                throw new Error("control payload must be an object");
-            }
-            frames.push({ type: "control", control: parsed });
-            cursor = payloadEnd;
-        }
-        if (cursor === this._buffer.length) {
-            if (text) {
-                frames.push({ type: "data", data: text });
-            }
-            this._buffer = "";
-        }
-        else {
-            this._buffer = text + this._buffer.slice(cursor);
-        }
-        return frames;
-    }
-}
 // ── UndefHijack class ─────────────────────────────────────────────────────────
-class UndefHijack {
+export class UndefHijack {
     /**
      * Create an embeddable hijack control widget.
      *
@@ -165,7 +75,7 @@ class UndefHijack {
         };
         this._uid = ++_hijackInstanceCount;
         this._workerId = config.workerId ?? "default";
-        this._wsDecoder = new _ControlStreamDecoder();
+        this._wsDecoder = new ControlStreamDecoder();
         _injectHijackCSS();
         this._buildDOM();
         this.connect();
@@ -371,7 +281,7 @@ class UndefHijack {
     // ── WebSocket ─────────────────────────────────────────────────────────────
     _wsSend(obj) {
         if (this._ws && this._ws.readyState === WebSocket.OPEN) {
-            this._ws.send(_encodeWsFrame(obj));
+            this._ws.send(encodeWsFrame(obj));
         }
     }
     _clearHeartbeat() {
@@ -438,7 +348,7 @@ class UndefHijack {
                 const frames = this._wsDecoder.feed(typeof e.data === "string" ? e.data : String(e.data));
                 for (const frame of frames) {
                     const msg = frame.type === "data" ? { type: "term", data: frame.data } : frame.control;
-                    if (msg["type"]) {
+                    if (msg.type) {
                         this._handleMessage(msg);
                     }
                 }
@@ -559,12 +469,12 @@ class UndefHijack {
     }
     // ── Message dispatch ──────────────────────────────────────────────────────
     _handleMessage(msg) {
-        switch (msg["type"]) {
+        switch (msg.type) {
             case "term":
                 this._workerOnline = true;
-                if (msg["data"]) {
+                if (msg.data) {
                     try {
-                        this._ensureTerm().write(msg["data"]);
+                        this._ensureTerm().write(msg.data);
                     }
                     catch (_) { }
                 }
@@ -572,14 +482,14 @@ class UndefHijack {
             case "snapshot": {
                 this._stopReconnectAnim();
                 this._workerOnline = true;
-                const promptDetected = msg["prompt_detected"];
-                const promptId = promptDetected?.["prompt_id"];
+                const promptDetected = msg.prompt_detected;
+                const promptId = promptDetected?.prompt_id;
                 this._setPromptId(promptId ?? "");
                 try {
                     const t = this._ensureTerm();
                     t.reset();
                     t.write("\u001b[2J\u001b[H");
-                    t.write((msg["screen"] ?? "").replace(/\n/g, "\r\n"));
+                    t.write((msg.screen ?? "").replace(/\n/g, "\r\n"));
                 }
                 catch (_) { }
                 break;
@@ -587,7 +497,7 @@ class UndefHijack {
             case "analysis": {
                 const pre = this._q("analysistext");
                 if (pre) {
-                    pre.textContent = msg["formatted"] ?? "(no analysis)";
+                    pre.textContent = msg.formatted ?? "(no analysis)";
                     const details = this._q("analysis");
                     if (details)
                         details.open = true;
@@ -596,23 +506,22 @@ class UndefHijack {
             }
             case "hello": {
                 // {type, worker_id, can_hijack, hijacked, hijacked_by_me, input_mode, role, resume_token, resumed}
-                this._canHijack = !!msg["can_hijack"];
-                this._hijacked = !!msg["hijacked"];
-                this._hijackedByMe = !!msg["hijacked_by_me"];
-                this._workerOnline = !!msg["worker_online"];
-                const inputMode = msg["input_mode"];
+                this._canHijack = !!msg.can_hijack;
+                this._hijacked = !!msg.hijacked;
+                this._hijackedByMe = !!msg.hijacked_by_me;
+                this._workerOnline = !!msg.worker_online;
+                const inputMode = msg.input_mode;
                 if (inputMode)
                     this._inputMode = inputMode;
-                const caps = msg["capabilities"];
+                const caps = msg.capabilities;
                 this._hijackControl =
-                    msg["hijack_control"] ?? caps?.["hijack_control"] ?? "ws";
-                const stepSupported = msg["hijack_step_supported"] ??
-                    caps?.["hijack_step_supported"];
+                    msg.hijack_control ?? caps?.hijack_control ?? "ws";
+                const stepSupported = msg.hijack_step_supported ?? caps?.hijack_step_supported;
                 this._hijackStepSupported = stepSupported !== false;
-                const resumeSupported = msg["resume_supported"];
+                const resumeSupported = msg.resume_supported;
                 if (resumeSupported !== undefined)
                     this._resumeSupported = !!resumeSupported;
-                const resumeToken = msg["resume_token"];
+                const resumeToken = msg.resume_token;
                 if (resumeToken) {
                     this._resumeToken = resumeToken;
                     this._saveResumeToken(resumeToken);
@@ -628,11 +537,11 @@ class UndefHijack {
                 break;
             case "hijack_state": {
                 // {type, hijacked, owner: "me"|"other"|null, lease_expires_at, input_mode}
-                this._hijacked = !!msg["hijacked"];
-                this._hijackedByMe = msg["owner"] === "me";
+                this._hijacked = !!msg.hijacked;
+                this._hijackedByMe = msg.owner === "me";
                 if (!this._hijackedByMe)
                     this._restHijackId = null;
-                const hsInputMode = msg["input_mode"];
+                const hsInputMode = msg.input_mode;
                 if (hsInputMode)
                     this._inputMode = hsInputMode;
                 // Keep the heartbeat interval in sync with ownership.
@@ -655,7 +564,7 @@ class UndefHijack {
                 this._updateButtons();
                 break;
             case "input_mode_changed": {
-                const changedMode = msg["input_mode"];
+                const changedMode = msg.input_mode;
                 if (changedMode)
                     this._inputMode = changedMode;
                 this._updateStatus();
@@ -665,7 +574,7 @@ class UndefHijack {
             case "heartbeat_ack":
                 break; // lease refreshed — no visible change needed
             case "error":
-                this._setStatus("bad", `Error: ${msg["message"] ?? "unknown"}`);
+                this._setStatus("bad", `Error: ${msg.message ?? "unknown"}`);
                 break;
         }
     }
@@ -760,8 +669,8 @@ class UndefHijack {
             if (this._hijackControl === "rest") {
                 this._restHijack("acquire", { owner: "dashboard", lease_s: 60 })
                     .then((data) => {
-                    if (data && typeof data["hijack_id"] === "string")
-                        this._restHijackId = data["hijack_id"];
+                    if (data && typeof data.hijack_id === "string")
+                        this._restHijackId = data.hijack_id;
                 })
                     .finally(() => this._wsSend({ type: "snapshot_req" }));
                 return;

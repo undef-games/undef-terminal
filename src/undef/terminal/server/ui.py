@@ -175,7 +175,7 @@ def session_page_html(
         "<div id='app-root'></div>"
         "<noscript><div class='page'><div class='card'>This application requires JavaScript.</div></div></noscript>"
         f"{_bootstrap_tag(bootstrap)}"
-        f"<script src='{escape(assets_path)}/hijack.js'></script>"
+        f"<script type='module' src='{escape(assets_path)}/hijack.js'></script>"
         "</body>"
     )
     return _shell(

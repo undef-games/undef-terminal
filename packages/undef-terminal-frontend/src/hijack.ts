@@ -16,66 +16,20 @@
  *   w.dispose();    // tear down entirely
  */
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface HijackConfig {
-  wsUrl?: string;
-  workerId?: string;
-  wsPathPrefix?: string;
-  title?: string | null;
-  showInput?: boolean;
-  showAnalysis?: boolean;
-  heartbeatInterval?: number;
-  mobileKeys?: boolean;
-  role?: string;
-}
-
-/** Resolved config after defaults are merged in. */
-interface ResolvedConfig {
-  wsUrl: string | undefined;
-  workerId: string | undefined;
-  wsPathPrefix: string;
-  title: string | null | undefined;
-  showInput: boolean;
-  showAnalysis: boolean;
-  heartbeatInterval: number;
-  mobileKeys: boolean;
-  role: string | undefined;
-}
-
-type HijackAction = "acquire" | "heartbeat" | "release" | "step";
-
-interface StreamDataFrame {
-  type: "data";
-  data: string;
-}
-
-interface StreamControlFrame {
-  type: "control";
-  control: Record<string, unknown>;
-}
-
-type StreamFrame = StreamDataFrame | StreamControlFrame;
-
-/** Minimal interface for xterm.js Terminal (loaded via CDN). */
-interface XTerminal {
-  write(data: string): void;
-  reset(): void;
-  dispose(): void;
-  open(el: HTMLElement): void;
-  focus(): void;
-  onData(callback: (data: string) => void): { dispose(): void };
-  loadAddon(addon: FitAddonInstance): void;
-}
-
-interface FitAddonInstance {
-  fit(): void;
-}
+import {
+  _RECONNECT_ANIM_FRAMES,
+  ControlStreamDecoder,
+  encodeWsFrame,
+  type FitAddonInstance,
+  type HijackConfig,
+  type ResolvedConfig,
+  type XTerminal,
+} from "./hijack-codec.js";
 
 // ── Module-level guards ───────────────────────────────────────────────────────
 let _hijackCssInjected = false;
 let _hijackInstanceCount = 0;
-// Capture script element synchronously (available only during initial parse)
+// Capture script element synchronously (only available for classic scripts, not modules)
 const _hijackScriptEl: HTMLScriptElement | null =
   typeof document !== "undefined" && document.currentScript instanceof HTMLScriptElement
     ? document.currentScript
@@ -91,126 +45,14 @@ function _injectHijackCSS(): void {
   document.head.appendChild(link);
 }
 
-// ── Reconnect animation ───────────────────────────────────────────────────────
-const _RECONNECT_ANIM_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const _DLE = "\x10";
-const _STX = "\x02";
-const _CONTROL_LEN_RE = /^[0-9a-fA-F]{8}$/;
-
-function _encodeDataFrame(data: unknown): string {
-  return String(data ?? "")
-    .split(_DLE)
-    .join(_DLE + _DLE);
-}
-
-function _encodeControlFrame(payload: Record<string, unknown>): string {
-  const json = JSON.stringify(payload);
-  return `${_DLE}${_STX}${json.length.toString(16).padStart(8, "0")}:${json}`;
-}
-
-function _encodeWsFrame(payload: Record<string, unknown>): string {
-  const frameType = payload["type"];
-  if (frameType === "input" || frameType === "term") {
-    return _encodeDataFrame(payload["data"] ?? "");
-  }
-  return _encodeControlFrame(payload);
-}
-
-// ── Control stream decoder ────────────────────────────────────────────────────
-
-class _ControlStreamDecoder {
-  private _buffer = "";
-  private readonly _maxControlBytes: number;
-
-  constructor(maxControlBytes = 1024 * 1024) {
-    this._maxControlBytes = maxControlBytes;
-  }
-
-  reset(): void {
-    this._buffer = "";
-  }
-
-  feed(chunk: string): StreamFrame[] {
-    this._buffer += String(chunk ?? "");
-    const frames: StreamFrame[] = [];
-    let cursor = 0;
-    let text = "";
-
-    while (cursor < this._buffer.length) {
-      const ch = this._buffer[cursor] as string;
-      if (ch !== _DLE) {
-        text += ch;
-        cursor += 1;
-        continue;
-      }
-      if (cursor + 1 >= this._buffer.length) {
-        break;
-      }
-      const marker = this._buffer[cursor + 1] as string;
-      if (marker === _DLE) {
-        text += _DLE;
-        cursor += 2;
-        continue;
-      }
-      if (marker !== _STX) {
-        throw new Error("invalid control stream prefix");
-      }
-      if (text) {
-        frames.push({ type: "data", data: text });
-        text = "";
-      }
-      if (cursor + 11 > this._buffer.length) {
-        break;
-      }
-      const header = this._buffer.slice(cursor + 2, cursor + 10);
-      if (!_CONTROL_LEN_RE.test(header)) {
-        throw new Error("invalid control stream length");
-      }
-      if (this._buffer[cursor + 10] !== ":") {
-        throw new Error("invalid control stream separator");
-      }
-      const payloadLength = Number.parseInt(header, 16);
-      if (!Number.isFinite(payloadLength) || payloadLength > this._maxControlBytes) {
-        throw new Error("control payload too large");
-      }
-      const payloadStart = cursor + 11;
-      const payloadEnd = payloadStart + payloadLength;
-      if (payloadEnd > this._buffer.length) {
-        break;
-      }
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(this._buffer.slice(payloadStart, payloadEnd)) as unknown;
-      } catch {
-        throw new Error("invalid control payload");
-      }
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        throw new Error("control payload must be an object");
-      }
-      frames.push({ type: "control", control: parsed as Record<string, unknown> });
-      cursor = payloadEnd;
-    }
-
-    if (cursor === this._buffer.length) {
-      if (text) {
-        frames.push({ type: "data", data: text });
-      }
-      this._buffer = "";
-    } else {
-      this._buffer = text + this._buffer.slice(cursor);
-    }
-    return frames;
-  }
-}
-
 // ── UndefHijack class ─────────────────────────────────────────────────────────
-class UndefHijack {
+export class UndefHijack {
   // Private state
   private readonly _container: HTMLElement;
   private readonly _config: ResolvedConfig;
   private readonly _uid: number;
   private readonly _workerId: string;
-  private readonly _wsDecoder: _ControlStreamDecoder;
+  private readonly _wsDecoder: ControlStreamDecoder;
 
   private _ws: WebSocket | null = null;
   private _term: XTerminal | null = null;
@@ -254,7 +96,7 @@ class UndefHijack {
     };
     this._uid = ++_hijackInstanceCount;
     this._workerId = config.workerId ?? "default";
-    this._wsDecoder = new _ControlStreamDecoder();
+    this._wsDecoder = new ControlStreamDecoder();
 
     _injectHijackCSS();
     this._buildDOM();
@@ -347,7 +189,7 @@ class UndefHijack {
   }
 
   private async _restHijack(
-    action: HijackAction,
+    action: "acquire" | "heartbeat" | "release" | "step",
     payload: Record<string, unknown> = {},
   ): Promise<Record<string, unknown> | null> {
     const headers = { "content-type": "application/json" };
@@ -479,7 +321,7 @@ class UndefHijack {
 
   private _wsSend(obj: Record<string, unknown>): void {
     if (this._ws && this._ws.readyState === WebSocket.OPEN) {
-      this._ws.send(_encodeWsFrame(obj));
+      this._ws.send(encodeWsFrame(obj));
     }
   }
 
@@ -548,7 +390,7 @@ class UndefHijack {
         for (const frame of frames) {
           const msg: Record<string, unknown> =
             frame.type === "data" ? { type: "term", data: frame.data } : frame.control;
-          if (msg["type"]) {
+          if (msg.type) {
             this._handleMessage(msg);
           }
         }
@@ -665,12 +507,12 @@ class UndefHijack {
   // ── Message dispatch ──────────────────────────────────────────────────────
 
   private _handleMessage(msg: Record<string, unknown>): void {
-    switch (msg["type"] as string) {
+    switch (msg.type as string) {
       case "term":
         this._workerOnline = true;
-        if (msg["data"]) {
+        if (msg.data) {
           try {
-            this._ensureTerm().write(msg["data"] as string);
+            this._ensureTerm().write(msg.data as string);
           } catch (_) {}
         }
         break;
@@ -678,14 +520,14 @@ class UndefHijack {
       case "snapshot": {
         this._stopReconnectAnim();
         this._workerOnline = true;
-        const promptDetected = msg["prompt_detected"] as Record<string, unknown> | undefined;
-        const promptId = promptDetected?.["prompt_id"] as string | undefined;
+        const promptDetected = msg.prompt_detected as Record<string, unknown> | undefined;
+        const promptId = promptDetected?.prompt_id as string | undefined;
         this._setPromptId(promptId ?? "");
         try {
           const t = this._ensureTerm();
           t.reset();
           t.write("\u001b[2J\u001b[H");
-          t.write(((msg["screen"] as string | undefined) ?? "").replace(/\n/g, "\r\n"));
+          t.write(((msg.screen as string | undefined) ?? "").replace(/\n/g, "\r\n"));
         } catch (_) {}
         break;
       }
@@ -693,7 +535,7 @@ class UndefHijack {
       case "analysis": {
         const pre = this._q("analysistext");
         if (pre) {
-          pre.textContent = (msg["formatted"] as string | undefined) ?? "(no analysis)";
+          pre.textContent = (msg.formatted as string | undefined) ?? "(no analysis)";
           const details = this._q("analysis");
           if (details) (details as HTMLDetailsElement).open = true;
         }
@@ -702,22 +544,21 @@ class UndefHijack {
 
       case "hello": {
         // {type, worker_id, can_hijack, hijacked, hijacked_by_me, input_mode, role, resume_token, resumed}
-        this._canHijack = !!(msg["can_hijack"] as boolean | undefined);
-        this._hijacked = !!(msg["hijacked"] as boolean | undefined);
-        this._hijackedByMe = !!(msg["hijacked_by_me"] as boolean | undefined);
-        this._workerOnline = !!(msg["worker_online"] as boolean | undefined);
-        const inputMode = msg["input_mode"] as string | undefined;
+        this._canHijack = !!(msg.can_hijack as boolean | undefined);
+        this._hijacked = !!(msg.hijacked as boolean | undefined);
+        this._hijackedByMe = !!(msg.hijacked_by_me as boolean | undefined);
+        this._workerOnline = !!(msg.worker_online as boolean | undefined);
+        const inputMode = msg.input_mode as string | undefined;
         if (inputMode) this._inputMode = inputMode;
-        const caps = msg["capabilities"] as Record<string, unknown> | undefined;
+        const caps = msg.capabilities as Record<string, unknown> | undefined;
         this._hijackControl =
-          (msg["hijack_control"] as string | undefined) ?? (caps?.["hijack_control"] as string | undefined) ?? "ws";
+          (msg.hijack_control as string | undefined) ?? (caps?.hijack_control as string | undefined) ?? "ws";
         const stepSupported =
-          (msg["hijack_step_supported"] as boolean | undefined) ??
-          (caps?.["hijack_step_supported"] as boolean | undefined);
+          (msg.hijack_step_supported as boolean | undefined) ?? (caps?.hijack_step_supported as boolean | undefined);
         this._hijackStepSupported = stepSupported !== false;
-        const resumeSupported = msg["resume_supported"] as boolean | undefined;
+        const resumeSupported = msg.resume_supported as boolean | undefined;
         if (resumeSupported !== undefined) this._resumeSupported = !!resumeSupported;
-        const resumeToken = msg["resume_token"] as string | undefined;
+        const resumeToken = msg.resume_token as string | undefined;
         if (resumeToken) {
           this._resumeToken = resumeToken;
           this._saveResumeToken(resumeToken);
@@ -735,10 +576,10 @@ class UndefHijack {
 
       case "hijack_state": {
         // {type, hijacked, owner: "me"|"other"|null, lease_expires_at, input_mode}
-        this._hijacked = !!(msg["hijacked"] as boolean | undefined);
-        this._hijackedByMe = (msg["owner"] as string | undefined) === "me";
+        this._hijacked = !!(msg.hijacked as boolean | undefined);
+        this._hijackedByMe = (msg.owner as string | undefined) === "me";
         if (!this._hijackedByMe) this._restHijackId = null;
-        const hsInputMode = msg["input_mode"] as string | undefined;
+        const hsInputMode = msg.input_mode as string | undefined;
         if (hsInputMode) this._inputMode = hsInputMode;
         // Keep the heartbeat interval in sync with ownership.
         if (this._hijackedByMe) {
@@ -761,7 +602,7 @@ class UndefHijack {
         break;
 
       case "input_mode_changed": {
-        const changedMode = msg["input_mode"] as string | undefined;
+        const changedMode = msg.input_mode as string | undefined;
         if (changedMode) this._inputMode = changedMode;
         this._updateStatus();
         this._updateButtons();
@@ -772,7 +613,7 @@ class UndefHijack {
         break; // lease refreshed — no visible change needed
 
       case "error":
-        this._setStatus("bad", `Error: ${(msg["message"] as string | undefined) ?? "unknown"}`);
+        this._setStatus("bad", `Error: ${(msg.message as string | undefined) ?? "unknown"}`);
         break;
     }
   }
@@ -858,7 +699,7 @@ class UndefHijack {
       if (this._hijackControl === "rest") {
         this._restHijack("acquire", { owner: "dashboard", lease_s: 60 })
           .then((data) => {
-            if (data && typeof data["hijack_id"] === "string") this._restHijackId = data["hijack_id"];
+            if (data && typeof data.hijack_id === "string") this._restHijackId = data.hijack_id;
           })
           .finally(() => this._wsSend({ type: "snapshot_req" }));
         return;
