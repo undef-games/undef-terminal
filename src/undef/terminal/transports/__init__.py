@@ -9,12 +9,19 @@ from __future__ import annotations
 
 from undef.terminal.transports.base import ConnectionTransport
 from undef.terminal.transports.chaos import ChaosTransport
+from undef.terminal.transports.ssh import SSHStreamReader, SSHStreamWriter, start_ssh_server
 from undef.terminal.transports.telnet import TelnetClient, TelnetTransport, start_telnet_server
+from undef.terminal.transports.websocket import WebSocketStreamReader, WebSocketStreamWriter
 
 __all__ = [
     "ChaosTransport",
     "ConnectionTransport",
+    "SSHStreamReader",
+    "SSHStreamWriter",
     "TelnetClient",
     "TelnetTransport",
+    "WebSocketStreamReader",
+    "WebSocketStreamWriter",
+    "start_ssh_server",
     "start_telnet_server",
 ]
