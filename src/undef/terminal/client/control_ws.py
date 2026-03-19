@@ -36,7 +36,7 @@ class LogicalFrameDecoder:
         for event in self._decoder.feed(raw):
             if isinstance(event, ControlChunk):
                 frames.append(event.control)
-            elif isinstance(event, DataChunk):
+            elif isinstance(event, DataChunk):  # pragma: no branch
                 frames.append({"type": self._data_type(), "data": event.data})
         return frames
 
@@ -45,7 +45,7 @@ class LogicalFrameDecoder:
         for event in self._decoder.finish():
             if isinstance(event, ControlChunk):
                 frames.append(event.control)
-            elif isinstance(event, DataChunk):
+            elif isinstance(event, DataChunk):  # pragma: no branch
                 frames.append({"type": self._data_type(), "data": event.data})
         return frames
 

@@ -29,6 +29,7 @@ from undef.terminal.ansi import (
     upgrade_to_truecolor,
 )
 from undef.terminal.file_io import load_ans, load_palette, load_txt
+from undef.terminal.line_editor import LineEditor
 from undef.terminal.screen import (
     clean_screen_for_display,
     decode_cp437,
@@ -60,6 +61,8 @@ __all__ = [
     "load_ans",
     "load_txt",
     "load_palette",
+    # line_editor
+    "LineEditor",
     # screen
     "strip_ansi",
     "normalize_terminal_text",

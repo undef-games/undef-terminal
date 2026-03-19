@@ -20,7 +20,8 @@
       "Bash(cd /Users/tim/code/gh/undef-games/undef-terminal/mutants && MUTANT_UNDER_TEST=1 python -m pytest tests/ --no-cov -m \"not playwright\" --ignore=tests/playwright --ignore=tests/example --ignore=tests/hijack/test_hypothesis.py --ignore=tests/e2e -x -q 2>&1 | tail -20)",
       "Bash(npm run:*)",
       "Bash(wrangler whoami:*)",
-      "Skill(update-config)"
+      "Skill(update-config)",
+      "Bash(memray stats:*)"
     ],
     "additionalDirectories": [
       "/Users/tim/code/gh/undef-games"

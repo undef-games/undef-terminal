@@ -47,3 +47,4 @@ mutants/
 .pymutant-ledger.json
 .pymutant-strict-campaign.json
 .wrangler
+memray-output/

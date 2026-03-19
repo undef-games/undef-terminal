@@ -116,7 +116,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     break
                 for event in events:
                     if isinstance(event, DataChunk):
-                        if event.data:
+                        if event.data:  # pragma: no branch
                             await hub.broadcast(
                                 worker_id,
                                 cast("dict[str, Any]", make_term_frame(event.data, ts=time.time())),

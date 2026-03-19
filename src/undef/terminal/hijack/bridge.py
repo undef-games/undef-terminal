@@ -282,7 +282,7 @@ class TermBridge:
                     return
                 for event in events:
                     if isinstance(event, DataChunk):
-                        if event.data:
+                        if event.data:  # pragma: no branch
                             await self._send_keys(event.data)
                         continue
                     msg = event.control

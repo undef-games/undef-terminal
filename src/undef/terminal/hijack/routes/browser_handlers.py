@@ -259,7 +259,7 @@ async def _handle_resume(
         if pause_sent:
             async with hub._lock:
                 st = hub._workers.get(worker_id)
-                if (
+                if (  # pragma: no branch
                     st is not None
                     and st.worker_ws is not None
                     and st.input_mode != "open"

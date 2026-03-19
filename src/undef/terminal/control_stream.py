@@ -67,13 +67,19 @@ class ControlStreamDecoder:
     def __init__(self, *, max_control_payload_bytes: int = 1_048_576) -> None:
         self._max_control_payload_bytes = max(1, int(max_control_payload_bytes))
         self._buffer = ""
+        self._buffer_parts: list[str] = []
 
     def feed(self, chunk: str) -> list[ControlStreamChunk]:
         """Decode all complete events from *chunk* and buffer the rest."""
         if not isinstance(chunk, str):
             raise TypeError(f"control stream chunks must be str, got {type(chunk).__name__!r}")
-        self._buffer += chunk
-        return self._drain(final=False)
+        self._buffer_parts.append(chunk)
+        self._buffer = "".join(self._buffer_parts)
+        events = self._drain(final=False)
+        # After _drain, self._buffer contains only unconsumed data.
+        # Rebuild _buffer_parts with the unconsumed portion.
+        self._buffer_parts = [self._buffer] if self._buffer else []
+        return events
 
     def finish(self) -> list[ControlStreamChunk]:
         """Decode any remaining buffered data and reject truncated control frames."""
