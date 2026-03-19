@@ -18,13 +18,13 @@ Covers:
 
 from __future__ import annotations
 
-import json
 import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from tests.hijack.control_stream_helpers import decode_control_payloads
 from undef.terminal.hijack.hub import TermHub
 from undef.terminal.hijack.models import WorkerTermState
 
@@ -420,7 +420,7 @@ class TestDisconnectWorkerBroadcastPayload:
 
         calls = browser_ws.send_text.call_args_list
         assert calls, "Browser must receive at least one message after worker disconnect"
-        payloads = [json.loads(call.args[0]) for call in calls]
+        payloads = decode_control_payloads([call.args[0] for call in calls])
         types = [p.get("type") for p in payloads]
         assert "worker_disconnected" in types, (
             f"Expected 'worker_disconnected' in broadcast types {types} — "
@@ -441,7 +441,7 @@ class TestDisconnectWorkerBroadcastPayload:
         await hub.disconnect_worker("w1")
 
         calls = browser_ws.send_text.call_args_list
-        payloads = [json.loads(call.args[0]) for call in calls]
+        payloads = decode_control_payloads([call.args[0] for call in calls])
         disconnected = [p for p in payloads if p.get("type") == "worker_disconnected"]
         assert disconnected, "Must have at least one worker_disconnected message"
         assert disconnected[0].get("worker_id") == "w1", (
@@ -463,7 +463,7 @@ class TestDisconnectWorkerBroadcastPayload:
         await hub.disconnect_worker("w1")
 
         calls = browser_ws.send_text.call_args_list
-        payloads = [json.loads(call.args[0]) for call in calls]
+        payloads = decode_control_payloads([call.args[0] for call in calls])
         disconnected = [p for p in payloads if p.get("type") == "worker_disconnected"]
         assert disconnected
         assert "ts" in disconnected[0], f"worker_disconnected payload must have 'ts' key, got {disconnected[0]}"
@@ -699,7 +699,7 @@ class TestSetInputModeBroadcastPayload:
 
         calls = browser_ws.send_text.call_args_list
         assert calls, "Browser must receive at least one message after set_input_mode"
-        payloads = [json.loads(call.args[0]) for call in calls]
+        payloads = decode_control_payloads([call.args[0] for call in calls])
         mode_msgs = [p for p in payloads if p.get("type") == "input_mode_changed"]
         assert mode_msgs, f"Expected 'input_mode_changed' in broadcast, got: {payloads}"
 
@@ -725,7 +725,7 @@ class TestSetInputModeBroadcastPayload:
         await hub.set_input_mode("w1", "open")
 
         calls = browser_ws.send_text.call_args_list
-        payloads = [json.loads(call.args[0]) for call in calls]
+        payloads = decode_control_payloads([call.args[0] for call in calls])
         mode_msgs = [p for p in payloads if p.get("type") == "input_mode_changed"]
         assert mode_msgs
         assert mode_msgs[0].get("input_mode") == "open"

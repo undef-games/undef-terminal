@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.hijack.control_stream_helpers import decode_control_payload
 from undef.terminal.hijack.hub import TermHub
 from undef.terminal.hijack.models import HijackSession, WorkerTermState
 
@@ -182,9 +183,7 @@ class TestRecheckAndResume:
         now = time.time()
         await hub._recheck_and_resume("w1", now)
         wws.send_text.assert_called()
-        import json
-
-        msg = json.loads(wws.send_text.call_args[0][0])
+        msg = decode_control_payload(wws.send_text.call_args[0][0])
         assert "owner" in msg
         assert msg["owner"] == "lease-expired"
         assert msg["action"] == "resume"
@@ -196,9 +195,7 @@ class TestRecheckAndResume:
         await _register_worker(hub, "w1", wws)
         now = time.time()
         await hub._recheck_and_resume("w1", now)
-        import json
-
-        msg = json.loads(wws.send_text.call_args[0][0])
+        msg = decode_control_payload(wws.send_text.call_args[0][0])
         assert "lease_s" in msg
         assert msg["lease_s"] == 0
 
@@ -209,9 +206,7 @@ class TestRecheckAndResume:
         await _register_worker(hub, "w1", wws)
         now = time.time()
         await hub._recheck_and_resume("w1", now)
-        import json
-
-        msg = json.loads(wws.send_text.call_args[0][0])
+        msg = decode_control_payload(wws.send_text.call_args[0][0])
         assert "ts" in msg
 
     async def test_notify_hijack_changed_called_with_worker_id(self) -> None:
@@ -518,10 +513,9 @@ class TestRemoveDeadBrowsers:
             st.browsers[owner_ws] = "admin"
 
         await hub.remove_dead_browsers("w1", {owner_ws})
-        import json
 
         wws.send_text.assert_called()
-        msg = json.loads(wws.send_text.call_args[0][0])
+        msg = decode_control_payload(wws.send_text.call_args[0][0])
         assert msg["type"] == "control"
         assert msg["action"] == "resume"
         assert msg["owner"] == "dead-socket"

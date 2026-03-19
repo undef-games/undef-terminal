@@ -15,7 +15,7 @@ import asyncio
 import secrets
 import time
 from contextlib import suppress
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 from undef.telemetry import get_logger
 
@@ -31,9 +31,20 @@ from undef.terminal.control_stream import (
     DataChunk,
     encode_control,
 )
+from undef.terminal.hijack.frames import (
+    coerce_worker_status_frame,
+    make_analysis_frame,
+    make_error_frame,
+    make_hello_frame,
+    make_snapshot_frame,
+    make_term_frame,
+    make_worker_connected_frame,
+    make_worker_disconnected_frame,
+)
 from undef.terminal.hijack.hub.connections import _background_tasks
-from undef.terminal.hijack.models import VALID_ROLES, _safe_float, _safe_int, extract_prompt_id
+from undef.terminal.hijack.models import VALID_ROLES, _safe_float, _safe_int
 from undef.terminal.hijack.ratelimit import TokenBucket
+from undef.terminal.hijack.rest_helpers import extract_prompt_id
 from undef.terminal.hijack.routes.browser_handlers import handle_browser_message
 
 if TYPE_CHECKING:
@@ -81,10 +92,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         if prev_was_hijacked:
             hub.notify_hijack_changed(worker_id, enabled=False, owner=None)
             await hub.broadcast_hijack_state(worker_id)
-        await hub.broadcast(
-            worker_id,
-            {"type": "worker_connected", "worker_id": worker_id, "ts": time.time()},
-        )
+        await hub.broadcast(worker_id, cast("dict[str, Any]", make_worker_connected_frame(worker_id)))
         await hub.request_snapshot(worker_id)
 
         cleanup_task = asyncio.create_task(_periodic_hijack_cleanup(hub, worker_id, _WORKER_HIJACK_CLEANUP_INTERVAL_S))
@@ -109,7 +117,10 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                 for event in events:
                     if isinstance(event, DataChunk):
                         if event.data:
-                            await hub.broadcast(worker_id, {"type": "term", "data": event.data, "ts": time.time()})
+                            await hub.broadcast(
+                                worker_id,
+                                cast("dict[str, Any]", make_term_frame(event.data, ts=time.time())),
+                            )
                         continue
                     msg = event.control
                     mtype = msg.get("type")
@@ -136,38 +147,43 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                             )
                         continue
                     if mtype == "snapshot":
-                        snapshot: dict[str, Any] = {
-                            "type": "snapshot",
-                            "screen": msg.get("screen", ""),
-                            "cursor": msg.get("cursor", {"x": 0, "y": 0}),
-                            "cols": _safe_int(msg.get("cols"), 80, min_val=1),
-                            "rows": _safe_int(msg.get("rows"), 25, min_val=1),
-                            "screen_hash": msg.get("screen_hash", ""),
-                            "cursor_at_end": bool(msg.get("cursor_at_end", True)),
-                            "has_trailing_space": bool(msg.get("has_trailing_space", False)),
-                            "prompt_detected": msg.get("prompt_detected"),
-                            "ts": _safe_float(msg.get("ts"), time.time()),
-                        }
-                        await hub.update_last_snapshot(worker_id, snapshot)
-                        await hub.broadcast(worker_id, snapshot)
+                        snapshot = make_snapshot_frame(
+                            screen=str(msg.get("screen", "")),
+                            cursor=cast("dict[str, int]", msg.get("cursor", {"x": 0, "y": 0})),
+                            cols=_safe_int(msg.get("cols"), 80, min_val=1),
+                            rows=_safe_int(msg.get("rows"), 25, min_val=1),
+                            screen_hash=str(msg.get("screen_hash", "")),
+                            cursor_at_end=bool(msg.get("cursor_at_end", True)),
+                            has_trailing_space=bool(msg.get("has_trailing_space", False)),
+                            prompt_detected=cast("dict[str, Any] | None", msg.get("prompt_detected")),
+                            ts=_safe_float(msg.get("ts"), time.time()),
+                        )
+                        await hub.update_last_snapshot(worker_id, cast("dict[str, Any]", snapshot))
+                        await hub.broadcast(worker_id, cast("dict[str, Any]", snapshot))
                         await hub.append_event(
                             worker_id,
                             "snapshot",
-                            {"prompt_id": extract_prompt_id(snapshot), "screen_hash": snapshot.get("screen_hash")},
+                            {
+                                "prompt_id": extract_prompt_id(cast("dict[str, Any]", snapshot)),
+                                "screen_hash": snapshot.get("screen_hash"),
+                            },
                         )
                     elif mtype == "analysis":
                         await hub.broadcast(
                             worker_id,
-                            {
-                                "type": "analysis",
-                                "formatted": msg.get("formatted", ""),
-                                "raw": msg.get("raw"),
-                                "ts": msg.get("ts", time.time()),
-                            },
+                            cast(
+                                "dict[str, Any]",
+                                make_analysis_frame(
+                                    formatted=str(msg.get("formatted", "")),
+                                    raw=msg.get("raw"),
+                                    ts=_safe_float(msg.get("ts"), time.time()),
+                                ),
+                            ),
                         )
                     elif mtype == "status":  # pragma: no branch
-                        await hub.broadcast(worker_id, msg)
-                        await hub.append_event(worker_id, "worker_status", {"status": msg})
+                        status_frame = coerce_worker_status_frame(msg)
+                        await hub.broadcast(worker_id, cast("dict[str, Any]", status_frame))
+                        await hub.append_event(worker_id, "worker_status", {"status": status_frame})
         except WebSocketDisconnect:
             pass
         except Exception as exc:  # pragma: no cover
@@ -184,7 +200,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                 _broadcast_task = asyncio.create_task(
                     hub.broadcast(
                         worker_id,
-                        {"type": "worker_disconnected", "worker_id": worker_id, "ts": time.time()},
+                        cast("dict[str, Any]", make_worker_disconnected_frame(worker_id)),
                     )
                 )
                 _background_tasks.add(_broadcast_task)
@@ -246,24 +262,23 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         _resume_token = browser_state.get("resume_token")
         await websocket.send_text(
             encode_control(
-                {
-                    "type": "hello",
-                    "worker_id": worker_id,
-                    "can_hijack": can_hijack,
-                    "hijacked": is_hijacked,
-                    "hijacked_by_me": hijacked_by_me,
-                    "worker_online": worker_online,
-                    "input_mode": input_mode,
-                    "role": role,
-                    "hijack_control": "ws",
-                    "hijack_step_supported": True,
-                    "capabilities": {
+                make_hello_frame(
+                    worker_id=worker_id,
+                    can_hijack=can_hijack,
+                    hijacked=is_hijacked,
+                    hijacked_by_me=hijacked_by_me,
+                    worker_online=worker_online,
+                    input_mode=input_mode,
+                    role=role,
+                    hijack_control="ws",
+                    hijack_step_supported=True,
+                    capabilities={
                         "hijack_control": "ws",
                         "hijack_step_supported": True,
                     },
-                    "resume_supported": hub._resume_store is not None,
-                    "resume_token": _resume_token,
-                }
+                    resume_supported=hub._resume_store is not None,
+                    resume_token=_resume_token,
+                )
             )
         )
         await websocket.send_text(encode_control(await hub.hijack_state_msg_for(worker_id, websocket)))
@@ -295,7 +310,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                     if mtype == "input" and not _browser_bucket.allow():
                         logger.warning("ws_browser_rate_limited worker_id=%s", worker_id)
                         with suppress(Exception):
-                            await websocket.send_text(encode_control({"type": "error", "message": "rate_limited"}))
+                            await websocket.send_text(encode_control(make_error_frame("rate_limited")))
                         continue
 
                     # Resume handled here (not in browser_handlers) because it can

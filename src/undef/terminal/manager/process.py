@@ -9,13 +9,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 import yaml  # type: ignore[import-untyped]
 from undef.telemetry import get_logger
@@ -26,6 +28,13 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _BOT_ID_RE = re.compile(r"^bot_(\d+)$")
+_STOP_TIMEOUT_S = 5.0
+
+
+class _PopenPlatformKwargs(TypedDict, total=False):
+    creationflags: int
+    start_new_session: bool
+
 
 # Allowlist of env vars forwarded to worker subprocesses.
 _WORKER_ENV_PASSTHROUGH = frozenset(
@@ -220,12 +229,95 @@ class BotProcessManager:
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
                 env=env,
+                **self._spawn_platform_kwargs(),
             )
         except Exception:
             log_handle.close()
             raise
         log_handle.close()
         return proc
+
+    @staticmethod
+    def _spawn_platform_kwargs() -> _PopenPlatformKwargs:
+        if os.name == "nt":
+            flags = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+            return {"creationflags": flags} if flags else {}
+        return {"start_new_session": True}
+
+    @staticmethod
+    async def _wait_for_process_exit(process: subprocess.Popen[bytes], timeout_s: float) -> None:
+        wait_fn = process.wait
+        if inspect.iscoroutinefunction(wait_fn):
+            await asyncio.wait_for(cast("Any", wait_fn)(), timeout=timeout_s)
+            return
+        loop = asyncio.get_running_loop()
+        result = await asyncio.wait_for(loop.run_in_executor(None, wait_fn), timeout=timeout_s)
+        if inspect.isawaitable(result):
+            await asyncio.wait_for(result, timeout=timeout_s)
+
+    @staticmethod
+    def _signal_posix_process_group(pid: int, sig: signal.Signals) -> None:
+        pgid = os.getpgid(pid)
+        os.killpg(pgid, sig)
+
+    @staticmethod
+    async def _taskkill_process_tree(pid: int) -> None:
+        proc = await asyncio.create_subprocess_exec(
+            "taskkill",
+            "/PID",
+            str(pid),
+            "/T",
+            "/F",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.wait()
+
+    async def _stop_process_tree(
+        self,
+        *,
+        bot_id: str,
+        process: subprocess.Popen[bytes] | None = None,
+        pid: int | None = None,
+        timeout_s: float = _STOP_TIMEOUT_S,
+    ) -> None:
+        resolved_pid = int(pid or getattr(process, "pid", 0) or 0)
+        if resolved_pid <= 0:
+            return
+
+        if process is None:
+            if os.name == "nt":
+                with contextlib.suppress(OSError, RuntimeError):
+                    await self._taskkill_process_tree(resolved_pid)
+            else:
+                with contextlib.suppress(OSError, ProcessLookupError):
+                    self._signal_posix_process_group(resolved_pid, signal.SIGKILL)
+            logger.warning("bot_force_killed", bot_id=bot_id)
+            return
+
+        if os.name == "nt":
+            with contextlib.suppress(OSError, ProcessLookupError):
+                process.terminate()
+        else:
+            with contextlib.suppress(OSError, ProcessLookupError):
+                self._signal_posix_process_group(resolved_pid, signal.SIGTERM)
+
+        try:
+            await self._wait_for_process_exit(process, timeout_s)
+            logger.info("bot_terminated", bot_id=bot_id)
+            return
+        except TimeoutError:
+            pass
+
+        if os.name == "nt":
+            with contextlib.suppress(OSError, RuntimeError):
+                await self._taskkill_process_tree(resolved_pid)
+        else:
+            with contextlib.suppress(OSError, ProcessLookupError):
+                self._signal_posix_process_group(resolved_pid, signal.SIGKILL)
+        with contextlib.suppress(TimeoutError, OSError, RuntimeError):
+            await self._wait_for_process_exit(process, 1.0)
+        logger.warning("bot_force_killed", bot_id=bot_id)
 
     async def spawn_swarm(
         self,
@@ -280,17 +372,7 @@ class BotProcessManager:
                 return
             process = self.manager.processes[bot_id]
 
-        try:
-            process.terminate()
-            await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(None, process.wait),
-                timeout=5.0,
-            )
-            logger.info("bot_terminated", bot_id=bot_id)
-        except TimeoutError:
-            with contextlib.suppress(OSError, ProcessLookupError):
-                process.kill()
-            logger.warning("bot_force_killed", bot_id=bot_id)
+        await self._stop_process_tree(bot_id=bot_id, process=process, timeout_s=_STOP_TIMEOUT_S)
 
         async with self.manager._state_lock:
             if bot_id in self.manager.bots:
@@ -362,6 +444,7 @@ class BotProcessManager:
             now = time.time()
             heartbeat_timeout = self.manager.config.heartbeat_timeout_s
             heartbeat_timed_out: list[str] = []
+            heartbeat_stop_requests: list[tuple[str, subprocess.Popen[bytes]]] = []
             async with self.manager._state_lock:
                 for bot in list(self.manager.bots.values()):
                     if bot.state in ("running",) and now - bot.last_update_time > heartbeat_timeout:
@@ -374,11 +457,11 @@ class BotProcessManager:
                         bot.error_timestamp = time.time()
                         bot.exit_reason = "heartbeat_timeout"
                         bot.stopped_at = time.time()
-                        if bot.bot_id in self.manager.processes:
-                            with contextlib.suppress(OSError, ProcessLookupError):
-                                self.manager.processes[bot.bot_id].kill()
-                            self.manager.processes.pop(bot.bot_id, None)
+                        if (proc := self.manager.processes.pop(bot.bot_id, None)) is not None:
+                            heartbeat_stop_requests.append((bot.bot_id, proc))
                         heartbeat_timed_out.append(bot.bot_id)
+            for bot_id, proc in heartbeat_stop_requests:
+                await self._stop_process_tree(bot_id=bot_id, process=proc, timeout_s=_STOP_TIMEOUT_S)
             for bid in heartbeat_timed_out:
                 self.release_bot_account(bid)
             if heartbeat_timed_out:
@@ -408,6 +491,7 @@ class BotProcessManager:
 
             # Bust-respawn
             if self.manager.bust_respawn and not self.manager.swarm_paused:
+                bust_stop_requests: list[tuple[str, subprocess.Popen[bytes] | None, int | None]] = []
                 for bot in list(self.manager.bots.values()):
                     if bot.state != "running":
                         continue
@@ -418,30 +502,27 @@ class BotProcessManager:
                     bot.state = "stopped"
                     bot.exit_reason = "bust_respawn"
                     bot.stopped_at = now
-                    if bot.bot_id in self.manager.processes:
-                        with contextlib.suppress(OSError, ProcessLookupError):
-                            self.manager.processes[bot.bot_id].kill()
-                        self.manager.processes.pop(bot.bot_id, None)
-                    elif bot.pid and bot.pid > 0:
-                        with contextlib.suppress(OSError, ProcessLookupError):
-                            os.kill(bot.pid, 9)
+                    proc = self.manager.processes.pop(bot.bot_id, None)
+                    pid = bot.pid if bot.pid and bot.pid > 0 else None
+                    bust_stop_requests.append((bot.bot_id, proc, pid))
                     self.release_bot_account(bot.bot_id)
+                for bot_id, proc, pid in bust_stop_requests:
+                    await self._stop_process_tree(bot_id=bot_id, process=proc, pid=pid, timeout_s=_STOP_TIMEOUT_S)
                 await self.manager.broadcast_status()
 
             # Desired-state enforcement
             if self.manager.desired_bots > 0 and not self.manager.swarm_paused:
                 active_states = {"running", "queued", "recovering", "blocked"}
                 terminal_states = {"error", "stopped", "completed"}
+                prune_stop_requests: list[tuple[str, subprocess.Popen[bytes]]] = []
 
                 async with self.manager._state_lock:
                     dead_bots = [b for b in self.manager.bots.values() if b.state in terminal_states]
                     for dead in dead_bots:
                         with contextlib.suppress(OSError, RuntimeError):
                             self.release_bot_account(dead.bot_id)
-                        if dead.bot_id in self.manager.processes:
-                            with contextlib.suppress(OSError, ProcessLookupError):
-                                self.manager.processes[dead.bot_id].kill()
-                            self.manager.processes.pop(dead.bot_id, None)
+                        if (proc := self.manager.processes.pop(dead.bot_id, None)) is not None:
+                            prune_stop_requests.append((dead.bot_id, proc))
                         self.manager.bots.pop(dead.bot_id, None)
 
                     active_bots = [b for b in self.manager.bots.values() if b.state in active_states]
@@ -490,5 +571,7 @@ class BotProcessManager:
                         async with self.manager._state_lock:
                             self.manager.bots.pop(bot.bot_id, None)
                             self.manager.processes.pop(bot.bot_id, None)
+                for bot_id, proc in prune_stop_requests:
+                    await self._stop_process_tree(bot_id=bot_id, process=proc, timeout_s=_STOP_TIMEOUT_S)
 
             await asyncio.sleep(self.manager.health_check_interval)

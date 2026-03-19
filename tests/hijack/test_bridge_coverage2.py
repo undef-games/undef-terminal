@@ -8,9 +8,9 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from undef.terminal.control_stream import encode_control, encode_data
 from undef.terminal.hijack.bridge import TermBridge, _to_ws_url
 
 # ---------------------------------------------------------------------------
@@ -238,7 +238,7 @@ class TestRecvLoopSnapshotReqAndPause:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return json.dumps({"type": "snapshot_req"})
+                return encode_control({"type": "snapshot_req"})
             bridge._running = False
             raise RuntimeError("done")
 
@@ -271,7 +271,7 @@ class TestRecvLoopSnapshotReqAndPause:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return json.dumps({"type": "control", "action": "pause"})
+                return encode_control({"type": "control", "action": "pause"})
             bridge._running = False
             raise RuntimeError("done")
 
@@ -340,7 +340,7 @@ class TestRecvLoopMtypeBranches:
             call_count += 1
             if call_count == 1:
                 # action not in (pause, resume, step) → falls through to 278->259 (False branch)
-                return json.dumps({"type": "control", "action": "unknown_action"})
+                return encode_control({"type": "control", "action": "unknown_action"})
             bridge._running = False
             raise RuntimeError("done")
 
@@ -351,8 +351,8 @@ class TestRecvLoopMtypeBranches:
         await bridge._recv_loop(mock_ws)
         # Should complete without error
 
-    async def test_recv_loop_input_empty_data_covers_282_branch(self) -> None:
-        """Line 282->259: elif mtype=='input': data is empty → if data: False → back to 259."""
+    async def test_recv_loop_empty_data_chunk_skips_send(self) -> None:
+        """Empty terminal data chunks should not call session.send()."""
         bot = MagicMock()
         bot.set_hijacked = AsyncMock()
         bot.session = MagicMock()
@@ -374,7 +374,7 @@ class TestRecvLoopMtypeBranches:
             call_count += 1
             if call_count == 1:
                 # data is empty → if data: False → loop continues (282->259)
-                return json.dumps({"type": "input", "data": ""})
+                return ""
             bridge._running = False
             raise RuntimeError("done")
 
@@ -407,7 +407,7 @@ class TestRecvLoopMtypeBranches:
             call_count += 1
             if call_count == 1:
                 # Unknown mtype → falls through all elif → 284->259 (False branch)
-                return json.dumps({"type": "completely_unknown"})
+                return encode_control({"type": "completely_unknown"})
             bridge._running = False
             raise RuntimeError("done")
 
@@ -440,19 +440,19 @@ class TestRecvLoopMtypeBranches:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return json.dumps({"type": "control", "action": "resume"})
+                return encode_control({"type": "control", "action": "resume"})
             if call_count == 2:
-                return json.dumps({"type": "control", "action": "step"})
+                return encode_control({"type": "control", "action": "step"})
             if call_count == 3:
-                return json.dumps({"type": "control", "action": "unknown"})  # 278->259 False
+                return encode_control({"type": "control", "action": "unknown"})
             if call_count == 4:
-                return json.dumps({"type": "input", "data": "hello"})
+                return encode_data("hello")
             if call_count == 5:
-                return json.dumps({"type": "input", "data": ""})  # 282->259 False (empty data)
+                return ""
             if call_count == 6:
-                return json.dumps({"type": "resize", "cols": 120, "rows": 40})
+                return encode_control({"type": "resize", "cols": 120, "rows": 40})
             if call_count == 7:
-                return json.dumps({"type": "completely_unknown"})  # 284->259 False
+                return encode_control({"type": "completely_unknown"})
             # Now let _running=False so while exits normally (259->293)
             bridge._running = False
             raise RuntimeError("done")

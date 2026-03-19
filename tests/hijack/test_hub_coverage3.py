@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from tests.hijack.control_stream_helpers import decode_control_payload
 from undef.terminal.hijack.hub import TermHub
 from undef.terminal.hijack.models import HijackSession, WorkerTermState
 
@@ -382,9 +383,7 @@ class TestCleanupExpiredHijackRecheck:
         # Resume should have been sent (send_worker called with action=resume)
         worker_ws.send_text.assert_called()
         calls = [call.args[0] for call in worker_ws.send_text.call_args_list]
-        import json
-
-        resume_sent = any(json.loads(c).get("action") == "resume" for c in calls)
+        resume_sent = any(decode_control_payload(c).get("action") == "resume" for c in calls)
         assert resume_sent
 
 

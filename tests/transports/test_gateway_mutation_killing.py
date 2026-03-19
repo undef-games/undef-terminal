@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 
+from undef.terminal.control_stream import encode_control
 from undef.terminal.gateway._colors import (
     _apply_color_mode,
     _clamp8,
@@ -383,7 +384,7 @@ class TestHandleWsControlMutationKilling:
         async def _write_fn(data: bytes) -> None:
             written.append(data)
 
-        result = await _handle_ws_control('{"type": "unknown_type"}', None, _write_fn)
+        result = await _handle_ws_control(encode_control({"type": "unknown_type"}), None, _write_fn)
         assert result is False
         assert written == []
 
@@ -411,7 +412,7 @@ class TestHandleWsControlMutationKilling:
         async def _write_fn(data: bytes) -> None:
             pass
 
-        result = await _handle_ws_control('{"type": "session_token"}', None, _write_fn)
+        result = await _handle_ws_control(encode_control({"type": "session_token"}), None, _write_fn)
         assert result is False
 
     async def test_resume_ok_writes_specific_text(self):
@@ -421,7 +422,7 @@ class TestHandleWsControlMutationKilling:
         async def _write_fn(data: bytes) -> None:
             written.append(data)
 
-        await _handle_ws_control('{"type": "resume_ok"}', None, _write_fn)
+        await _handle_ws_control(encode_control({"type": "resume_ok"}), None, _write_fn)
         assert len(written) == 1
         assert written[0] == b"\r\n[Session resumed]\r\n"
 
@@ -481,7 +482,7 @@ class TestWsToTcpMutationKilling:
 
     async def test_control_message_intercepted(self):
         """Control JSON messages are intercepted and not written to TCP."""
-        out = await self._collect_ws_to_tcp(['{"type": "resume_ok"}'])
+        out = await self._collect_ws_to_tcp([encode_control({"type": "resume_ok"})])
         assert b"Session resumed" in out  # written by write_fn
 
     async def test_writer_drain_called(self):

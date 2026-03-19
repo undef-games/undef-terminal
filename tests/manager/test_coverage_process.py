@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import undef.terminal.manager.process as process_module
 from undef.terminal.manager.config import ManagerConfig
 from undef.terminal.manager.core import SwarmManager
 from undef.terminal.manager.models import BotStatusBase
@@ -170,13 +171,14 @@ class TestProcessMonitorLoop:
             last_update_time=0,
         )
 
-        task = asyncio.create_task(pm.monitor_processes())
-        await asyncio.sleep(0.05)
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        with patch.object(pm, "_stop_process_tree", new_callable=AsyncMock) as mock_stop:
+            task = asyncio.create_task(pm.monitor_processes())
+            await asyncio.sleep(0.05)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
 
-        proc.kill.assert_called_once()
+        mock_stop.assert_awaited_once_with(bot_id="bot_000", process=proc, timeout_s=process_module._STOP_TIMEOUT_S)
         assert "bot_000" not in manager.processes
 
     @pytest.mark.asyncio
@@ -301,12 +303,15 @@ class TestProcessMonitorLoop:
             last_update_time=time.time(),
         )
 
-        task = asyncio.create_task(pm.monitor_processes())
-        await asyncio.sleep(0.05)
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
-        proc.kill.assert_called_once()
+        with patch.object(pm, "_stop_process_tree", new_callable=AsyncMock) as mock_stop:
+            task = asyncio.create_task(pm.monitor_processes())
+            await asyncio.sleep(0.05)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        mock_stop.assert_awaited_once_with(
+            bot_id="bot_000", process=proc, pid=None, timeout_s=process_module._STOP_TIMEOUT_S
+        )
 
     @pytest.mark.asyncio
     async def test_monitor_bust_respawn_by_pid(self, setup):
@@ -324,13 +329,18 @@ class TestProcessMonitorLoop:
             last_update_time=time.time(),
         )
 
-        with patch("os.kill") as mock_kill:
+        with patch.object(pm, "_stop_process_tree", new_callable=AsyncMock) as mock_stop:
             task = asyncio.create_task(pm.monitor_processes())
             await asyncio.sleep(0.05)
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await task
-            mock_kill.assert_called_once_with(99999, 9)
+            mock_stop.assert_awaited_once_with(
+                bot_id="bot_000",
+                process=None,
+                pid=99999,
+                timeout_s=process_module._STOP_TIMEOUT_S,
+            )
 
     @pytest.mark.asyncio
     async def test_monitor_desired_state_prune_and_spawn(self, setup):

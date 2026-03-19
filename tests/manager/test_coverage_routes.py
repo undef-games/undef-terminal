@@ -233,11 +233,12 @@ class TestSpawnRouteCoverage:
         proc = MagicMock()
         manager.processes["bot_000"] = proc
         manager.bots["bot_000"] = BotStatusBase(bot_id="bot_000", state="stopped")
+        manager.kill_bot = AsyncMock()
         resp = client.post("/swarm/prune")
         assert resp.status_code == 200
         assert "bot_000" not in manager.bots
         assert "bot_000" not in manager.processes
-        proc.kill.assert_called_once()
+        manager.kill_bot.assert_awaited_once_with("bot_000")
 
 
 class TestBotOpsPluginLocalBotNone:

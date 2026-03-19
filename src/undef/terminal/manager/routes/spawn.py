@@ -177,9 +177,9 @@ async def prune_dead(manager: SwarmManager = Depends(require_manager)) -> Any:  
         with contextlib.suppress(AttributeError, RuntimeError):
             manager.bot_process_manager.release_bot_account(bid)
         if bid in manager.processes:
-            with contextlib.suppress(OSError, ProcessLookupError):
-                manager.processes[bid].kill()
-            del manager.processes[bid]
+            with contextlib.suppress(OSError, ProcessLookupError, RuntimeError):
+                await manager.kill_bot(bid)
+            manager.processes.pop(bid, None)
         del manager.bots[bid]
     await manager.broadcast_status()
     return {"pruned": len(dead_ids), "remaining": len(manager.bots)}

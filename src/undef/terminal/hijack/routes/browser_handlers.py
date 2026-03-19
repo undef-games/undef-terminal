@@ -13,11 +13,18 @@ from __future__ import annotations
 
 import time
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from undef.telemetry import get_logger
 
 from undef.terminal.control_stream import encode_control
+from undef.terminal.hijack.frames import (
+    BrowserInputFrame,
+    make_error_frame,
+    make_heartbeat_ack_frame,
+    make_hello_frame,
+    make_pong_frame,
+)
 from undef.terminal.hijack.models import VALID_ROLES
 
 _ROLE_PRIORITY: dict[str, int] = {"viewer": 0, "operator": 1, "admin": 2}
@@ -65,9 +72,7 @@ async def handle_browser_message(
     elif mtype == "heartbeat":
         lease_expires_at = await hub.touch_if_owner(worker_id, ws)
         if lease_expires_at is not None:
-            await ws.send_text(
-                encode_control({"type": "heartbeat_ack", "lease_expires_at": lease_expires_at, "ts": time.time()})
-            )
+            await ws.send_text(encode_control(make_heartbeat_ack_frame(lease_expires_at, ts=time.time())))
             await hub.broadcast_hijack_state(worker_id)
 
     elif mtype == "hijack_request":
@@ -80,9 +85,7 @@ async def handle_browser_message(
                 {"type": "control", "action": "step", "owner": "dashboard", "lease_s": 0, "ts": time.time()},
             )
             if not ok:
-                await ws.send_text(
-                    encode_control({"type": "error", "message": "No worker connected for this session."})
-                )
+                await ws.send_text(encode_control(make_error_frame("No worker connected for this session.")))
             else:
                 hub.metric("hijack_steps_total")
                 await hub.append_event(worker_id, "hijack_step", {"owner": "dashboard_ws"})
@@ -92,7 +95,7 @@ async def handle_browser_message(
 
     elif mtype == "ping":
         with suppress(Exception):
-            await ws.send_text(encode_control({"type": "pong", "ts": time.time()}))
+            await ws.send_text(encode_control(make_pong_frame(ts=time.time())))
 
     elif mtype == "input":
         await _handle_input(hub, ws, worker_id, msg_b)
@@ -110,11 +113,11 @@ async def _handle_hijack_request(
     """Process a hijack_request message; returns updated owned_hijack flag."""
     # Only admins can hijack.
     if role != "admin":
-        await ws.send_text(encode_control({"type": "error", "message": "Hijack requires admin role."}))
+        await ws.send_text(encode_control(make_error_frame("Hijack requires admin role.")))
         return owned_hijack
     # Reject in open mode — no exclusive ownership.
     if await hub.is_input_open_mode(worker_id):
-        await ws.send_text(encode_control({"type": "error", "message": "Hijack not available in open input mode."}))
+        await ws.send_text(encode_control(make_error_frame("Hijack not available in open input mode.")))
         return owned_hijack
     # Send pause to the worker *before* writing ownership — mirrors REST
     # hijack_acquire so that concurrent acquires see the worker as free
@@ -124,7 +127,7 @@ async def _handle_hijack_request(
         {"type": "control", "action": "pause", "owner": "dashboard", "lease_s": 0, "ts": time.time()},
     )
     if not pause_sent:
-        await ws.send_text(encode_control({"type": "error", "message": "No worker connected for this session."}))
+        await ws.send_text(encode_control(make_error_frame("No worker connected for this session.")))
         await ws.send_text(encode_control(await hub.hijack_state_msg_for(worker_id, ws)))
         return owned_hijack
     # Worker is paused — now atomically check-and-set ownership.
@@ -142,7 +145,7 @@ async def _handle_hijack_request(
         msg_text = (
             "No worker connected for this session." if err == "no_worker" else "Already hijacked by another client."
         )
-        await ws.send_text(encode_control({"type": "error", "message": msg_text}))
+        await ws.send_text(encode_control(make_error_frame(msg_text)))
         await ws.send_text(encode_control(await hub.hijack_state_msg_for(worker_id, ws)))
         return owned_hijack
     await hub.broadcast_hijack_state(worker_id)
@@ -194,13 +197,13 @@ async def _handle_input(
     can_send = await hub.prepare_browser_input(worker_id, ws)
     if not can_send:
         return
-    data = msg_b.get("data", "")
+    data = str(cast("BrowserInputFrame", msg_b).get("data", ""))
     if data and len(data) > hub.max_input_chars:
-        await ws.send_text(encode_control({"type": "error", "message": "Input too long."}))
+        await ws.send_text(encode_control(make_error_frame("Input too long.")))
     elif data:
         ok = await hub.send_worker(worker_id, {"type": "input", "data": data, "ts": time.time()})
         if not ok:
-            await ws.send_text(encode_control({"type": "error", "message": "Worker connection lost."}))
+            await ws.send_text(encode_control(make_error_frame("Worker connection lost.")))
         else:
             await hub.append_event(worker_id, "input_send", {"owner": "dashboard_ws", "keys": data[:120]})
 
@@ -281,25 +284,24 @@ async def _handle_resume(
     _resumed_state = await hub.register_browser_state_snapshot(worker_id, ws)
     await ws.send_text(
         encode_control(
-            {
-                "type": "hello",
-                "worker_id": worker_id,
-                "can_hijack": can_hijack,
-                "hijacked": _resumed_state.get("is_hijacked", False),
-                "hijacked_by_me": _resumed_state.get("hijacked_by_me", False),
-                "worker_online": _resumed_state.get("worker_online", False),
-                "input_mode": _resumed_state.get("input_mode", "hijack"),
-                "role": new_role,
-                "hijack_control": "ws",
-                "hijack_step_supported": True,
-                "capabilities": {
+            make_hello_frame(
+                worker_id=worker_id,
+                can_hijack=can_hijack,
+                hijacked=_resumed_state.get("is_hijacked", False),
+                hijacked_by_me=_resumed_state.get("hijacked_by_me", False),
+                worker_online=_resumed_state.get("worker_online", False),
+                input_mode=_resumed_state.get("input_mode", "hijack"),
+                role=new_role,
+                hijack_control="ws",
+                hijack_step_supported=True,
+                capabilities={
                     "hijack_control": "ws",
                     "hijack_step_supported": True,
                 },
-                "resume_supported": True,
-                "resume_token": new_token,
-                "resumed": True,
-            }
+                resume_supported=True,
+                resume_token=new_token,
+                resumed=True,
+            )
         )
     )
     await ws.send_text(encode_control(await hub.hijack_state_msg_for(worker_id, ws)))
