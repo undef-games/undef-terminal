@@ -63,9 +63,11 @@ def resume_server() -> Generator[tuple[str, TermHub, InMemoryResumeStore], None,
             "html,body{width:100%;height:100dvh;background:#0b0f14}"
             "#app{width:100%;height:100%}</style></head>"
             "<body><div id='app'></div>"
-            "<script src='/ui/hijack.js'></script>"
-            "<script>new UndefHijack(document.getElementById('app'),"
-            f"{{workerId:{json.dumps(worker_id)},heartbeatInterval:500}});</script>"
+            "<script type='module'>"
+            "import { UndefHijack } from '/ui/hijack.js';"
+            "new UndefHijack(document.getElementById('app'),"
+            f"{{workerId:{json.dumps(worker_id)},heartbeatInterval:500}});"
+            "</script>"
             "</body></html>"
         )
 

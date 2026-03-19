@@ -200,25 +200,25 @@ class TestSessionLoggerBranches:
 
 class TestExtractPromptId:
     def test_empty_string_prompt_id_returns_none(self) -> None:
-        from undef.terminal.hijack.models import extract_prompt_id
+        from undef.terminal.hijack.rest_helpers import extract_prompt_id
 
         snapshot = {"prompt_detected": {"prompt_id": ""}}
         assert extract_prompt_id(snapshot) is None
 
     def test_non_string_prompt_id_returns_none(self) -> None:
-        from undef.terminal.hijack.models import extract_prompt_id
+        from undef.terminal.hijack.rest_helpers import extract_prompt_id
 
         snapshot = {"prompt_detected": {"prompt_id": 42}}
         assert extract_prompt_id(snapshot) is None
 
     def test_none_prompt_id_returns_none(self) -> None:
-        from undef.terminal.hijack.models import extract_prompt_id
+        from undef.terminal.hijack.rest_helpers import extract_prompt_id
 
         snapshot = {"prompt_detected": {"prompt_id": None}}
         assert extract_prompt_id(snapshot) is None
 
     def test_valid_prompt_id_returned(self) -> None:
-        from undef.terminal.hijack.models import extract_prompt_id
+        from undef.terminal.hijack.rest_helpers import extract_prompt_id
 
         snapshot = {"prompt_detected": {"prompt_id": "menu_main"}}
         assert extract_prompt_id(snapshot) == "menu_main"

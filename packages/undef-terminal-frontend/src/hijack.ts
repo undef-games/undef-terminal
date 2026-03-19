@@ -29,11 +29,8 @@ import {
 // ── Module-level guards ───────────────────────────────────────────────────────
 let _hijackCssInjected = false;
 let _hijackInstanceCount = 0;
-// Capture script element synchronously (only available for classic scripts, not modules)
-const _hijackScriptEl: HTMLScriptElement | null =
-  typeof document !== "undefined" && document.currentScript instanceof HTMLScriptElement
-    ? document.currentScript
-    : null;
+// Resolve CSS base URL via import.meta.url (works for ES modules; document.currentScript is null for modules)
+const _hijackCssBase = new URL("./", import.meta.url).href;
 
 // ── CSS injection ─────────────────────────────────────────────────────────────
 function _injectHijackCSS(): void {
@@ -41,7 +38,7 @@ function _injectHijackCSS(): void {
   _hijackCssInjected = true;
   const link = document.createElement("link");
   link.rel = "stylesheet";
-  link.href = _hijackScriptEl?.src ? `${_hijackScriptEl.src.replace(/[^/]*$/, "")}hijack.css` : "hijack.css";
+  link.href = `${_hijackCssBase}hijack.css`;
   document.head.appendChild(link);
 }
 
