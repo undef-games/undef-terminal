@@ -296,8 +296,10 @@ class BotProcessManager:
             return
 
         if os.name == "nt":
-            with contextlib.suppress(OSError, ProcessLookupError):
-                process.terminate()
+            # On Windows, terminate() only kills the immediate process, leaving
+            # grandchildren running.  taskkill /T /F kills the whole job tree.
+            with contextlib.suppress(OSError, RuntimeError):
+                await self._taskkill_process_tree(resolved_pid)
         else:
             with contextlib.suppress(OSError, ProcessLookupError):
                 self._signal_posix_process_group(resolved_pid, signal.SIGTERM)
@@ -309,10 +311,7 @@ class BotProcessManager:
         except TimeoutError:
             pass
 
-        if os.name == "nt":
-            with contextlib.suppress(OSError, RuntimeError):
-                await self._taskkill_process_tree(resolved_pid)
-        else:
+        if os.name != "nt":
             with contextlib.suppress(OSError, ProcessLookupError):
                 self._signal_posix_process_group(resolved_pid, signal.SIGKILL)
         with contextlib.suppress(TimeoutError, OSError, RuntimeError):

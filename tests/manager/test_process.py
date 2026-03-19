@@ -305,16 +305,18 @@ class TestProcessTreeHelpers:
         ]
 
     @pytest.mark.asyncio
-    async def test_stop_process_tree_windows_timeout_uses_taskkill(self, pm):
+    async def test_stop_process_tree_windows_uses_taskkill_immediately(self, pm):
+        # On Windows, terminate() only kills the direct child; taskkill /T /F
+        # must be used immediately so the whole process tree is killed.
         proc = MagicMock(pid=987)
         with (
             patch.object(process_module.os, "name", "nt"),
             patch.object(pm, "_wait_for_process_exit", new_callable=AsyncMock) as mock_wait,
             patch.object(pm, "_taskkill_process_tree", new_callable=AsyncMock) as mock_taskkill,
         ):
-            mock_wait.side_effect = [TimeoutError, None]
+            mock_wait.return_value = None
             await pm._stop_process_tree(bot_id="bot_000", process=proc)
-        proc.terminate.assert_called_once()
+        proc.terminate.assert_not_called()
         mock_taskkill.assert_awaited_once_with(987)
 
     @pytest.mark.asyncio
