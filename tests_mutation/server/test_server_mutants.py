@@ -2,7 +2,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-
 """Targeted mutation-killing tests for server/app.py and server/ui.py.
 
 Each test is designed to pass with the original source but fail with a

@@ -1,6 +1,7 @@
+#
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
-
+#
 """Coverage tests for manager/process.py — monitor loop, spawn, and branch arcs."""
 
 from __future__ import annotations

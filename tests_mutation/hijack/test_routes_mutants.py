@@ -2,7 +2,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-
 """Mutation-killing tests for hijack/routes/browser_handlers.py.
 
 Targets the surviving mutants not already killed by test_browser_handlers_mutations.py:

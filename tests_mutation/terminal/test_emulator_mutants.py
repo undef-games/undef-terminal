@@ -2,7 +2,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-
 """Mutation-killing tests for TerminalEmulator (emulator.py).
 
 Kills all surviving mutants in __init__, process, _is_cursor_at_end,
