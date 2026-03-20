@@ -10,11 +10,9 @@ from __future__ import annotations
 import sqlite3
 import time
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
 
 import jwt
 import pytest
-from undef_terminal_cloudflare.bridge.hijack import HijackSession
 from undef_terminal_cloudflare.do.session_runtime import SessionRuntime
 from undef_terminal_cloudflare.state.store import LeaseRecord
 
@@ -434,7 +432,3 @@ def test_register_browser_socket() -> None:
     ws = _MockWs()
     rt._register_socket(ws, "browser")
     assert ws in rt.browser_sockets.values()
-
-
-
-

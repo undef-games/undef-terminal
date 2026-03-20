@@ -404,5 +404,3 @@ async def test_disconnect_worker_returns_ok_when_worker_connected() -> None:
     payload = _parse(resp)
     assert payload["ok"] is True
     assert payload["worker_id"] == "test-worker"
-
-

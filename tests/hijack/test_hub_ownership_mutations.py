@@ -14,8 +14,6 @@ import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from tests.hijack.control_stream_helpers import decode_control_payload
 from undef.terminal.hijack.hub import TermHub
 from undef.terminal.hijack.models import HijackSession, WorkerTermState
@@ -323,5 +321,3 @@ class TestCleanupExpiredHijack:
         hub.append_event = mock_append  # type: ignore
         await hub.cleanup_expired_hijack("w1")
         assert ("w1", "hijack_owner_expired") in events
-
-

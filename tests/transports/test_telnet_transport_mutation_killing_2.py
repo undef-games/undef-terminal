@@ -23,7 +23,6 @@ from undef.terminal.transports.telnet_transport import (
     SB,
     SE,
     SGA,
-    TTYPE_IS,
     WILL,
     WONT,
 )

@@ -42,7 +42,6 @@ from undef.terminal.gateway._colors import (
     _rgb_to_16_index,
     _rgb_to_256,
 )
-from undef.terminal.gateway._ssh_gateway import SshWsGateway
 from undef.terminal.gateway._gateway import (
     TelnetWsGateway,
     _delete_token,
@@ -57,6 +56,7 @@ from undef.terminal.gateway._gateway import (
     _ws_to_ssh,
     _ws_to_tcp,
 )
+from undef.terminal.gateway._ssh_gateway import SshWsGateway
 
 __all__ = [
     "SshWsGateway",

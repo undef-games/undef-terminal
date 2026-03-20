@@ -70,14 +70,14 @@ class TestFinishWithRemainingBuffer:
         decoder._buffer = "leftover"
 
         # Patch _drain so it returns normally without clearing the buffer
-        original_drain = decoder._drain
-
-        def fake_drain(*, final: bool) -> list:  # noqa: ARG001
+        def fake_drain(*, final: bool) -> list:
             return []
 
-        with patch.object(decoder, "_drain", side_effect=fake_drain):
-            with pytest.raises(ControlStreamProtocolError, match="truncated control frame"):
-                decoder.finish()
+        with (
+            patch.object(decoder, "_drain", side_effect=fake_drain),
+            pytest.raises(ControlStreamProtocolError, match="truncated control frame"),
+        ):
+            decoder.finish()
 
 
 class TestDrainFinalDleAtEnd:

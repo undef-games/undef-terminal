@@ -16,14 +16,12 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
 import time
 from collections import deque
 from typing import Any
 from unittest.mock import MagicMock
 
 from undef.terminal.hijack.hub import TermHub
-from undef.terminal.hijack.hub.connections import _background_tasks
 from undef.terminal.hijack.models import WorkerTermState
 from undef.terminal.hijack.ratelimit import TokenBucket
 
@@ -408,5 +406,3 @@ class TestElifGuardConditions:
         assert result["resume_without_owner"] is False, (
             "owned_hijack=False → elif guard fails → no scan → resume_without_owner stays False"
         )
-
-

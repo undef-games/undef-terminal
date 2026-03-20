@@ -17,18 +17,14 @@ from __future__ import annotations
 
 import asyncio
 from typing import cast
-from unittest.mock import AsyncMock
 
-import pytest
-
-from undef.terminal.control_stream import encode_control, encode_data
+from undef.terminal.control_stream import encode_data
 from undef.terminal.gateway._gateway import (
     _handle_ws_control,
     _handle_ws_control_frame,
     _ws_to_ssh,
     _ws_to_tcp,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -226,7 +222,7 @@ class TestWsToTcpProtocolError:
         # We patch the decoder's feed method to raise on first call only.
         from unittest.mock import patch
 
-        from undef.terminal.control_stream import ControlStreamDecoder, ControlStreamProtocolError, DataChunk
+        from undef.terminal.control_stream import ControlStreamDecoder, ControlStreamProtocolError
 
         call_count = 0
         original_feed = ControlStreamDecoder.feed
@@ -278,10 +274,12 @@ class TestWsToSshProtocolError:
         stdout_writes: list[str] = []
 
         class _MockProcess:
-            class stdout:
+            class Stdout:
                 @staticmethod
                 def write(data) -> None:
                     stdout_writes.append(data if isinstance(data, str) else data.decode())
+
+            stdout = Stdout
 
         from unittest.mock import patch
 
@@ -313,10 +311,12 @@ class TestWsToSshProtocolError:
         stdout_writes: list[str] = []
 
         class _MockProcess:
-            class stdout:
+            class Stdout:
                 @staticmethod
                 def write(data) -> None:
                     stdout_writes.append(data if isinstance(data, str) else data.decode())
+
+            stdout = Stdout
 
         raw_bytes = b"ssh output"
         await _ws_to_ssh(

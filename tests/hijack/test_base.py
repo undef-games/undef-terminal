@@ -85,7 +85,6 @@ class TestHijackableMixinCheckpoint:
 
 class TestHijackableMixinProgress:
     def test_note_progress_updates_timestamp(self) -> None:
-        import time
 
         bot = Bot()
         before = bot._last_progress_mono
@@ -396,5 +395,3 @@ class TestHijackEventTransitions:
         await bot.set_hijacked(False)
         await asyncio.wait_for(asyncio.gather(*tasks), timeout=1.0)
         assert bot.steps_taken == 3
-
-

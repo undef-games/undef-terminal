@@ -24,36 +24,48 @@ import contextlib
 import importlib.resources
 import logging
 import os
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated, Any
 
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException
 from starlette.staticfiles import StaticFiles
 
-import sys as _sys
-import os as _os
-_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-from _example_session import (  # noqa: E402
-    DemoSessionState,
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _example_session import (
     _DEFAULT_PORT,
-    _DEFAULT_WORKER_ID,
+    DemoSessionState,
     _append_entry,
-    _apply_control,
-    _apply_input,
     _enqueue_worker_messages,
     _force_release_hijack_for_shared_mode,
     _get_or_create_session,
     _hub,
-    _make_analysis,
-    _make_snapshot,
-    _reset_all_sessions,
     _reset_session_state,
     _session_payload,
     _set_input_mode,
     _start_default_session_workers,
     _state_update_messages,
     _sync_hub_input_mode,
+)
+from _example_session import (
+    _DEFAULT_WORKER_ID as _DEFAULT_WORKER_ID,  # re-export for test access
+)
+from _example_session import (
+    _apply_control as _apply_control,  # re-export for test access
+)
+from _example_session import (
+    _apply_input as _apply_input,  # re-export for test access
+)
+from _example_session import (
+    _make_analysis as _make_analysis,  # re-export for test access
+)
+from _example_session import (
+    _make_snapshot as _make_snapshot,  # re-export for test access
+)
+from _example_session import (
+    _reset_all_sessions as _reset_all_sessions,  # re-export for test access
 )
 
 logger = logging.getLogger(__name__)

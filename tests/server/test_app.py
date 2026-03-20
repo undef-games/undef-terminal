@@ -19,7 +19,6 @@ import httpx
 import pytest
 import uvicorn
 import websockets
-from fastapi.testclient import TestClient
 
 from undef.terminal.control_stream import ControlChunk, ControlStreamDecoder, DataChunk
 from undef.terminal.server import create_server_app, default_server_config

@@ -12,7 +12,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 from undef.terminal.hijack.bridge import TermBridge
 
-
 # ---------------------------------------------------------------------------
 # bridge.py line 336->exit — _send_keys when session is None
 # ---------------------------------------------------------------------------

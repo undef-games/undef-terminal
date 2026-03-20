@@ -13,16 +13,9 @@ from __future__ import annotations
 import asyncio
 
 from undef.terminal.control_stream import encode_control
-from undef.terminal.gateway._colors import (
-    _apply_color_mode,
-    _clamp8,
-    _rgb_to_16_index,
-    _rgb_to_256,
-)
 from undef.terminal.gateway._gateway import (
     _handle_ws_control,
     _read_token,
-    _strip_iac,
     _tcp_to_ws,
     _write_token,
     _ws_to_tcp,

@@ -13,7 +13,6 @@ import jwt
 from undef_terminal_cloudflare.auth.jwt import decode_jwt
 from undef_terminal_cloudflare.config import CloudflareConfig, JwtConfig
 
-
 # ---------------------------------------------------------------------------
 # Contract: JWT roles_claim parity with FastAPI AuthConfig
 # ---------------------------------------------------------------------------

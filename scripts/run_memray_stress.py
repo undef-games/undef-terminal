@@ -23,8 +23,8 @@ def main() -> int:
 
         print(f"\n>>> Running {script}...", file=sys.stderr)
         try:
-            result = subprocess.run(
-                ["uv", "run", "memray", "run", "-o", str(output_bin), str(script_path)],
+            subprocess.run(  # noqa: S603
+                ["uv", "run", "memray", "run", "-o", str(output_bin), str(script_path)],  # noqa: S607
                 check=True,
             )
         except subprocess.CalledProcessError as e:

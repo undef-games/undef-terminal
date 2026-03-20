@@ -10,11 +10,9 @@ Each section corresponds to a file/line range reported by --cov-branch.
 
 from __future__ import annotations
 
-import importlib.resources
 import json
 import sqlite3
 import time
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -474,5 +472,3 @@ async def test_alarm_no_worker_active_hijack_no_set_alarm() -> None:
 
     # Should not raise — setAlarm just won't be called
     await rt.alarm()
-
-

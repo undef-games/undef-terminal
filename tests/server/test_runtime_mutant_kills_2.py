@@ -12,8 +12,6 @@ import contextlib
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from undef.terminal.server.models import RecordingConfig, SessionDefinition
 from undef.terminal.server.runtime import HostedSessionRuntime
 

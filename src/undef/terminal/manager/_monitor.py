@@ -64,7 +64,7 @@ async def _handle_heartbeat_timeouts(pm: BotProcessManager) -> None:
     now = time.time()
     heartbeat_timeout = pm.manager.config.heartbeat_timeout_s
     heartbeat_timed_out: list[str] = []
-    import subprocess
+    import subprocess  # noqa: TC003
 
     heartbeat_stop_requests: list[tuple[str, subprocess.Popen[bytes]]] = []
     async with pm.manager._state_lock:
@@ -120,7 +120,7 @@ async def _handle_bust_respawn(pm: BotProcessManager) -> None:
     if not pm.manager.bust_respawn or pm.manager.swarm_paused:
         return
     now = time.time()
-    import subprocess
+    import subprocess  # noqa: TC003
 
     bust_stop_requests: list[tuple[str, subprocess.Popen[bytes] | None, int | None]] = []
     for bot in list(pm.manager.bots.values()):
@@ -146,7 +146,7 @@ async def _handle_desired_state(pm: BotProcessManager) -> None:
     """Enforce the desired bot count: spawn deficits, kill excesses."""
     if pm.manager.desired_bots <= 0 or pm.manager.swarm_paused:
         return
-    import subprocess
+    import subprocess  # noqa: TC003
 
     active_states = {"running", "queued", "recovering", "blocked"}
     terminal_states = {"error", "stopped", "completed"}
@@ -197,9 +197,7 @@ async def _handle_desired_state(pm: BotProcessManager) -> None:
         excess = -deficit
         to_kill = sorted(active_bots, key=lambda b: b.bot_id, reverse=True)[:excess]
         for bot in to_kill:
-            logger.info(
-                "desired_state_killing", bot_id=bot.bot_id, excess=excess, desired=pm.manager.desired_bots
-            )
+            logger.info("desired_state_killing", bot_id=bot.bot_id, excess=excess, desired=pm.manager.desired_bots)
             with contextlib.suppress(OSError, ProcessLookupError, RuntimeError):
                 await pm.manager.kill_bot(bot.bot_id)
             with contextlib.suppress(OSError, RuntimeError):

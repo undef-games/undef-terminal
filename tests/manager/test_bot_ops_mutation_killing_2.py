@@ -324,6 +324,7 @@ class TestBotOpsRouteMutationKilling:
         not decremented further. The kill response is still returned normally.
         """
         from unittest.mock import MagicMock, patch
+
         from undef.terminal.manager.process import BotProcessManager
 
         manager.bots["bot_E"] = BotStatusBase(bot_id="bot_E", state="running")
@@ -347,6 +348,7 @@ class TestBotOpsRouteMutationKilling:
         Contrasting test: desired_bots=3, kill removes one → desired_bots decremented to 2.
         """
         from unittest.mock import MagicMock, patch
+
         from undef.terminal.manager.process import BotProcessManager
 
         manager.bots["bot_F"] = BotStatusBase(bot_id="bot_F", state="running")

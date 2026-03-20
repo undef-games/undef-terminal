@@ -11,8 +11,6 @@ TestReleaseBotAccountExtra, TestLaunchQueuedBotExtra.
 
 from __future__ import annotations
 
-import asyncio
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -412,4 +410,3 @@ class TestSpawnSwarmExtra:
             await pm.spawn_swarm([str(config)])
 
         manager.broadcast_status.assert_called()
-

@@ -8,21 +8,19 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import inspect
 import os
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from undef.terminal.manager.config import ManagerConfig
-from undef.terminal.manager.core import SwarmManager
-from undef.terminal.manager.models import BotStatusBase
-from undef.terminal.manager.process import BotProcessManager
 from undef.terminal.manager._monitor import (
     _handle_desired_state,
     _handle_exited_processes,
 )
+from undef.terminal.manager.config import ManagerConfig
+from undef.terminal.manager.core import SwarmManager
+from undef.terminal.manager.models import BotStatusBase
+from undef.terminal.manager.process import BotProcessManager
 
 
 class FakeWorkerPlugin:
@@ -120,10 +118,12 @@ class TestHandleDesiredStateAlreadyRegistered:
         manager.bots["bot_000"] = pre_existing_bot
 
         # Patch allocate_bot_id to return bot_000 (already in bots)
-        with patch.object(pm, "allocate_bot_id", return_value="bot_000"):
-            with patch.object(pm, "_launch_queued_bot", new_callable=AsyncMock):
-                with patch("undef.terminal.manager._monitor.asyncio.create_task", return_value=asyncio.Future()):
-                    await _handle_desired_state(pm)
+        with (
+            patch.object(pm, "allocate_bot_id", return_value="bot_000"),
+            patch.object(pm, "_launch_queued_bot", new_callable=AsyncMock),
+            patch("undef.terminal.manager._monitor.asyncio.create_task", return_value=asyncio.Future()),
+        ):
+            await _handle_desired_state(pm)
 
         # The pre-existing bot object should remain unchanged (not replaced)
         assert manager.bots.get("bot_000") is pre_existing_bot
@@ -140,12 +140,8 @@ class TestHandleDesiredStateAlreadyRegistered:
         pm._last_spawn_config = "/some/config.yaml"
 
         # Two active bots → active_count=2, deficit=3-2=1
-        manager.bots["bot_000"] = BotStatusBase(
-            bot_id="bot_000", state="running", config="/some/config.yaml"
-        )
-        pre_existing = BotStatusBase(
-            bot_id="bot_001", state="running", config="/some/config.yaml"
-        )
+        manager.bots["bot_000"] = BotStatusBase(bot_id="bot_000", state="running", config="/some/config.yaml")
+        pre_existing = BotStatusBase(bot_id="bot_001", state="running", config="/some/config.yaml")
         manager.bots["bot_001"] = pre_existing
 
         created_tasks: list[asyncio.Task] = []
@@ -156,9 +152,11 @@ class TestHandleDesiredStateAlreadyRegistered:
             return task
 
         # allocate_bot_id returns "bot_001" which IS already in bots → if False → skip block
-        with patch.object(pm, "allocate_bot_id", return_value="bot_001"):
-            with patch("undef.terminal.manager._monitor.asyncio.create_task", side_effect=_capture_task):
-                await _handle_desired_state(pm)
+        with (
+            patch.object(pm, "allocate_bot_id", return_value="bot_001"),
+            patch("undef.terminal.manager._monitor.asyncio.create_task", side_effect=_capture_task),
+        ):
+            await _handle_desired_state(pm)
 
         # asyncio.create_task was called (line 193 is reached), so branch 187+ was hit
         assert len(created_tasks) == 1
@@ -181,7 +179,7 @@ class TestSpawnBotNameStyleFalseBranch:
         config = tmp_path / "test.yaml"
         config.write_text("worker_type: test_game\n")
 
-        pm._spawn_name_style = ""       # falsy → skip NAME_STYLE injection
+        pm._spawn_name_style = ""  # falsy → skip NAME_STYLE injection
         pm._spawn_name_base = "mybase"  # truthy → inject NAME_BASE
 
         captured_env: dict = {}
@@ -218,9 +216,11 @@ class TestWaitForProcessExitAwaitable:
             return coro
 
         loop = asyncio.get_running_loop()
-        with patch.object(loop, "run_in_executor", side_effect=fake_run_in_executor):
-            with patch("undef.terminal.manager.process.inspect.isawaitable", return_value=True):
-                await BotProcessManager._wait_for_process_exit(proc, 5.0)
+        with (
+            patch.object(loop, "run_in_executor", side_effect=fake_run_in_executor),
+            patch("undef.terminal.manager.process.inspect.isawaitable", return_value=True),
+        ):
+            await BotProcessManager._wait_for_process_exit(proc, 5.0)
 
         # The inner awaitable (coro) should have been awaited
         assert awaited == [True]
@@ -306,14 +306,17 @@ class TestStopProcessTreeSigkillAfterTimeout:
                 raise TimeoutError("first timeout")
             # second call succeeds
 
-        with patch.object(BotProcessManager, "_wait_for_process_exit", side_effect=fake_wait):
-            with patch.object(BotProcessManager, "_signal_posix_process_group") as mock_signal:
-                await pm._stop_process_tree(bot_id="bot_000", process=proc, timeout_s=0.01)
+        with (
+            patch.object(BotProcessManager, "_wait_for_process_exit", side_effect=fake_wait),
+            patch.object(BotProcessManager, "_signal_posix_process_group") as mock_signal,
+        ):
+            await pm._stop_process_tree(bot_id="bot_000", process=proc, timeout_s=0.01)
 
         # _signal_posix_process_group called at least twice:
         # once for SIGTERM, once for SIGKILL
         assert mock_signal.call_count >= 2
         import signal
+
         signal_args = [call[0][1] for call in mock_signal.call_args_list]
         assert signal.SIGKILL in signal_args
 
@@ -341,10 +344,12 @@ class TestSpawnSwarmBotAlreadyRegistered:
         manager.bots["bot_000"] = original_bot
 
         # Patch sync_next_bot_index to return 0 so base_index=0 and bot_id="bot_000"
-        with patch.object(pm, "sync_next_bot_index", return_value=0):
-            with patch.object(pm, "spawn_bot", new_callable=AsyncMock, return_value="bot_000"):
-                manager.broadcast_status = AsyncMock()
-                await pm.spawn_swarm([str(config)], group_size=1, group_delay=0)
+        with (
+            patch.object(pm, "sync_next_bot_index", return_value=0),
+            patch.object(pm, "spawn_bot", new_callable=AsyncMock, return_value="bot_000"),
+        ):
+            manager.broadcast_status = AsyncMock()
+            await pm.spawn_swarm([str(config)], group_size=1, group_delay=0)
 
         # The pre-existing bot entry should not be replaced with a "queued" one
         # (the if block was False, so bots["bot_000"] was not overwritten)

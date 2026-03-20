@@ -329,5 +329,3 @@ async def test_websocket_open_browser_sends_last_snapshot() -> None:
     types = [m["type"] for m in sent]
     assert "hello" in types
     assert "snapshot" in types
-
-

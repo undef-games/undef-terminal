@@ -8,7 +8,6 @@ send guards, session API, non-JSON responses, and edge cases (part 2)."""
 
 from __future__ import annotations
 
-import time
 from unittest.mock import AsyncMock
 
 from fastapi import FastAPI

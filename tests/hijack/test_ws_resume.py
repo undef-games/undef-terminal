@@ -12,7 +12,6 @@ wrong worker_id, two-tab race, no resume_store configured).
 
 from __future__ import annotations
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

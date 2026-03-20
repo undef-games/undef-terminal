@@ -462,5 +462,3 @@ async def test_unknown_path_returns_404() -> None:
     resp = await route_http(runtime, _Req("https://x/worker/w/unknown-endpoint"))
     assert resp.status == 404
     assert _body(resp)["error"] == "not_found"
-
-

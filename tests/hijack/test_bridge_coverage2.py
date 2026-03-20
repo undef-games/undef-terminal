@@ -489,5 +489,3 @@ class TestRecvLoopMtypeBranches:
 
         # Finally block should have called _set_hijacked(False)
         bot.set_hijacked.assert_awaited_with(False)
-
-

@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-from pathlib import Path
+from pathlib import Path  # noqa: TC003
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -453,4 +453,3 @@ class TelnetWsGateway:
             with contextlib.suppress(Exception):
                 writer.close()
                 await writer.wait_closed()
-

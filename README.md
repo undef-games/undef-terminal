@@ -368,6 +368,7 @@ FastAPI on `:27780`, CF worker on `:27788`.
 ## Quality Guarantees
 
 - Test gate runs at **100% branch coverage** (`--cov-branch`), enforced via `addopts` in `pyproject.toml`.
+- Memory regressions caught in **nightly CI** via memray profiling (stress tests for hot paths).
 - Pre-commit hooks enforce ruff, mypy strict, ty, bandit, and biome on every commit.
 - Security audit via `pip-audit` and `bandit`; timing-safe token comparison in auth paths.
 - All input size limits enforced at boundaries; fail-closed auth on misconfiguration.
@@ -381,6 +382,7 @@ FastAPI on `:27780`, CF worker on `:27788`.
 
 ## Docs
 
+- [Testing Guide](https://github.com/undef-games/undef-terminal/blob/main/docs/TESTING.md)
 - [Operations Runbook](https://github.com/undef-games/undef-terminal/blob/main/docs/operations/runbook.md)
 - [Service SLOs](https://github.com/undef-games/undef-terminal/blob/main/docs/operations/slo.md)
 - [Protocol Matrix](https://github.com/undef-games/undef-terminal/blob/main/docs/protocol-matrix.md)

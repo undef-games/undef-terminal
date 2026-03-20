@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from undef.terminal.io import InputSender, PromptWaiter
+from undef.terminal.io import PromptWaiter
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -16,7 +16,7 @@ import contextlib
 import json
 import logging
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 try:
     from undef_terminal_cloudflare.bridge.hijack import HijackSession
@@ -26,15 +26,13 @@ try:
     from undef_terminal_cloudflare.state.registry import KV_REFRESH_S, update_kv_session
     from undef_terminal_cloudflare.state.store import LeaseRecord
 except Exception:
-    from bridge.hijack import HijackSession  # type: ignore[import-not-found]
-    from cf_types import CFWebSocket  # type: ignore[import-not-found]
+    from bridge.hijack import HijackSession  # type: ignore[import-not-found]  # noqa: TC002
+    from cf_types import CFWebSocket  # type: ignore[import-not-found]  # noqa: TC002
     from do.persistence import clear_lease as _clear_lease  # type: ignore[import-not-found]
     from do.persistence import persist_lease as _persist_lease  # type: ignore[import-not-found]
     from state.registry import KV_REFRESH_S, update_kv_session  # type: ignore[import-not-found]
     from state.store import LeaseRecord  # type: ignore[import-not-found]
 
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 

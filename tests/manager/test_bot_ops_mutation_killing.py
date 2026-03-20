@@ -10,8 +10,6 @@ Classes: TestCommandHistoryRowsMutationKilling, TestAppendCommandHistoryMutation
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -20,8 +18,6 @@ from undef.terminal.manager.config import ManagerConfig
 from undef.terminal.manager.models import BotStatusBase
 from undef.terminal.manager.routes.bot_ops import (
     _append_command_history,
-    _build_action_response,
-    _cancel_pending_manager_command,
     _command_history_rows,
     _queue_manager_command,
     _update_command_history,

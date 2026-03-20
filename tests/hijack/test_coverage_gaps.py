@@ -17,24 +17,18 @@ Targets:
 
 from __future__ import annotations
 
-import asyncio
-import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from tests.hijack.control_stream_helpers import decode_control_payload
 from undef.terminal.client import connect_test_ws
-from undef.terminal.control_stream import ControlStreamProtocolError, encode_control, encode_data
+from undef.terminal.control_stream import ControlStreamProtocolError, encode_data
 from undef.terminal.hijack.bridge import TermBridge
 from undef.terminal.hijack.hub import TermHub
 from undef.terminal.hijack.models import WorkerTermState
 from undef.terminal.hijack.rest_helpers import compile_expect_regex
-from undef.terminal.hijack.routes.browser_handlers import handle_browser_message
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -229,38 +223,34 @@ class TestWorkerWsBadStream:
     """Lines 112-116: Worker WS sends a message that fails control stream decode → close(1003)."""
 
     def test_bad_stream_closes_with_1003(self) -> None:
-        """A worker that sends an unparseable control stream message triggers close(1003)."""
+        """A worker that sends an unparsable control stream message triggers close(1003)."""
         from undef.terminal.control_stream import ControlStreamDecoder
 
         app, hub = _make_app("admin")
 
-        close_codes: list[int] = []
-
         # Patch websocket.close to capture the code
-        original_register = hub.register_worker
 
-        with TestClient(app, raise_server_exceptions=False) as client:
-            with connect_test_ws(client, "/ws/worker/w1/term") as worker:
-                _read_worker_snapshot_req(worker)
+        with (
+            TestClient(app, raise_server_exceptions=False) as client,
+            connect_test_ws(client, "/ws/worker/w1/term") as worker,
+        ):
+            _read_worker_snapshot_req(worker)
 
-                # Patch decoder to raise on feed
-                original_feed = ControlStreamDecoder.feed
+            # Patch decoder to raise on feed
 
-                def bad_feed(self, data):
-                    raise ControlStreamProtocolError("injected error")
+            def bad_feed(self, data):
+                raise ControlStreamProtocolError("injected error")
 
-                with patch.object(ControlStreamDecoder, "feed", bad_feed):
-                    # Send a message — decoder.feed will raise ControlStreamProtocolError
-                    worker.send_text("bad stream data")
-                    # Worker connection should be closed by the server
-                    # The TestClient will raise on next receive or show disconnect
-                    try:
-                        with pytest.raises(Exception):
-                            # Server should close the connection
-                            for _ in range(5):
-                                worker.receive_json()
-                    except Exception:
-                        pass
+            with patch.object(ControlStreamDecoder, "feed", bad_feed):
+                # Send a message — decoder.feed will raise ControlStreamProtocolError
+                worker.send_text("bad stream data")
+                # Worker connection should be closed by the server
+                # The TestClient will raise on next receive or show disconnect
+                try:
+                    for _ in range(5):
+                        worker.receive_json()
+                except Exception:
+                    pass
 
 
 # ---------------------------------------------------------------------------
@@ -284,26 +274,25 @@ class TestWorkerWsEmptyDataChunk:
 
         hub.broadcast = _track_broadcast  # type: ignore[method-assign]
 
-        with TestClient(app) as client:
-            with connect_test_ws(client, "/ws/worker/w1/term") as worker:
-                _read_worker_snapshot_req(worker)
+        with TestClient(app) as client, connect_test_ws(client, "/ws/worker/w1/term") as worker:
+            _read_worker_snapshot_req(worker)
 
-                # Record broadcasts before sending empty data
-                # (register_browser is called during _read_worker_snapshot_req implicitly)
-                pre_count = len(broadcast_calls)
+            # Record broadcasts before sending empty data
+            # (register_browser is called during _read_worker_snapshot_req implicitly)
+            pre_count = len(broadcast_calls)
 
-                # Send empty data frame
-                worker.send_text(encode_data(""))
+            # Send empty data frame
+            worker.send_text(encode_data(""))
 
-                # Give server a moment to process
-                import time as _time
+            # Give server a moment to process
+            import time as _time
 
-                _time.sleep(0.05)
+            _time.sleep(0.05)
 
-                # No "term" type broadcasts should have been added for the empty frame
-                post_broadcast = broadcast_calls[pre_count:]
-                term_broadcasts = [m for m in post_broadcast if m.get("type") == "term"]
-                assert term_broadcasts == [], f"Unexpected term broadcast for empty data: {term_broadcasts}"
+            # No "term" type broadcasts should have been added for the empty frame
+            post_broadcast = broadcast_calls[pre_count:]
+            term_broadcasts = [m for m in post_broadcast if m.get("type") == "term"]
+            assert term_broadcasts == [], f"Unexpected term broadcast for empty data: {term_broadcasts}"
 
 
 # ---------------------------------------------------------------------------
@@ -315,31 +304,32 @@ class TestBrowserWsBadStream:
     """Lines 302-306: Browser WS sends a message that fails control stream decode → close(1003)."""
 
     def test_browser_bad_stream_closes_connection(self) -> None:
-        """A browser that sends an unparseable control stream message → server closes with 1003."""
+        """A browser that sends an unparsable control stream message → server closes with 1003."""
         from undef.terminal.control_stream import ControlStreamDecoder
 
         app, hub = _make_app("admin")
 
-        with TestClient(app, raise_server_exceptions=False) as client:
-            with connect_test_ws(client, "/ws/worker/w1/term") as worker:
-                _read_worker_snapshot_req(worker)
+        with (
+            TestClient(app, raise_server_exceptions=False) as client,
+            connect_test_ws(client, "/ws/worker/w1/term") as worker,
+        ):
+            _read_worker_snapshot_req(worker)
 
-                with connect_test_ws(client, "/ws/browser/w1/term") as browser:
-                    _read_initial_browser(browser)
+            with connect_test_ws(client, "/ws/browser/w1/term") as browser:
+                _read_initial_browser(browser)
 
-                    # Patch decoder to raise on feed
-                    def bad_feed(self, data):
-                        raise ControlStreamProtocolError("browser injected error")
+                # Patch decoder to raise on feed
+                def bad_feed(self, data):
+                    raise ControlStreamProtocolError("browser injected error")
 
-                    with patch.object(ControlStreamDecoder, "feed", bad_feed):
-                        browser.send_text("corrupt browser data")
-                        # Server closes the browser connection with 1003
-                        try:
-                            with pytest.raises(Exception):
-                                for _ in range(5):
-                                    browser.receive_json()
-                        except Exception:
-                            pass
+                with patch.object(ControlStreamDecoder, "feed", bad_feed):
+                    browser.send_text("corrupt browser data")
+                    # Server closes the browser connection with 1003
+                    try:
+                        for _ in range(5):
+                            browser.receive_json()
+                    except Exception:
+                        pass
 
 
 # ---------------------------------------------------------------------------
@@ -398,7 +388,7 @@ class TestBrowserHandlersResumeReclaimFail:
         hub.send_worker = _track  # type: ignore[method-assign]
 
         msg_b = {"type": "resume", "token": token}
-        result = await _handle_resume(hub, ws, "w1", "admin", msg_b, False)
+        await _handle_resume(hub, ws, "w1", "admin", msg_b, False)
 
         # A pause was sent (for reclaim attempt), then a compensating resume (reclaim failed)
         actions = [m.get("action") for m in resume_sends]

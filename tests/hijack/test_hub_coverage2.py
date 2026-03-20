@@ -8,16 +8,14 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from undef.terminal.client import connect_test_ws
 from undef.terminal.hijack.hub import TermHub
-from undef.terminal.hijack.models import HijackSession, WorkerTermState
+from undef.terminal.hijack.models import WorkerTermState
 
 
 def _make_app(**hub_kwargs: Any) -> tuple[TermHub, FastAPI, TestClient]:

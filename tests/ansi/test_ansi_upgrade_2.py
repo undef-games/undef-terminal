@@ -7,16 +7,7 @@
 
 from __future__ import annotations
 
-from undef.terminal import registered_dialects
 from undef.terminal.ansi import (
-    DEFAULT_PALETTE,
-    DEFAULT_RGB,
-    _color256_to_rgb,
-    _emit_color,
-    _handle_brace_tokens,
-    _handle_extended_tokens,
-    _handle_tilde_codes,
-    normalize_colors,
     upgrade_to_256,
     upgrade_to_truecolor,
 )

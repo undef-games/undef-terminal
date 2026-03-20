@@ -119,6 +119,8 @@ filterwarnings = [
 markers = [
     "playwright: browser-based UI tests (deselected by default, run with -m playwright)",
     "mutant: mutation-testing and mutmut-focused tests (deselected by default)",
+    "memray: memory profiling and allocation stress tests (deselected by default, run with -m memray)",
+    "slow: slow tests >10s (deselected by default)",
 ]
 addopts = [
     "--import-mode=importlib",
@@ -128,7 +130,7 @@ addopts = [
     "--tb=short",
     "-ra",
     "-m",
-    "not playwright",
+    "not playwright and not memray and not slow",
     "--cov=undef.terminal",
     "--cov-branch",
     "--cov-report=term-missing",
@@ -174,7 +176,7 @@ ignore = ["E501", "S104", "S112", "S311"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "RUF022"]
-"tests/**/*.py" = ["E402", "B905", "S101", "S105", "S106", "S110", "ARG", "TCH", "RUF003", "RUF012", "RUF015", "RUF043", "RUF059"]
+"tests/**/*.py" = ["E402", "B905", "S101", "S105", "S106", "S110", "S603", "S607", "ARG", "TCH", "RUF003", "RUF012", "RUF015", "RUF043", "RUF059"]
 "tests_mutation/**/*.py" = ["E402", "B905", "S101", "S105", "S106", "S110", "ARG", "TCH", "RUF003", "RUF012", "RUF015", "RUF043", "RUF059"]
 "packages/**/tests/**/*.py" = ["E402", "B905", "S101", "S105", "S106", "S110", "ARG", "TCH", "RUF003", "RUF012", "RUF015", "RUF043", "RUF059"]
 

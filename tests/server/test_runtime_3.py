@@ -28,7 +28,6 @@ from undef.terminal.control_stream import (
 from undef.terminal.server.models import RecordingConfig, SessionDefinition
 from undef.terminal.server.runtime import HostedSessionRuntime, _encode_runtime_frame
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -178,10 +177,12 @@ class TestBridgeSessionControlStreamError:
         rt._queue = asyncio.Queue()
         rt._stop = asyncio.Event()
         connector = _make_connector()
+
         # Make poll slow so recv always wins the FIRST_COMPLETED race
         async def _slow_poll() -> list[dict[str, Any]]:
             await asyncio.sleep(10)
             return []
+
         connector.poll_messages = _slow_poll
         rt._connector = connector
 
@@ -199,17 +200,17 @@ class TestBridgeSessionControlStreamError:
         rt._queue = asyncio.Queue()
         rt._stop = asyncio.Event()
         connector = _make_connector()
+
         # Make poll slow so recv always wins
         async def _slow_poll() -> list[dict[str, Any]]:
             await asyncio.sleep(10)
             return []
+
         connector.poll_messages = _slow_poll
         rt._connector = connector
 
         # Patch ControlStreamDecoder.feed to raise ControlStreamProtocolError
-        with patch(
-            "undef.terminal.server.runtime.ControlStreamDecoder"
-        ) as mock_decoder_cls:
+        with patch("undef.terminal.server.runtime.ControlStreamDecoder") as mock_decoder_cls:
             mock_decoder = MagicMock()
             mock_decoder_cls.return_value = mock_decoder
             mock_decoder.feed.side_effect = ControlStreamProtocolError("bad frame")
@@ -232,10 +233,12 @@ class TestBridgeSessionUnknownMtype:
         rt._queue = asyncio.Queue()
         rt._stop = asyncio.Event()
         connector = _make_connector()
+
         # Make poll slow so recv always wins the FIRST_COMPLETED race
         async def _slow_poll() -> list[dict[str, Any]]:
             await asyncio.sleep(10)
             return []
+
         connector.poll_messages = _slow_poll
         rt._connector = connector
 
@@ -258,10 +261,12 @@ class TestBridgeSessionUnknownMtype:
         rt._queue = asyncio.Queue()
         rt._stop = asyncio.Event()
         connector = _make_connector()
+
         # Make poll slow so recv always wins
         async def _slow_poll() -> list[dict[str, Any]]:
             await asyncio.sleep(10)
             return []
+
         connector.poll_messages = _slow_poll
         rt._connector = connector
 

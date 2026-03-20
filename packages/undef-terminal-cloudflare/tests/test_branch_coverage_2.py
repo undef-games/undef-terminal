@@ -12,9 +12,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-
 # ---------------------------------------------------------------------------
 # do/ws_helpers.py  50->52  — _socket_role: colon-format but parts[0] not valid
 # ---------------------------------------------------------------------------

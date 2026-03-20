@@ -27,10 +27,44 @@ class LineEditor:
     Accumulates input characters until Enter is pressed, with support for
     readline-style editing shortcuts and password masking.
 
+    Features:
+        - Character-by-character buffering until Enter/Return
+        - Backspace/Delete handling (removes last character)
+        - Readline shortcuts: Ctrl+A (start), Ctrl+E (end), Ctrl+U (clear),
+          Ctrl+K (clear EOL)
+        - Password masking: echoes '*' instead of actual characters
+        - Configurable maximum line length (prevents DoS)
+        - Optional async write callback for terminal output
+
+    Terminal Assumptions:
+        - Assumes VT100-compatible terminal (ANSI escape codes)
+        - This is true for all BBS systems (Telnet, SSH, WebSocket)
+        - Cursor positioning (Ctrl+A/E) uses: Home key (\\x1b[H) and
+          absolute column positioning (\\x1b[Col]G)
+
+    Readline Behavior Notes:
+        - Ctrl+U and Ctrl+K clear the ENTIRE buffer (not just to cursor)
+        - This differs from GNU readline (U=kill-backward, K=kill-forward)
+        - Rationale: Simplifies implementation, matches BBS usage patterns
+        - Full partial-deletion readline may be added in future versions
+
     Args:
         max_length: Maximum number of characters to accept (default 80).
         password_mode: If True, mask input with asterisks (default False).
-        on_write: Async callback(data: str) for terminal output.
+        on_write: Async callback(data: str) for terminal output. Called for
+            all output including echoes and cursor movements. Exceptions
+            propagate to caller. If None, no output is sent (silent mode).
+
+    Example:
+        >>> async def on_write(data: str) -> None:
+        ...     await session.send(data)
+        >>> editor = LineEditor(max_length=40, password_mode=False,
+        ...                      on_write=on_write)
+        >>> line = None
+        >>> for ch in user_input:
+        ...     line = await editor.process_char(ch)
+        ...     if line is not None:
+        ...         print(f"Got line: {line}")
     """
 
     def __init__(

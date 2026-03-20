@@ -12,7 +12,7 @@ import asyncio
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -352,6 +352,7 @@ class TestAnsiCoverage:
         # An unrecognised brace sequence falls through: '{' is emitted literally.
         result = _handle_brace_tokens("{??}rest")
         assert "{" in result
+
 
 # (TestEmulatorCachedSnapshot, TestCliSSHTransportMissing, TestReplayRawBranch,
 #  TestServerConfigRelativeDir, TestRegistryRuntimeStop, TestIoBranches

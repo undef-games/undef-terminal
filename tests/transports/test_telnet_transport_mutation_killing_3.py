@@ -8,24 +8,13 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from undef.terminal.transports.telnet import TelnetTransport
 from undef.terminal.transports.telnet_transport import (
-    DO,
-    DONT,
-    ECHO,
     IAC,
-    NAWS,
-    OPT_BINARY,
-    OPT_NAWS,
     OPT_TTYPE,
     SB,
     SE,
-    SGA,
     TTYPE_IS,
-    WILL,
-    WONT,
 )
 
 # ---------------------------------------------------------------------------

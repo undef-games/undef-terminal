@@ -67,28 +67,32 @@ class TestStopProcessTreeWindowsPaths:
     @pytest.mark.asyncio
     async def test_no_process_windows_calls_taskkill(self, pm):
         """Lines 298-299: process=None on Windows → _taskkill_process_tree called."""
-        with patch("undef.terminal.manager.process.os.name", "nt"):
-            with patch.object(
+        with (
+            patch("undef.terminal.manager.process.os.name", "nt"),
+            patch.object(
                 BotProcessManager,
                 "_taskkill_process_tree",
                 new_callable=AsyncMock,
-            ) as mock_taskkill:
-                await pm._stop_process_tree(bot_id="bot_win", pid=12345, process=None)
+            ) as mock_taskkill,
+        ):
+            await pm._stop_process_tree(bot_id="bot_win", pid=12345, process=None)
 
         mock_taskkill.assert_awaited_once_with(12345)
 
     @pytest.mark.asyncio
     async def test_no_process_windows_suppresses_oserror(self, pm):
         """Lines 298-299: OSError from _taskkill_process_tree is suppressed (process=None)."""
-        with patch("undef.terminal.manager.process.os.name", "nt"):
-            with patch.object(
+        with (
+            patch("undef.terminal.manager.process.os.name", "nt"),
+            patch.object(
                 BotProcessManager,
                 "_taskkill_process_tree",
                 new_callable=AsyncMock,
                 side_effect=OSError("access denied"),
-            ):
-                # Should not raise
-                await pm._stop_process_tree(bot_id="bot_win", pid=12345, process=None)
+            ),
+        ):
+            # Should not raise
+            await pm._stop_process_tree(bot_id="bot_win", pid=12345, process=None)
 
     @pytest.mark.asyncio
     async def test_sigkill_skipped_on_windows_after_sigterm_timeout(self, pm):
@@ -104,12 +108,12 @@ class TestStopProcessTreeWindowsPaths:
                 raise TimeoutError("SIGTERM timeout")
             # second call succeeds
 
-        with patch("undef.terminal.manager.process.os.name", "nt"):
-            with patch.object(BotProcessManager, "_wait_for_process_exit", side_effect=fake_wait):
-                with patch.object(
-                    BotProcessManager, "_taskkill_process_tree", new_callable=AsyncMock
-                ) as mock_taskkill:
-                    await pm._stop_process_tree(bot_id="bot_win", process=proc, timeout_s=0.01)
+        with (
+            patch("undef.terminal.manager.process.os.name", "nt"),
+            patch.object(BotProcessManager, "_wait_for_process_exit", side_effect=fake_wait),
+            patch.object(BotProcessManager, "_taskkill_process_tree", new_callable=AsyncMock) as mock_taskkill,
+        ):
+            await pm._stop_process_tree(bot_id="bot_win", process=proc, timeout_s=0.01)
 
         # taskkill called once (initial terminate), not SIGKILL path
         assert mock_taskkill.call_count >= 1
