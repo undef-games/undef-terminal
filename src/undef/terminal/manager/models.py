@@ -98,7 +98,7 @@ class SwarmStatus(BaseModel):
     swarm_paused: bool = False
     bust_respawn: bool = False
     desired_bots: int = 0
-    bots: list[dict[str, Any]]
+    bots: list[Any]
 
 
 class SpawnBatchRequest(BaseModel):

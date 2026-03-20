@@ -113,6 +113,20 @@ def create_manager_app(
             async with manager._ws_lock:
                 manager.websocket_clients.discard(websocket)
 
+    # WebSocket endpoint for MCP client lifecycle tracking
+    @app.websocket("/ws/mcp-client")
+    async def mcp_client_endpoint(websocket: WebSocket) -> None:
+        await websocket.accept()
+        await manager.register_mcp_client(websocket)
+        try:
+            while True:
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            await manager.unregister_mcp_client(websocket)
+        except Exception as e:  # pragma: no cover
+            logger.exception("mcp_client_websocket_error", error=str(e))
+            await manager.unregister_mcp_client(websocket)
+
     # Load persisted state
     manager._load_state()
 

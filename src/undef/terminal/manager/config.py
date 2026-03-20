@@ -48,6 +48,10 @@ class ManagerConfig(BaseModel):
     # Worker env-var prefix forwarded to subprocesses.
     worker_env_prefix: str = "UTERM_"
 
+    # Auto-shutdown when all MCP clients disconnect and no bots are active.
+    auto_shutdown_enabled: bool = False
+    auto_shutdown_grace_s: float = 30.0
+
     # Paths that never require auth.
     auth_public_paths: list[str] = Field(
         default_factory=lambda: ["/", "/dashboard", "/hijack", "/hijack/", "/hijack/hijack.html"]

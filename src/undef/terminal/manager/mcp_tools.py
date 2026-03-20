@@ -20,6 +20,7 @@ Usage::
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable  # noqa: TC003
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -49,6 +50,7 @@ def create_manager_mcp_tools(
     manager: SwarmManager | None = None,
     *,
     base_url: str | None = None,
+    on_first_http: Callable[[], Awaitable[None]] | None = None,
 ) -> FastMCP:
     """Create a FastMCP app with generic swarm management tools.
 
@@ -56,6 +58,8 @@ def create_manager_mcp_tools(
         manager: SwarmManager instance for direct in-process calls.
         base_url: HTTP base URL (e.g. ``"http://localhost:2272"``) for
             out-of-process calls.  Ignored when *manager* is provided.
+        on_first_http: Async callback invoked once before the first HTTP
+            request.  Useful for auto-starting the manager process.
 
     Raises:
         ValueError: If neither *manager* nor *base_url* is provided.
@@ -67,9 +71,15 @@ def create_manager_mcp_tools(
 
     mcp = _FastMCP("undef-terminal-manager")
 
+    _http_initialized = False
+
     async def _http(method: str, path: str, **kw: Any) -> tuple[bool, dict[str, Any]]:
+        nonlocal _http_initialized
         if base_url is None:  # pragma: no cover — only reachable when base_url is set
             raise RuntimeError("base_url is required for HTTP mode")
+        if not _http_initialized and on_first_http is not None:
+            _http_initialized = True
+            await on_first_http()
         return await _http_request(base_url, method, path, **kw)
 
     # ------------------------------------------------------------------

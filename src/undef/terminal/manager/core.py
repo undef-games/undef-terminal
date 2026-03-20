@@ -77,6 +77,11 @@ class SwarmManager:
         self._state_lock = asyncio.Lock()
         self._ws_lock = asyncio.Lock()
 
+        # MCP client tracking for auto-shutdown.
+        self.mcp_clients: set[WebSocket] = set()
+        self._mcp_shutdown_task: asyncio.Task[Any] | None = None
+        self._server: Any = None  # uvicorn.Server, set during run()
+
         self.timeseries_manager = TimeseriesManager(
             self.get_swarm_status,
             timeseries_dir=config.timeseries_dir or "logs/metrics",
@@ -192,6 +197,59 @@ class SwarmManager:
         await self.broadcast_status()
         return {"paused": False, "resumed": resumed}
 
+    # --- MCP client lifecycle ---
+
+    async def register_mcp_client(self, ws: WebSocket) -> None:
+        """Register an MCP client connection for auto-shutdown tracking."""
+        async with self._ws_lock:
+            self.mcp_clients.add(ws)
+        if self._mcp_shutdown_task is not None:
+            self._mcp_shutdown_task.cancel()
+            self._mcp_shutdown_task = None
+            logger.info("auto_shutdown_cancelled", reason="mcp_client_connected")
+        logger.info("mcp_client_registered", total=len(self.mcp_clients))
+
+    async def unregister_mcp_client(self, ws: WebSocket) -> None:
+        """Unregister an MCP client and check auto-shutdown conditions."""
+        async with self._ws_lock:
+            self.mcp_clients.discard(ws)
+        remaining = len(self.mcp_clients)
+        logger.info("mcp_client_unregistered", remaining=remaining)
+        if remaining == 0:
+            await self._check_auto_shutdown()
+
+    async def _check_auto_shutdown(self) -> None:
+        """Start graceful shutdown timer if conditions are met."""
+        if not self.config.auto_shutdown_enabled:
+            return
+        if self.mcp_clients:
+            return
+        active = {"running", "queued", "recovering", "blocked"}
+        if any(b.state in active for b in self.bots.values()):
+            logger.info("auto_shutdown_deferred", reason="active_bots")
+            return
+        if self._mcp_shutdown_task is not None:
+            return
+        grace = self.config.auto_shutdown_grace_s
+        logger.info("auto_shutdown_scheduled", grace_s=grace)
+        self._mcp_shutdown_task = asyncio.create_task(self._auto_shutdown_after(grace))
+
+    async def _auto_shutdown_after(self, grace_s: float) -> None:
+        """Wait for grace period, then shut down if conditions still hold."""
+        try:
+            await asyncio.sleep(grace_s)
+        except asyncio.CancelledError:
+            return
+        if self.mcp_clients:
+            return
+        active = {"running", "queued", "recovering", "blocked"}
+        if any(b.state in active for b in self.bots.values()):
+            logger.info("auto_shutdown_aborted", reason="active_bots_during_grace")
+            return
+        logger.info("auto_shutdown_executing")
+        if self._server is not None:
+            self._server.should_exit = True
+
     # --- Delegate timeseries ---
 
     def get_timeseries_info(self) -> dict[str, Any]:
@@ -228,7 +286,7 @@ class SwarmManager:
             swarm_paused=self.swarm_paused,
             bust_respawn=self.bust_respawn,
             desired_bots=self.desired_bots,
-            bots=[b.model_dump() for b in bots],
+            bots=list(bots),
         )
 
     # --- WebSocket broadcasting ---
@@ -236,7 +294,7 @@ class SwarmManager:
     async def broadcast_status(self) -> None:
         """Push current status to all connected dashboard WebSocket clients."""
         status = self.get_swarm_status()
-        message = json.dumps(status.model_dump())
+        message = status.model_dump_json()
 
         async with self._ws_lock:
             clients = list(self.websocket_clients)
@@ -341,6 +399,7 @@ class SwarmManager:
             log_level=self.config.log_level.lower(),
         )
         server = uvicorn.Server(config)
+        self._server = server
         try:
             await server.serve()
         finally:
