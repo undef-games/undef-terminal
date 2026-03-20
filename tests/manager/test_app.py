@@ -87,3 +87,209 @@ class TestCreateManagerApp:
         assert manager.account_pool is pool
         assert manager.identity_store is identity
         assert manager._status_update_plugin is status_update
+
+
+class TestMCPClientEndpoint:
+    @pytest.mark.asyncio
+    async def test_mcp_client_registration(self, config):
+        """Test that MCP client connection is registered on connect."""
+        from fastapi.testclient import TestClient
+
+        app, manager = create_manager_app(config)
+
+        # Create a test client and open WebSocket
+        client = TestClient(app)
+        with client.websocket_connect("/ws/mcp-client") as _:
+            # Verify client is registered
+            assert len(manager.mcp_clients) == 1
+
+    @pytest.mark.asyncio
+    async def test_mcp_client_unregistration(self, config):
+        """Test that MCP client is unregistered on disconnect."""
+        from fastapi.testclient import TestClient
+
+        app, manager = create_manager_app(config)
+
+        client = TestClient(app)
+        with client.websocket_connect("/ws/mcp-client") as _:
+            assert len(manager.mcp_clients) == 1
+
+        # After context exit, client should be unregistered
+        assert len(manager.mcp_clients) == 0
+
+    @pytest.mark.asyncio
+    async def test_multiple_mcp_clients(self, config):
+        """Test that multiple MCP clients can be registered simultaneously."""
+        from fastapi.testclient import TestClient
+
+        app, manager = create_manager_app(config)
+
+        client = TestClient(app)
+        with client.websocket_connect("/ws/mcp-client") as _:
+            assert len(manager.mcp_clients) == 1
+            with client.websocket_connect("/ws/mcp-client") as _:
+                assert len(manager.mcp_clients) == 2
+
+        assert len(manager.mcp_clients) == 0
+
+    @pytest.mark.asyncio
+    async def test_mcp_client_cancels_auto_shutdown(self, config):
+        """Test that connecting an MCP client cancels pending auto-shutdown."""
+        from fastapi.testclient import TestClient
+
+        # Create manager
+        app, manager = create_manager_app(config)
+
+        client = TestClient(app)
+        # Simulate a shutdown task being scheduled
+        import asyncio
+
+        shutdown_task = asyncio.create_task(asyncio.sleep(10))
+        manager._mcp_shutdown_task = shutdown_task
+
+        # Connect an MCP client
+        with client.websocket_connect("/ws/mcp-client") as _:
+            # Shutdown task should be cancelled and cleared
+            assert manager._mcp_shutdown_task is None
+
+
+class TestAutoShutdown:
+    def test_check_auto_shutdown_disabled(self, config):
+        """Test that auto-shutdown is skipped when disabled."""
+        config.auto_shutdown_enabled = False
+        app, manager = create_manager_app(config)
+
+        import asyncio
+
+        asyncio.run(manager._check_auto_shutdown())
+        assert manager._mcp_shutdown_task is None
+
+    @pytest.mark.asyncio
+    async def test_check_auto_shutdown_with_mcp_clients(self, config):
+        """Test that auto-shutdown is skipped when MCP clients are connected."""
+        config.auto_shutdown_enabled = True
+        app, manager = create_manager_app(config)
+
+        # Add a fake MCP client
+        from unittest.mock import MagicMock
+
+        fake_ws = MagicMock()
+        manager.mcp_clients.add(fake_ws)
+
+        await manager._check_auto_shutdown()
+        assert manager._mcp_shutdown_task is None
+
+    @pytest.mark.asyncio
+    async def test_check_auto_shutdown_with_active_bots(self, config):
+        """Test that auto-shutdown is deferred when active bots exist."""
+        config.auto_shutdown_enabled = True
+        app, manager = create_manager_app(config)
+
+        # Add an active bot
+        from undef.terminal.manager.models import BotStatusBase
+
+        manager.bots["bot-1"] = BotStatusBase(bot_id="bot-1", state="running")
+
+        await manager._check_auto_shutdown()
+        assert manager._mcp_shutdown_task is None
+
+    @pytest.mark.asyncio
+    async def test_check_auto_shutdown_already_scheduled(self, config):
+        """Test that auto-shutdown is not rescheduled if already pending."""
+        config.auto_shutdown_enabled = True
+        app, manager = create_manager_app(config)
+
+        import asyncio
+
+        # Pre-schedule a shutdown task
+        existing_task = asyncio.create_task(asyncio.sleep(10))
+        manager._mcp_shutdown_task = existing_task
+
+        await manager._check_auto_shutdown()
+        # Should not create a new task
+        assert manager._mcp_shutdown_task is existing_task
+
+    @pytest.mark.asyncio
+    async def test_check_auto_shutdown_creates_task(self, config):
+        """Test that auto-shutdown task is created when all conditions are met."""
+        config.auto_shutdown_enabled = True
+        config.auto_shutdown_grace_s = 0.1
+        app, manager = create_manager_app(config)
+
+        await manager._check_auto_shutdown()
+        assert manager._mcp_shutdown_task is not None
+        # Clean up task
+        manager._mcp_shutdown_task.cancel()
+
+    @pytest.mark.asyncio
+    async def test_auto_shutdown_after_cancelled(self, config):
+        """Test that auto-shutdown gracefully handles cancellation."""
+        import asyncio
+        import contextlib
+
+        config.auto_shutdown_enabled = True
+        app, manager = create_manager_app(config)
+
+        # Create the shutdown task and cancel it before grace period ends
+        task = asyncio.create_task(manager._auto_shutdown_after(1.0))
+        await asyncio.sleep(0.01)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        # Server should not be marked for shutdown
+        assert manager._server is None
+
+    @pytest.mark.asyncio
+    async def test_auto_shutdown_after_mcp_clients_appear(self, config):
+        """Test that shutdown is aborted if MCP clients connect during grace period."""
+        config.auto_shutdown_enabled = True
+        config.auto_shutdown_grace_s = 0.1
+        app, manager = create_manager_app(config)
+
+        # Start shutdown, then add an MCP client before grace period ends
+        import asyncio
+        from unittest.mock import MagicMock
+
+        task = asyncio.create_task(manager._auto_shutdown_after(0.2))
+        await asyncio.sleep(0.05)
+        manager.mcp_clients.add(MagicMock())
+        await task
+        # Server should not be marked for shutdown
+        assert manager._server is None
+
+    @pytest.mark.asyncio
+    async def test_auto_shutdown_after_active_bots_appear(self, config):
+        """Test that shutdown is aborted if active bots appear during grace period."""
+        config.auto_shutdown_enabled = True
+        config.auto_shutdown_grace_s = 0.1
+        app, manager = create_manager_app(config)
+
+        # Start shutdown, then add an active bot before grace period ends
+        import asyncio
+
+        from undef.terminal.manager.models import BotStatusBase
+
+        task = asyncio.create_task(manager._auto_shutdown_after(0.2))
+        await asyncio.sleep(0.05)
+        manager.bots["bot-1"] = BotStatusBase(bot_id="bot-1", state="running")
+        await task
+        # Server should not be marked for shutdown
+        assert manager._server is None
+
+    @pytest.mark.asyncio
+    async def test_auto_shutdown_after_executes(self, config):
+        """Test that shutdown executes when all conditions remain unmet."""
+        config.auto_shutdown_enabled = True
+        config.auto_shutdown_grace_s = 0.05
+        app, manager = create_manager_app(config)
+
+        # Create a minimal server object
+        class FakeServer:
+            def __init__(self):
+                self.should_exit = False
+
+        manager._server = FakeServer()
+
+        await manager._auto_shutdown_after(0.05)
+        # Server should be marked for shutdown
+        assert manager._server.should_exit is True
