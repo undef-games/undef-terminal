@@ -101,6 +101,33 @@ class TestFactory:
         tools = await app.list_tools()
         assert len(tools) == TOOL_COUNT
 
+    @pytest.mark.asyncio
+    async def test_on_first_http_callback_invoked(self):
+        """Test that on_first_http callback is invoked before first HTTP request."""
+        from unittest.mock import AsyncMock, patch
+
+        callback_mock = AsyncMock()
+
+        with patch("undef.terminal.manager.mcp_tools._http_request") as mock_http_request:
+            # Mock the HTTP request to return swarm status
+            mock_http_request.return_value = (
+                True,
+                {"total_bots": 0, "running_bots": 0, "error_bots": 0, "paused": False},
+            )
+
+            app = create_manager_mcp_tools(base_url="http://localhost:9999", on_first_http=callback_mock)
+
+            # Call a tool that makes an HTTP request
+            result = await _call(app, "swarm_status")
+
+            # Callback should have been invoked once
+            assert callback_mock.call_count == 1
+            assert result["total_bots"] == 0
+
+            # Call again to ensure callback is not invoked twice
+            result = await _call(app, "swarm_status")
+            assert callback_mock.call_count == 1
+
 
 # ---------------------------------------------------------------------------
 # Swarm-level tools
