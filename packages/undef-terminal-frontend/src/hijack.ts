@@ -72,6 +72,9 @@ export class UndefHijack {
   private _mobileKeysVisible = false;
   private _lastLocalEcho = "";
   private _lastLocalEchoTimer: ReturnType<typeof setTimeout> | null = null;
+  private _activityFlashTimer: ReturnType<typeof setTimeout> | null = null;
+  private _indicatorStyleCache: string | null = null;
+  private _statusDotElement: HTMLElement | null = null;
   private _root: HTMLElement | null = null;
 
   /**
@@ -131,11 +134,21 @@ export class UndefHijack {
   /** Tear down entirely: xterm, WebSocket, ResizeObserver, and DOM. */
   dispose(): void {
     this.disconnect(); // handles _ro, _heartbeatTimer, _ws, _reconnectTimer
+    if (this._lastLocalEchoTimer) {
+      clearTimeout(this._lastLocalEchoTimer);
+      this._lastLocalEchoTimer = null;
+    }
+    if (this._activityFlashTimer) {
+      clearTimeout(this._activityFlashTimer);
+      this._activityFlashTimer = null;
+    }
     if (this._term) {
       this._term.dispose();
       this._term = null;
     }
     this._fitAddon = null;
+    this._statusDotElement = null;
+    this._indicatorStyleCache = null;
     if (this._root?.parentNode) {
       this._root.parentNode.removeChild(this._root);
     }
@@ -480,31 +493,49 @@ export class UndefHijack {
     }
   }
 
-  /** Get the configured indicator style (defaults to "dot"). */
+  /** Get the configured indicator style (cached, defaults to "dot"). */
   private _getIndicatorStyle(): string {
+    if (this._indicatorStyleCache !== null) return this._indicatorStyleCache;
+    const VALID_STYLES = new Set(["dot", "pulse", "both"]);
     try {
       // Try localStorage first
       const stored = localStorage.getItem("undef_hijack_indicator_style");
-      if (stored === "dot" || stored === "pulse" || stored === "both") return stored;
+      if (stored && VALID_STYLES.has(stored)) {
+        this._indicatorStyleCache = stored;
+        return stored;
+      }
       // Fall back to environment variable
       const envStr = (globalThis as Record<string, unknown>).HIJACK_INDICATOR_STYLE as string | undefined;
-      if (envStr === "dot" || envStr === "pulse" || envStr === "both") return envStr;
+      if (envStr && VALID_STYLES.has(envStr)) {
+        this._indicatorStyleCache = envStr;
+        return envStr;
+      }
     } catch (_) {
       // Ignore localStorage errors
     }
+    this._indicatorStyleCache = "dot";
     return "dot"; // safe default
   }
 
-  /** Show activity indicator with the configured style. */
+  /** Show activity indicator with the configured style (reuses DOM reference and timeout). */
   private _showActivityIndicator(): void {
-    const style = this._getIndicatorStyle();
-    const dot = this._q("dot");
+    // Cache dot element on first use
+    if (!this._statusDotElement) {
+      this._statusDotElement = this._q("dot");
+    }
+    const dot = this._statusDotElement;
     if (!dot) return;
+
+    // Clear any pending flash removal
+    if (this._activityFlashTimer) clearTimeout(this._activityFlashTimer);
+
     // Flash the status dot green with glow
     dot.classList.add("activity-flash");
-    // Remove animation class after animation completes (200ms)
-    setTimeout(() => {
+
+    // Schedule removal of animation class after 200ms (reuse single timeout)
+    this._activityFlashTimer = setTimeout(() => {
       dot.classList.remove("activity-flash");
+      this._activityFlashTimer = null;
     }, 200);
   }
 
