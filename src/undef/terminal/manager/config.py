@@ -22,7 +22,7 @@ class ManagerConfig(BaseModel):
     title: str = "Swarm Manager"
     host: str = "127.0.0.1"
     port: int = 2272
-    max_bots: int = 200
+    max_agents: int = 200
     log_level: str = "info"
 
     # File paths (relative or absolute).
@@ -47,7 +47,7 @@ class ManagerConfig(BaseModel):
     # Worker env-var prefix forwarded to subprocesses.
     worker_env_prefix: str = "UTERM_"
 
-    # Auto-shutdown when all MCP clients disconnect and no bots are active.
+    # Auto-shutdown when all MCP clients disconnect and no agents are active.
     auto_shutdown_enabled: bool = False
     auto_shutdown_grace_s: float = 30.0
 

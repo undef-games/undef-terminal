@@ -71,7 +71,7 @@ class TestBridgeInvalidUriFixed:
         bot.set_hijacked = AsyncMock()
 
         bridge = TermBridge.__new__(TermBridge)
-        bridge._bot = bot
+        bridge._worker = bot
         bridge._worker_id = "w1"
         bridge._manager_url = "not-a-valid-url"
         bridge._max_ws_message_bytes = 1024 * 1024

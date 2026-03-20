@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-# How long to wait after a bot's last heartbeat before declaring it dead.
+# How long to wait after an agent's last heartbeat before declaring it dead.
 HEARTBEAT_TIMEOUT_S: float = 60.0
 
 # How often the manager persists swarm state to disk.

@@ -21,7 +21,15 @@
       "Bash(npm run:*)",
       "Bash(wrangler whoami:*)",
       "Skill(update-config)",
-      "Bash(memray stats:*)"
+      "Bash(memray stats:*)",
+      "Bash(gh run:*)",
+      "Bash(git reset:*)",
+      "Bash(SKIP=mypy,ty git commit -m \"$\\(cat <<''EOF'':*)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_type",
+      "mcp__playwright__browser_close"
     ],
     "additionalDirectories": [
       "/Users/tim/code/gh/undef-games"

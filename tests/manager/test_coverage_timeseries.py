@@ -17,7 +17,7 @@ from undef.terminal.manager.timeseries.manager import TimeseriesManager
 
 def _make_ts_manager(tmp_path, **kwargs) -> TimeseriesManager:
     return TimeseriesManager(
-        lambda: SwarmStatus(total_bots=0, running=0, completed=0, errors=0, stopped=0, uptime_seconds=0, bots=[]),
+        lambda: SwarmStatus(total_agents=0, running=0, completed=0, errors=0, stopped=0, uptime_seconds=0, agents=[]),
         timeseries_dir=str(tmp_path),
         **kwargs,
     )
@@ -31,7 +31,7 @@ class TestTimeseriesManagerGaps:
         mgr = _make_ts_manager(tmp_path)
         with mgr.path.open("w") as f:
             for i in range(200):
-                f.write(json.dumps({"ts": i, "total_bots": 1, "total_turns": i}) + "\n")
+                f.write(json.dumps({"ts": i, "total_agents": 1, "total_turns": i}) + "\n")
         rows = mgr.read_tail(10)
         assert len(rows) == 10
         assert rows[-1]["ts"] == 199

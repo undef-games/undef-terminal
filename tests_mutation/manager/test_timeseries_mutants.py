@@ -39,7 +39,7 @@ from undef.terminal.manager.timeseries.manager import TimeseriesManager
 
 def _make_get_status():
     status = MagicMock()
-    status.total_bots = 3
+    status.total_agents = 3
     status.running = 2
     status.completed = 1
     status.errors = 0

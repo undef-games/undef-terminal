@@ -11,18 +11,18 @@ from typing import TYPE_CHECKING, cast
 from fastapi import APIRouter, HTTPException, Request
 
 if TYPE_CHECKING:
-    from undef.terminal.manager.core import SwarmManager
-    from undef.terminal.manager.protocols import AccountPoolPlugin, IdentityStorePlugin, ManagedBotPlugin
+    from undef.terminal.manager.core import AgentManager
+    from undef.terminal.manager.protocols import AccountPoolPlugin, IdentityStorePlugin, ManagedAgentPlugin
 
 router = APIRouter()
 
 
-def require_manager(request: Request) -> SwarmManager:
-    """FastAPI dependency that returns the SwarmManager or raises 503."""
+def require_manager(request: Request) -> AgentManager:
+    """FastAPI dependency that returns the AgentManager or raises 503."""
     manager = getattr(request.app.state, "swarm_manager", None)
     if manager is None:
         raise HTTPException(status_code=503, detail="Swarm manager not initialized")
-    return cast("SwarmManager", manager)
+    return cast("AgentManager", manager)
 
 
 def get_identity_store(request: Request) -> IdentityStorePlugin | None:
@@ -37,6 +37,6 @@ def get_account_pool(request: Request) -> AccountPoolPlugin | None:
     return manager.account_pool
 
 
-def get_managed_bot_plugin(request: Request) -> ManagedBotPlugin | None:
-    """Return the managed-bot plugin (or None)."""
-    return cast("ManagedBotPlugin | None", getattr(request.app.state, "managed_bot_plugin", None))
+def get_managed_agent_plugin(request: Request) -> ManagedAgentPlugin | None:
+    """Return the managed-agent plugin (or None)."""
+    return cast("ManagedAgentPlugin | None", getattr(request.app.state, "managed_agent_plugin", None))

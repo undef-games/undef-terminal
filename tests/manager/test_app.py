@@ -14,8 +14,8 @@ from fastapi import APIRouter
 
 from undef.terminal.manager.app import create_manager_app
 from undef.terminal.manager.config import ManagerConfig
-from undef.terminal.manager.core import SwarmManager
-from undef.terminal.manager.models import BotStatusBase
+from undef.terminal.manager.core import AgentManager
+from undef.terminal.manager.models import AgentStatusBase
 
 
 @pytest.fixture
@@ -31,15 +31,15 @@ class TestCreateManagerApp:
     def test_returns_app_and_manager(self, config):
         app, manager = create_manager_app(config)
         assert app is not None
-        assert isinstance(manager, SwarmManager)
-        assert manager.bot_process_manager is not None
+        assert isinstance(manager, AgentManager)
+        assert manager.agent_process_manager is not None
 
-    def test_custom_bot_status_class(self, config):
-        class MyStatus(BotStatusBase):
+    def test_custom_agent_status_class(self, config):
+        class MyStatus(AgentStatusBase):
             extra: str = "hi"
 
-        app, manager = create_manager_app(config, bot_status_class=MyStatus)
-        assert manager._bot_status_class is MyStatus
+        app, manager = create_manager_app(config, agent_status_class=MyStatus)
+        assert manager._agent_status_class is MyStatus
 
     def test_extra_routers(self, config):
         extra = APIRouter()
@@ -56,10 +56,10 @@ class TestCreateManagerApp:
         assert resp.status_code == 200
         assert resp.json()["custom"] is True
 
-    def test_managed_bot_plugin(self, config):
+    def test_managed_agent_plugin(self, config):
         plugin = MagicMock()
-        app, manager = create_manager_app(config, managed_bot=plugin)
-        assert app.state.managed_bot_plugin is plugin
+        app, manager = create_manager_app(config, managed_agent=plugin)
+        assert app.state.managed_agent_plugin is plugin
 
     def test_cors_from_env(self, config):
         with patch.dict(os.environ, {"UTERM_CORS_ORIGINS": "http://example.com"}):
@@ -181,15 +181,15 @@ class TestAutoShutdown:
         assert manager._mcp_shutdown_task is None
 
     @pytest.mark.asyncio
-    async def test_check_auto_shutdown_with_active_bots(self, config):
-        """Test that auto-shutdown is deferred when active bots exist."""
+    async def test_check_auto_shutdown_with_active_agents(self, config):
+        """Test that auto-shutdown is deferred when active agents exist."""
         config.auto_shutdown_enabled = True
         app, manager = create_manager_app(config)
 
-        # Add an active bot
-        from undef.terminal.manager.models import BotStatusBase
+        # Add an active agent
+        from undef.terminal.manager.models import AgentStatusBase
 
-        manager.bots["bot-1"] = BotStatusBase(bot_id="bot-1", state="running")
+        manager.agents["agent-1"] = AgentStatusBase(agent_id="agent-1", state="running")
 
         await manager._check_auto_shutdown()
         assert manager._mcp_shutdown_task is None
@@ -259,20 +259,20 @@ class TestAutoShutdown:
         assert manager._server is None
 
     @pytest.mark.asyncio
-    async def test_auto_shutdown_after_active_bots_appear(self, config):
-        """Test that shutdown is aborted if active bots appear during grace period."""
+    async def test_auto_shutdown_after_active_agents_appear(self, config):
+        """Test that shutdown is aborted if active agents appear during grace period."""
         config.auto_shutdown_enabled = True
         config.auto_shutdown_grace_s = 0.1
         app, manager = create_manager_app(config)
 
-        # Start shutdown, then add an active bot before grace period ends
+        # Start shutdown, then add an active agent before grace period ends
         import asyncio
 
-        from undef.terminal.manager.models import BotStatusBase
+        from undef.terminal.manager.models import AgentStatusBase
 
         task = asyncio.create_task(manager._auto_shutdown_after(0.2))
         await asyncio.sleep(0.05)
-        manager.bots["bot-1"] = BotStatusBase(bot_id="bot-1", state="running")
+        manager.agents["agent-1"] = AgentStatusBase(agent_id="agent-1", state="running")
         await task
         # Server should not be marked for shutdown
         assert manager._server is None

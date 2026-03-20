@@ -99,7 +99,7 @@ class TestBridgeErrorHandlers:
         bot.session = session
 
         bridge = TermBridge.__new__(TermBridge)
-        bridge._bot = bot
+        bridge._worker = bot
         bridge._worker_id = "test"
 
         # Should not raise
@@ -111,7 +111,7 @@ class TestBridgeErrorHandlers:
         bot.request_step = AsyncMock(side_effect=RuntimeError("step failed"))
 
         bridge = TermBridge.__new__(TermBridge)
-        bridge._bot = bot
+        bridge._worker = bot
         bridge._worker_id = "test"
 
         await bridge._request_step()
@@ -124,7 +124,7 @@ class TestBridgeErrorHandlers:
         bot.session = session
 
         bridge = TermBridge.__new__(TermBridge)
-        bridge._bot = bot
+        bridge._worker = bot
         bridge._worker_id = "test"
 
         await bridge._set_size(80, 25)
@@ -216,7 +216,7 @@ class TestAttachSessionCp437Decode:
         bot.session = session
 
         bridge = TermBridge.__new__(TermBridge)
-        bridge._bot = bot
+        bridge._worker = bot
         bridge._worker_id = "test"
         bridge._latest_snapshot = {}
         bridge._send_q = asyncio.Queue()

@@ -14,17 +14,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from undef.telemetry import get_logger
 
 from undef.terminal.manager.auth import setup_auth
-from undef.terminal.manager.core import SwarmManager
-from undef.terminal.manager.process import BotProcessManager
+from undef.terminal.manager.core import AgentManager
+from undef.terminal.manager.process import AgentProcessManager
 from undef.terminal.manager.routes import router as swarm_router
 
 if TYPE_CHECKING:
     from undef.terminal.manager.config import ManagerConfig
-    from undef.terminal.manager.models import BotStatusBase
+    from undef.terminal.manager.models import AgentStatusBase
     from undef.terminal.manager.protocols import (
         AccountPoolPlugin,
         IdentityStorePlugin,
-        ManagedBotPlugin,
+        ManagedAgentPlugin,
         StatusUpdatePlugin,
         TimeseriesPlugin,
         WorkerRegistryPlugin,
@@ -36,24 +36,24 @@ logger = get_logger(__name__)
 def create_manager_app(
     config: ManagerConfig,
     *,
-    bot_status_class: type[BotStatusBase] | None = None,
+    agent_status_class: type[AgentStatusBase] | None = None,
     worker_registry: dict[str, WorkerRegistryPlugin] | None = None,
     account_pool: AccountPoolPlugin | None = None,
     identity_store: IdentityStorePlugin | None = None,
-    managed_bot: ManagedBotPlugin | None = None,
+    managed_agent: ManagedAgentPlugin | None = None,
     status_update: StatusUpdatePlugin | None = None,
     timeseries: TimeseriesPlugin | None = None,
     swarm_status_builder: Any | None = None,
     extra_routers: list[APIRouter] | None = None,
-) -> tuple[FastAPI, SwarmManager]:
-    """Create a FastAPI application wired to a generic SwarmManager.
+) -> tuple[FastAPI, AgentManager]:
+    """Create a FastAPI application wired to a generic AgentManager.
 
     Returns ``(app, manager)`` so the caller can further customise
     either before starting the server.
     """
-    manager = SwarmManager(
+    manager = AgentManager(
         config,
-        bot_status_class=bot_status_class,
+        agent_status_class=agent_status_class,
         account_pool=account_pool,
         identity_store=identity_store,
         status_update=status_update,
@@ -61,12 +61,12 @@ def create_manager_app(
         swarm_status_builder=swarm_status_builder,
     )
 
-    process_mgr = BotProcessManager(
+    process_mgr = AgentProcessManager(
         manager,
         worker_registry=worker_registry,
         log_dir=config.log_dir,
     )
-    manager.bot_process_manager = process_mgr
+    manager.agent_process_manager = process_mgr
 
     app = FastAPI(title=config.title)
     manager.app = app
@@ -87,8 +87,8 @@ def create_manager_app(
 
     # Wire state
     app.state.swarm_manager = manager
-    if managed_bot is not None:
-        app.state.managed_bot_plugin = managed_bot
+    if managed_agent is not None:
+        app.state.managed_agent_plugin = managed_agent
 
     # Include routes
     app.include_router(swarm_router)

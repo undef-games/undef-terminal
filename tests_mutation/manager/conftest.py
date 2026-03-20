@@ -9,8 +9,8 @@ from __future__ import annotations
 import pytest
 
 from undef.terminal.manager.config import ManagerConfig
-from undef.terminal.manager.core import SwarmManager
-from undef.terminal.manager.process import BotProcessManager
+from undef.terminal.manager.core import AgentManager
+from undef.terminal.manager.process import AgentProcessManager
 
 
 class _FakeWorkerPlugin:
@@ -22,7 +22,7 @@ class _FakeWorkerPlugin:
     def worker_module(self) -> str:
         return "test_worker_module"
 
-    def configure_worker_env(self, env, bot_status, manager, **kwargs):  # type: ignore[no-untyped-def]
+    def configure_worker_env(self, env, agent_status, manager, **kwargs):  # type: ignore[no-untyped-def]
         env["TEST_CUSTOM"] = "value"
 
 
@@ -37,15 +37,15 @@ def config(tmp_path):  # type: ignore[no-untyped-def]
 
 @pytest.fixture
 def manager(config):  # type: ignore[no-untyped-def]
-    return SwarmManager(config)
+    return AgentManager(config)
 
 
 @pytest.fixture
 def pm(manager, tmp_path):  # type: ignore[no-untyped-def]
-    process_manager = BotProcessManager(
+    process_manager = AgentProcessManager(
         manager,
         worker_registry={"test_game": _FakeWorkerPlugin()},
         log_dir=str(tmp_path / "logs"),
     )
-    manager.bot_process_manager = process_manager
+    manager.agent_process_manager = process_manager
     return process_manager

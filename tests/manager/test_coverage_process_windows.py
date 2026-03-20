@@ -16,8 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from undef.terminal.manager.config import ManagerConfig
-from undef.terminal.manager.core import SwarmManager
-from undef.terminal.manager.process import BotProcessManager
+from undef.terminal.manager.core import AgentManager
+from undef.terminal.manager.process import AgentProcessManager
 
 
 class FakeWorkerPlugin:
@@ -29,7 +29,7 @@ class FakeWorkerPlugin:
     def worker_module(self) -> str:
         return "test_module"
 
-    def configure_worker_env(self, env, bot_status, manager, **kwargs):
+    def configure_worker_env(self, env, agent_status, manager, **kwargs):
         pass
 
 
@@ -46,17 +46,17 @@ def config(tmp_path):
 
 @pytest.fixture
 def manager(config):
-    return SwarmManager(config)
+    return AgentManager(config)
 
 
 @pytest.fixture
 def pm(manager, tmp_path):
-    pm = BotProcessManager(
+    pm = AgentProcessManager(
         manager,
         worker_registry={"test_game": FakeWorkerPlugin()},
         log_dir=str(tmp_path / "logs"),
     )
-    manager.bot_process_manager = pm
+    manager.agent_process_manager = pm
     return pm
 
 
@@ -69,12 +69,12 @@ class TestStopProcessTreeWindowsPaths:
         with (
             patch("undef.terminal.manager.process.os.name", "nt"),
             patch.object(
-                BotProcessManager,
+                AgentProcessManager,
                 "_taskkill_process_tree",
                 new_callable=AsyncMock,
             ) as mock_taskkill,
         ):
-            await pm._stop_process_tree(bot_id="bot_win", pid=12345, process=None)
+            await pm._stop_process_tree(agent_id="agent_win", pid=12345, process=None)
 
         mock_taskkill.assert_awaited_once_with(12345)
 
@@ -84,14 +84,14 @@ class TestStopProcessTreeWindowsPaths:
         with (
             patch("undef.terminal.manager.process.os.name", "nt"),
             patch.object(
-                BotProcessManager,
+                AgentProcessManager,
                 "_taskkill_process_tree",
                 new_callable=AsyncMock,
                 side_effect=OSError("access denied"),
             ),
         ):
             # Should not raise
-            await pm._stop_process_tree(bot_id="bot_win", pid=12345, process=None)
+            await pm._stop_process_tree(agent_id="agent_win", pid=12345, process=None)
 
     @pytest.mark.asyncio
     async def test_sigkill_skipped_on_windows_after_sigterm_timeout(self, pm):
@@ -109,10 +109,10 @@ class TestStopProcessTreeWindowsPaths:
 
         with (
             patch("undef.terminal.manager.process.os.name", "nt"),
-            patch.object(BotProcessManager, "_wait_for_process_exit", side_effect=fake_wait),
-            patch.object(BotProcessManager, "_taskkill_process_tree", new_callable=AsyncMock) as mock_taskkill,
+            patch.object(AgentProcessManager, "_wait_for_process_exit", side_effect=fake_wait),
+            patch.object(AgentProcessManager, "_taskkill_process_tree", new_callable=AsyncMock) as mock_taskkill,
         ):
-            await pm._stop_process_tree(bot_id="bot_win", process=proc, timeout_s=0.01)
+            await pm._stop_process_tree(agent_id="agent_win", process=proc, timeout_s=0.01)
 
         # taskkill called once (initial terminate), not SIGKILL path
         assert mock_taskkill.call_count >= 1

@@ -23,7 +23,7 @@ class TestBridgeSendKeysSessionNone:
         bot.session = None  # no active session
 
         bridge = TermBridge.__new__(TermBridge)
-        bridge._bot = bot
+        bridge._worker = bot
         bridge._worker_id = "w1"
         bridge._send_q = asyncio.Queue()
 
@@ -36,7 +36,7 @@ class TestBridgeSendKeysSessionNone:
         bot.request_step = None  # not callable
 
         bridge = TermBridge.__new__(TermBridge)
-        bridge._bot = bot
+        bridge._worker = bot
         bridge._worker_id = "w1"
 
         await bridge._request_step()  # should not raise
@@ -47,7 +47,7 @@ class TestBridgeSendKeysSessionNone:
         bot.request_step = AsyncMock(side_effect=RuntimeError("step failed"))
 
         bridge = TermBridge.__new__(TermBridge)
-        bridge._bot = bot
+        bridge._worker = bot
         bridge._worker_id = "w1"
 
         await bridge._request_step()  # should not raise
@@ -58,7 +58,7 @@ class TestBridgeSendKeysSessionNone:
         bot.session = None
 
         bridge = TermBridge.__new__(TermBridge)
-        bridge._bot = bot
+        bridge._worker = bot
         bridge._worker_id = "w1"
 
         await bridge._set_size(80, 25)  # should not raise
@@ -70,7 +70,7 @@ class TestBridgeSendKeysSessionNone:
         bot.session.set_size = AsyncMock(side_effect=RuntimeError("resize failed"))
 
         bridge = TermBridge.__new__(TermBridge)
-        bridge._bot = bot
+        bridge._worker = bot
         bridge._worker_id = "w1"
 
         await bridge._set_size(80, 25)  # should not raise
@@ -81,7 +81,7 @@ class TestBridgeSendKeysSessionNone:
         bot.session = None
 
         bridge = TermBridge.__new__(TermBridge)
-        bridge._bot = bot
+        bridge._worker = bot
         bridge._worker_id = "w1"
         bridge._latest_snapshot = None
 
@@ -96,7 +96,7 @@ class TestBridgeSendKeysSessionNone:
         bot.session.emulator = None
 
         bridge = TermBridge.__new__(TermBridge)
-        bridge._bot = bot
+        bridge._worker = bot
         bridge._worker_id = "w1"
         bridge._latest_snapshot = {"screen": "test", "ts": 1.0}
 
@@ -112,7 +112,7 @@ class TestBridgeSendKeysSessionNone:
         bot.session.send = AsyncMock(side_effect=RuntimeError("send failed"))
 
         bridge = TermBridge.__new__(TermBridge)
-        bridge._bot = bot
+        bridge._worker = bot
         bridge._worker_id = "w1"
         bridge._send_q = asyncio.Queue()
 
@@ -131,7 +131,7 @@ class TestBridgeSetHijackedRaises:
         bot.set_hijacked = AsyncMock(side_effect=RuntimeError("callback error"))
 
         bridge = TermBridge.__new__(TermBridge)
-        bridge._bot = bot
+        bridge._worker = bot
         bridge._worker_id = "w1"
         bridge._send_q = asyncio.Queue(maxsize=1000)
 
@@ -152,7 +152,7 @@ class TestBridgeSetHijackedRaises:
         bot.set_hijacked = None  # not callable
 
         bridge = TermBridge.__new__(TermBridge)
-        bridge._bot = bot
+        bridge._worker = bot
         bridge._worker_id = "w1"
         bridge._send_q = asyncio.Queue(maxsize=1000)
 

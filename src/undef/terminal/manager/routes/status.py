@@ -13,21 +13,21 @@ from fastapi import Depends
 from undef.terminal.manager.routes.models import require_manager, router
 
 if TYPE_CHECKING:
-    from undef.terminal.manager.core import SwarmManager
+    from undef.terminal.manager.core import AgentManager
 
 
 @router.get("/swarm/status")
-async def status(manager: SwarmManager = Depends(require_manager)) -> Any:  # noqa: B008
+async def status(manager: AgentManager = Depends(require_manager)) -> Any:  # noqa: B008
     return manager.get_swarm_status().model_dump()
 
 
 @router.get("/swarm/timeseries/info")
-async def timeseries_info(manager: SwarmManager = Depends(require_manager)) -> Any:  # noqa: B008
+async def timeseries_info(manager: AgentManager = Depends(require_manager)) -> Any:  # noqa: B008
     return manager.get_timeseries_info()
 
 
 @router.get("/swarm/timeseries/recent")
-async def timeseries_recent(limit: int = 200, manager: SwarmManager = Depends(require_manager)) -> Any:  # noqa: B008
+async def timeseries_recent(limit: int = 200, manager: AgentManager = Depends(require_manager)) -> Any:  # noqa: B008
     return {
         "rows": manager.get_timeseries_recent(limit=limit),
         "info": manager.get_timeseries_info(),
@@ -35,5 +35,5 @@ async def timeseries_recent(limit: int = 200, manager: SwarmManager = Depends(re
 
 
 @router.get("/swarm/timeseries/summary")
-async def timeseries_summary(window_minutes: int = 120, manager: SwarmManager = Depends(require_manager)) -> Any:  # noqa: B008
+async def timeseries_summary(window_minutes: int = 120, manager: AgentManager = Depends(require_manager)) -> Any:  # noqa: B008
     return manager.get_timeseries_summary(window_minutes=window_minutes)

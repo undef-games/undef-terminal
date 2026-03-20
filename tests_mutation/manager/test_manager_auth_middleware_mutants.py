@@ -13,8 +13,8 @@ import pytest
 
 from undef.terminal.manager.auth import TokenAuthMiddleware, setup_auth
 from undef.terminal.manager.config import ManagerConfig
-from undef.terminal.manager.core import SwarmManager
-from undef.terminal.manager.models import BotStatusBase
+from undef.terminal.manager.core import AgentManager
+from undef.terminal.manager.models import AgentStatusBase
 
 # ===========================================================================
 # Fixtures
@@ -32,25 +32,25 @@ def config(tmp_path):
 
 @pytest.fixture
 def manager(config):
-    mgr = SwarmManager(config)
+    mgr = AgentManager(config)
     pm = MagicMock()
     pm.cancel_spawn = AsyncMock(return_value=False)
     pm.start_spawn_swarm = AsyncMock()
-    pm.spawn_bot = AsyncMock(return_value="bot_000")
-    pm.spawn_swarm = AsyncMock(return_value=["bot_000"])
-    pm.kill_bot = AsyncMock()
+    pm.spawn_agent = AsyncMock(return_value="agent_000")
+    pm.spawn_swarm = AsyncMock(return_value=["agent_000"])
+    pm.kill_agent = AsyncMock()
     pm.monitor_processes = AsyncMock()
-    mgr.bot_process_manager = pm
+    mgr.agent_process_manager = pm
     return mgr
 
 
 @pytest.fixture
-def bot() -> BotStatusBase:
-    return BotStatusBase(bot_id="bot_001", state="running")
+def agent() -> AgentStatusBase:
+    return AgentStatusBase(agent_id="agent_001", state="running")
 
 
 # ===========================================================================
-# core.py — SwarmManager.__init__
+# core.py — AgentManager.__init__
 # ===========================================================================
 
 

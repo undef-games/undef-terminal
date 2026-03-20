@@ -9,7 +9,7 @@ from __future__ import annotations
 from undef.terminal.manager.protocols import (
     AccountPoolPlugin,
     IdentityStorePlugin,
-    ManagedBotPlugin,
+    ManagedAgentPlugin,
     StatusUpdatePlugin,
     TimeseriesPlugin,
     WorkerRegistryPlugin,
@@ -21,7 +21,7 @@ def test_protocols_are_runtime_checkable():
     for proto in (
         AccountPoolPlugin,
         IdentityStorePlugin,
-        ManagedBotPlugin,
+        ManagedAgentPlugin,
         StatusUpdatePlugin,
         TimeseriesPlugin,
         WorkerRegistryPlugin,
