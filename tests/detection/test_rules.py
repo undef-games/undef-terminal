@@ -83,6 +83,11 @@ class TestToPromptPatterns:
         patterns = rs.to_prompt_patterns()
         assert patterns[0]["regex"] == r"Sector\s+\d+"
 
+    def test_unknown_match_mode_returns_none(self) -> None:
+        # match_mode is a Literal — bypass validation to hit the implicit fall-through branch
+        rule = RegexRule.model_construct(pattern="x", match_mode="unknown")  # type: ignore[arg-type]
+        assert rule.to_regex() is None
+
     def test_exact_pattern_round_trip(self) -> None:
         rs = RuleSet(
             game="test",
