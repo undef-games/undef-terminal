@@ -439,7 +439,7 @@ describe("message dispatch", () => {
     getWs().open();
     sendMessage({ type: "hello", worker_online: true });
     sendMessage({ type: "worker_disconnected" });
-    expect(q(container, "statustext")?.textContent).toBe("Worker offline");
+    expect(q(container, "statustext")?.textContent).toBe("Waking…");
   });
 
   it("input_mode_changed updates status", () => {
@@ -755,9 +755,7 @@ describe("local echo and activity indicator", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = widget as any;
 
-    // Verify state variables exist for local echo feature
-    expect(w._lastLocalEcho).toBeDefined();
-    expect(w._lastLocalEchoTimer).toBeNull();
+    // Verify state variables exist for activity indicator feature
     expect(w._activityFlashTimer).toBeNull();
     expect(w._indicatorStyleCache).toBeNull();
     expect(w._statusDotElement).toBeNull();
@@ -804,15 +802,13 @@ describe("local echo and activity indicator", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = widget as any;
 
-    // Set up timers
-    w._lastLocalEchoTimer = setTimeout(() => {}, 500);
+    // Set up timer
     w._activityFlashTimer = setTimeout(() => {}, 200);
 
-    // Dispose should clear them
+    // Dispose should clear it
     widget.dispose();
 
     // After dispose, timers should be null and cache cleared
-    expect(w._lastLocalEchoTimer).toBeNull();
     expect(w._activityFlashTimer).toBeNull();
     expect(w._statusDotElement).toBeNull();
     expect(w._indicatorStyleCache).toBeNull();

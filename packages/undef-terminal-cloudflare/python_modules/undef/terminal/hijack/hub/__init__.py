@@ -6,7 +6,13 @@ from undef.terminal.hijack.hub.core import (
     BrowserRoleResolutionError,
     BrowserRoleResolver,
     HijackStateCallback,
+    ResumeCallback,
     TermHub,
+)
+from undef.terminal.hijack.hub.resume import (
+    InMemoryResumeStore,
+    ResumeSession,
+    ResumeTokenStore,
 )
 
 if TYPE_CHECKING:
@@ -81,6 +87,10 @@ __all__ = [
     "BrowserRoleResolutionError",
     "BrowserRoleResolver",
     "HijackStateCallback",
+    "InMemoryResumeStore",
+    "ResumeCallback",
+    "ResumeSession",
+    "ResumeTokenStore",
     "TermHub",
     "TermHubProtocol",
 ]

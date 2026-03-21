@@ -35,6 +35,10 @@ Requires-Dist: uvicorn>=0.24; extra == "cli"
 Requires-Dist: websockets>=12.0; extra == "cli"
 Provides-Extra: client
 Requires-Dist: httpx>=0.27; extra == "client"
+Provides-Extra: manager
+Requires-Dist: fastapi>=0.110; extra == "manager"
+Requires-Dist: uvicorn>=0.24; extra == "manager"
+Requires-Dist: pyyaml>=6.0; extra == "manager"
 Provides-Extra: all
 Requires-Dist: fastapi>=0.110; extra == "all"
 Requires-Dist: asyncssh>=2.14; extra == "all"
@@ -44,6 +48,7 @@ Requires-Dist: websockets>=12.0; extra == "all"
 Requires-Dist: pyjwt>=2.9; extra == "all"
 Requires-Dist: httpx>=0.27; extra == "all"
 Requires-Dist: fastmcp>=2.0; extra == "all"
+Requires-Dist: pyyaml>=6.0; extra == "all"
 Provides-Extra: mcp
 Requires-Dist: fastmcp>=2.0; extra == "mcp"
 
@@ -51,7 +56,7 @@ Requires-Dist: fastmcp>=2.0; extra == "mcp"
 
 Shared terminal I/O primitives and WebSocket proxy infrastructure for the undef ecosystem.
 
-**Highlights:** WebSocket ↔ telnet/SSH proxy · hijack/observe control plane · browser role system (viewer/operator/admin) · open/shared input mode · quick-connect ephemeral sessions (`GET /app/connect`, `POST /api/connect`) · `ShellSessionConnector` for in-process shell sessions · JWT auth · 1225+ tests at 100% branch coverage
+**Highlights:** WebSocket ↔ telnet/SSH proxy · hijack/observe control plane · browser role system (viewer/operator/admin) · open/shared input mode · WS session resumption (role + hijack survive reconnect) · quick-connect ephemeral sessions (`GET /app/connect`, `POST /api/connect`) · `ShellSessionConnector` for in-process shell sessions · JWT auth · 2000+ tests at 100% branch coverage
 
 For Cloudflare Workers deployment, see [`undef-terminal-cloudflare`](packages/undef-terminal-cloudflare/README.md) — a companion package that runs the control plane on Durable Objects with CF Access JWT support.
 
@@ -163,6 +168,10 @@ to read-only (`viewer`).
 If `resolve_browser_role` raises an exception, the browser WebSocket is rejected
 and closed. Resolver failures do not fall back to `viewer`.
 
+WebSocket session resumption is opt-in on raw `TermHub` instances. Resume tokens
+are opaque session handles that restore the prior browser role unless the
+consumer supplies stricter validation via `on_resume`.
+
 ### Frontend — UndefHijack
 
 Embed the hijack control widget in any HTML page:
@@ -225,6 +234,7 @@ This is the canonical hosted-app example for the library. It demonstrates:
 - named sessions above `TermHub`
 - browser session pages and operator pages
 - server-side role resolution and policy
+- WS session resumption with in-memory token storage
 - hosted connectors (`shell`, `telnet`, `ssh`)
 - session APIs, mode switching, and optional file-backed recording
 
@@ -412,6 +422,7 @@ FastAPI on `:27780`, CF worker on `:27788`.
 ## Quality Guarantees
 
 - Test gate runs at **100% branch coverage** (`--cov-branch`), enforced via `addopts` in `pyproject.toml`.
+- Memory regressions caught in **nightly CI** via memray profiling (stress tests for hot paths).
 - Pre-commit hooks enforce ruff, mypy strict, ty, bandit, and biome on every commit.
 - Security audit via `pip-audit` and `bandit`; timing-safe token comparison in auth paths.
 - All input size limits enforced at boundaries; fail-closed auth on misconfiguration.
@@ -425,6 +436,7 @@ FastAPI on `:27780`, CF worker on `:27788`.
 
 ## Docs
 
+- [Testing Guide](https://github.com/undef-games/undef-terminal/blob/main/docs/TESTING.md)
 - [Operations Runbook](https://github.com/undef-games/undef-terminal/blob/main/docs/operations/runbook.md)
 - [Service SLOs](https://github.com/undef-games/undef-terminal/blob/main/docs/operations/slo.md)
 - [Protocol Matrix](https://github.com/undef-games/undef-terminal/blob/main/docs/protocol-matrix.md)

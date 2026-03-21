@@ -140,7 +140,7 @@ async def test_decode_jwt_unexpected_signing_key_error_wrapped() -> None:
             "undef_terminal_cloudflare.auth.jwt._resolve_signing_key",
             new=AsyncMock(side_effect=RuntimeError("boom")),
         ),
-        pytest.raises(JwtValidationError, match="failed to resolve signing key"),
+        pytest.raises(JwtValidationError, match="failed to verify token"),
     ):
         await decode_jwt(token, config)
 

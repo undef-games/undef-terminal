@@ -58,8 +58,6 @@ export class UndefHijack {
         this._resumeToken = null;
         this._resumeSupported = false;
         this._mobileKeysVisible = false;
-        this._lastLocalEcho = "";
-        this._lastLocalEchoTimer = null;
         this._activityFlashTimer = null;
         this._indicatorStyleCache = null;
         this._statusDotElement = null;
@@ -110,10 +108,7 @@ export class UndefHijack {
     /** Tear down entirely: xterm, WebSocket, ResizeObserver, and DOM. */
     dispose() {
         this.disconnect(); // handles _ro, _heartbeatTimer, _ws, _reconnectTimer
-        if (this._lastLocalEchoTimer) {
-            clearTimeout(this._lastLocalEchoTimer);
-            this._lastLocalEchoTimer = null;
-        }
+        this._stopReconnectAnim();
         if (this._activityFlashTimer) {
             clearTimeout(this._activityFlashTimer);
             this._activityFlashTimer = null;
@@ -282,13 +277,12 @@ export class UndefHijack {
         this._term.onData((data) => {
             if (!this._ws || this._ws.readyState !== WebSocket.OPEN) {
                 this._nudgeReconnect();
-                this._startReconnectAnim();
                 return;
             }
             if (this._inputMode !== "open" && !this._hijackedByMe)
                 return;
-            // Echo locally immediately and show activity indicator
-            this._echoInput(data);
+            // Show activity indicator (no local echo — let server echo drive the display)
+            this._showActivityIndicator();
             // Send to server asynchronously
             this._wsSend({ type: "input", data });
         });
@@ -411,6 +405,7 @@ export class UndefHijack {
         const delaySec = delays[Math.min(attempt, delays.length - 1)] ?? 30;
         this._reconnectAttempt = attempt + 1;
         this._setStatus("bad", `Reconnecting in ${delaySec}s…`);
+        this._startReconnectAnim();
         this._reconnectTimer = setTimeout(() => {
             this._reconnectTimer = null;
             this._connectWs();
@@ -501,27 +496,9 @@ export class UndefHijack {
             this._activityFlashTimer = null;
         }, 200);
     }
-    /** Echo input locally to xterm and show activity indicator. */
-    _echoInput(data) {
-        // Write keystroke immediately to xterm (optimistic echo)
-        try {
-            this._ensureTerm().write(data);
-        }
-        catch (_) {
-            // If xterm write fails, just send to server
-        }
-        // Track the local echo to deduplicate server response
-        this._lastLocalEcho = data;
-        // Clear the tracking after 500ms (timeout in case server doesn't echo)
-        if (this._lastLocalEchoTimer)
-            clearTimeout(this._lastLocalEchoTimer);
-        this._lastLocalEchoTimer = setTimeout(() => {
-            this._lastLocalEcho = "";
-            this._lastLocalEchoTimer = null;
-        }, 500);
-        // Show activity indicator
-        this._showActivityIndicator();
-    }
+    // _echoInput removed: server echo drives the terminal display.
+    // Local echo caused double-rendering because the dedup (exact string match)
+    // fails when the remote host wraps the echo in ANSI sequences.
     _buildMobileKeys() {
         const container = this._q("mobilekeys");
         if (!container)
@@ -546,9 +523,7 @@ export class UndefHijack {
                     return;
                 if (!this._ws || this._ws.readyState !== WebSocket.OPEN)
                     return;
-                // Echo locally and show activity indicator
-                this._echoInput(data);
-                // Send to server asynchronously
+                this._showActivityIndicator();
                 this._wsSend({ type: "input", data });
             });
             container.appendChild(btn);
@@ -560,15 +535,8 @@ export class UndefHijack {
             case "term":
                 this._workerOnline = true;
                 if (msg.data) {
-                    const incomingData = msg.data;
-                    // Deduplicate: if this matches our local echo, skip rendering to avoid double-echo
-                    if (incomingData === this._lastLocalEcho) {
-                        this._lastLocalEcho = "";
-                        // Still mark as online, but don't render
-                        break;
-                    }
                     try {
-                        this._ensureTerm().write(incomingData);
+                        this._ensureTerm().write(msg.data);
                     }
                     catch (_) { }
                 }
@@ -685,22 +653,22 @@ export class UndefHijack {
     _updateStatus() {
         const connected = !!(this._ws && this._ws.readyState === WebSocket.OPEN);
         if (!connected) {
-            this._setStatus("bad", "Disconnected");
-        }
-        else if (this._hijackedByMe) {
-            this._setStatus("warn", "Hijacked (you)");
-        }
-        else if (this._hijacked) {
-            this._setStatus("bad", "Hijacked (other)");
+            this._setStatus("bad", "Disconnected"); // red — WS down
         }
         else if (!this._workerOnline) {
-            this._setStatus("bad", "Worker offline");
+            this._setStatus("warn", "Waking…"); // orange — connected but worker not yet online (DO waking)
+        }
+        else if (this._hijackedByMe) {
+            this._setStatus("live", "Hijacked (you)"); // green — active hijack by this browser
+        }
+        else if (this._hijacked) {
+            this._setStatus("warn", "Hijacked (other)"); // orange — someone else has control
         }
         else if (this._inputMode === "open") {
-            this._setStatus("live", "Connected (shared)");
+            this._setStatus("live", "Connected (shared)"); // green — active
         }
         else {
-            this._setStatus("live", "Connected (watching)");
+            this._setStatus("live", "Connected (watching)"); // green — active
         }
         // Show/hide text-input row based on whether we can send input
         const canInput = this._hijackedByMe || this._inputMode === "open";
@@ -844,9 +812,7 @@ export class UndefHijack {
                     return;
                 // Unescape \\r → \r, \\n → \n, \\t → \t, \\e → ESC
                 const data = raw.replace(/\\r/g, "\r").replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\e/g, "\x1b");
-                // Echo locally and show activity indicator
-                this._echoInput(data);
-                // Send to server asynchronously
+                this._showActivityIndicator();
                 this._wsSend({ type: "input", data });
                 inputField.value = "";
                 try {

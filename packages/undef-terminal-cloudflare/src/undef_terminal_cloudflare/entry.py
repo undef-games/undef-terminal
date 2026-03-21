@@ -5,13 +5,35 @@ import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
-# Ensure the current directory and python_modules are in sys.path for Cloudflare runtime.
-# Pyodide loads modules from /session/metadata/ and needs explicit path configuration.
-_current_file = Path(__file__).resolve()
-_current_dir = str(_current_file.parent)
-_python_modules_dir = str(Path(__file__).resolve().parent.parent.parent / "python_modules")
+# Import handler base classes directly from workers — these MUST resolve to the
+# real CF runtime classes (not stubs) so Cloudflare's Pyodide validation phase
+# detects Default/SessionRuntime as registered event handlers.
+_DurableObject: type = object  # type: ignore[assignment]
+try:
+    from workers import DurableObject as _DurableObject  # type: ignore[import-not-found]
+    from workers import (
+        Response,  # type: ignore[import-not-found]
+        WorkerEntrypoint,  # type: ignore[import-not-found]
+    )
+except ImportError:
+    # Outside CF runtime (tests / local dev): defer to cf_types (loaded below).
+    Response = None  # type: ignore[assignment]
+    WorkerEntrypoint = None  # type: ignore[assignment]
 
-for _path in [_current_dir, _python_modules_dir]:
+# Ensure the current directory, its parent, and python_modules are in sys.path
+# for Cloudflare runtime.  Pyodide loads modules from /session/metadata/ and
+# needs explicit path configuration.
+_current_file = Path(__file__).resolve()
+_current_dir = str(_current_file.parent)  # .../undef_terminal_cloudflare/
+_parent_dir = str(_current_file.parent.parent)  # contains undef_terminal_cloudflare/ as package
+_python_modules_dir = str(_current_file.parent.parent.parent / "python_modules")
+
+# In CF runtime, wrangler may flatten src/ so that entry.py is at /session/
+# and the package is at /session/undef_terminal_cloudflare/.  Add /session/
+# (the grandparent) as well as the typical /session/metadata/ parent.
+_import_error: str | None = None
+
+for _path in [_parent_dir, _current_dir, _python_modules_dir]:
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
@@ -21,11 +43,14 @@ try:
         decode_jwt,
         extract_bearer_or_cookie,
     )
-    from undef_terminal_cloudflare.cf_types import Response, WorkerEntrypoint, json_response
+    from undef_terminal_cloudflare.cf_types import json_response
     from undef_terminal_cloudflare.config import CloudflareConfig
     from undef_terminal_cloudflare.do.session_runtime import SessionRuntime
     from undef_terminal_cloudflare.state.registry import list_kv_sessions
     from undef_terminal_cloudflare.ui.assets import read_asset_text, serve_asset
+
+    if Response is None:  # workers module wasn't available (test env)
+        from undef_terminal_cloudflare.cf_types import Response, WorkerEntrypoint  # type: ignore[assignment,no-redef]
 except Exception:
     try:
         from auth.jwt import (  # type: ignore[import-not-found]
@@ -33,24 +58,47 @@ except Exception:
             decode_jwt,
             extract_bearer_or_cookie,
         )
-        from cf_types import Response, WorkerEntrypoint, json_response  # type: ignore[import-not-found]
+        from cf_types import json_response  # type: ignore[import-not-found]
         from config import CloudflareConfig  # type: ignore[import-not-found]
         from do.session_runtime import SessionRuntime  # type: ignore[import-not-found]
         from state.registry import list_kv_sessions  # type: ignore[import-not-found]
         from ui.assets import read_asset_text, serve_asset  # type: ignore[import-not-found]
+
+        if Response is None:  # workers module wasn't available
+            from cf_types import Response, WorkerEntrypoint  # type: ignore[assignment,no-redef,import-not-found]
     except Exception:
-        # Last resort for Pyodide validation phase - use placeholder objects
+        # Last resort for Pyodide validation phase — stubs for non-handler imports.
+        # WorkerEntrypoint/Response/DurableObject are imported directly from workers
+        # above, so handler registration always succeeds.
+        _import_error = f"paths={sys.path[:5]}"
         JwtValidationError = Exception  # type: ignore[assignment]
-        decode_jwt = lambda *a, **k: None  # type: ignore[assignment]
-        extract_bearer_or_cookie = lambda *a, **k: None  # type: ignore[assignment]
-        Response = object  # type: ignore[assignment]
-        WorkerEntrypoint = object  # type: ignore[assignment]
-        json_response = lambda *a, **k: None  # type: ignore[assignment]
+
+        def decode_jwt(*_a: object, **_k: object) -> None:  # type: ignore[assignment]
+            return None
+
+        def extract_bearer_or_cookie(*_a: object, **_k: object) -> None:  # type: ignore[assignment]
+            return None
+
+        def json_response(*_a: object, **_k: object) -> None:  # type: ignore[assignment]
+            return None
+
         CloudflareConfig = object  # type: ignore[assignment]
-        SessionRuntime = object  # type: ignore[assignment]
-        list_kv_sessions = lambda *a, **k: None  # type: ignore[assignment]
-        read_asset_text = lambda *a, **k: None  # type: ignore[assignment]
-        serve_asset = lambda *a, **k: None  # type: ignore[assignment]
+
+        class SessionRuntime(_DurableObject):  # type: ignore[assignment]  # pragma: no cover
+            """Stub DO for validation phase — real impl loaded at runtime."""
+
+            async def fetch(self, _request):  # type: ignore[override]
+                return Response.json({"error": "not initialized"}, status=503)  # type: ignore[union-attr]
+
+        def list_kv_sessions(*_a: object, **_k: object) -> None:  # type: ignore[assignment]
+            return None
+
+        def read_asset_text(*_a: object, **_k: object) -> None:  # type: ignore[assignment]
+            return None
+
+        def serve_asset(*_a: object, **_k: object) -> None:  # type: ignore[assignment]
+            return None
+
 
 __all__ = ["Default", "SessionRuntime", "UndefTerminalCloudflareWorker"]
 
