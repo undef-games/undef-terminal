@@ -20,7 +20,7 @@ from undef.terminal.detection import (
 def test_end_to_end_detect_and_extract(kv_rules_file, snap_factory) -> None:
     """Full pipeline: rules.json -> DetectionEngine -> process_screen -> KV data."""
     engine = DetectionEngine(kv_rules_file)
-    result = engine.process_screen(snap_factory("Sector 42 : Credits: 15,000\nCommand prompt"))
+    result = engine._sync_process_screen(snap_factory("Sector 42 : Credits: 15,000\nCommand prompt"))
     assert result is not None
     assert result.prompt_id == "prompt.sector"
     assert result.kv_data["sector"] == 42
@@ -29,13 +29,13 @@ def test_end_to_end_detect_and_extract(kv_rules_file, snap_factory) -> None:
 
 def test_no_match_returns_none(simple_rules_file, snap_factory) -> None:
     engine = DetectionEngine(simple_rules_file)
-    assert engine.process_screen(snap_factory("Goodbye world")) is None
+    assert engine._sync_process_screen(snap_factory("Goodbye world")) is None
 
 
 def test_disabled_engine_returns_none(simple_rules_file, snap_factory) -> None:
     engine = DetectionEngine(simple_rules_file)
     engine.enabled = False
-    assert engine.process_screen(snap_factory("Hello there")) is None
+    assert engine._sync_process_screen(snap_factory("Hello there")) is None
 
 
 def test_reload_mid_session(rules_file_factory, snap_factory) -> None:
@@ -44,14 +44,14 @@ def test_reload_mid_session(rules_file_factory, snap_factory) -> None:
         [{"id": "p.a", "match": {"pattern": "AAA", "match_mode": "contains"}, "input_type": "single_key"}]
     )
     engine = DetectionEngine(f1)
-    assert engine.process_screen(snap_factory("AAA"))
-    assert not engine.process_screen(snap_factory("BBB"))
+    assert engine._sync_process_screen(snap_factory("AAA"))
+    assert not engine._sync_process_screen(snap_factory("BBB"))
     f2 = rules_file_factory(
         [{"id": "p.b", "match": {"pattern": "BBB", "match_mode": "contains"}, "input_type": "single_key"}]
     )
     engine.reload_rules(f2)
-    assert not engine.process_screen(snap_factory("AAA"))
-    assert engine.process_screen(snap_factory("BBB"))
+    assert not engine._sync_process_screen(snap_factory("AAA"))
+    assert engine._sync_process_screen(snap_factory("BBB"))
 
 
 def test_normalizer_affects_fingerprint(simple_rules_file, snap_factory) -> None:
@@ -59,8 +59,8 @@ def test_normalizer_affects_fingerprint(simple_rules_file, snap_factory) -> None
     engine = DetectionEngine(simple_rules_file, normalizer=lambda t: t.replace("X", ""))
     s1 = snap_factory("Hello there X1")
     s2 = snap_factory("Hello there X2")
-    r1 = engine.process_screen(s1)
-    r2 = engine.process_screen(s2)
+    r1 = engine._sync_process_screen(s1)
+    r2 = engine._sync_process_screen(s2)
     assert r1 is not None and r2 is not None
 
 
@@ -88,7 +88,7 @@ def test_all_public_exports_importable() -> None:
 def test_detection_result_has_match_metadata(simple_rules_file, snap_factory) -> None:
     """PromptDetection includes the PromptMatch that produced it."""
     engine = DetectionEngine(simple_rules_file)
-    result = engine.process_screen(snap_factory("Hello there"))
+    result = engine._sync_process_screen(snap_factory("Hello there"))
     assert result is not None
     assert result.match is not None
     assert result.match.prompt_id == result.prompt_id
@@ -107,6 +107,6 @@ def test_multiple_patterns_first_match_wins(rules_file_factory, snap_factory) ->
         ]
     )
     engine = DetectionEngine(f)
-    result = engine.process_screen(snap_factory("Hello there"))
+    result = engine._sync_process_screen(snap_factory("Hello there"))
     assert result is not None
     assert result.prompt_id == "p.first"

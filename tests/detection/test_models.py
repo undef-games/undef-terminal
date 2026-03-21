@@ -66,3 +66,13 @@ def test_diagnostics_with_failed_matches() -> None:
         regex_matched_but_failed=[{"id": "p.x", "reason": "cursor_miss"}],
     )
     assert len(diag.regex_matched_but_failed) == 1
+
+
+def test_prompt_detection_is_idle_defaults_none() -> None:
+    d = PromptDetection(prompt_id="p.x", input_type="single_key")
+    assert d.is_idle is None
+
+
+def test_prompt_detection_buffer_defaults_none() -> None:
+    d = PromptDetection(prompt_id="p.x", input_type="single_key")
+    assert d.buffer is None

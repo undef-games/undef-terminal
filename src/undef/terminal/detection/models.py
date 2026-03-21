@@ -33,6 +33,8 @@ class PromptDetection(BaseModel):
     input_type: str
     kv_data: dict[str, Any] = Field(default_factory=dict)
     match: PromptMatch | None = None
+    is_idle: bool | None = None
+    buffer: Any | None = None
 
 
 class PromptDetectionDiagnostics(BaseModel):
