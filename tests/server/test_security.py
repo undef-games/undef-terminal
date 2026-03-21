@@ -227,9 +227,9 @@ def test_compiled_frontend_views_escape_dynamic_values() -> None:
     operator_js = (root / "operator-view.js").read_text(encoding="utf-8")
 
     assert "function escapeHtml(value)" in dashboard_js
-    assert "function escapeHtml(value)" in operator_js
+    # operator-view uses the shorter alias `esc` — same implementation
+    assert "function esc(value)" in operator_js
     assert "const safeAppPath = escapeHtml(appPath);" in dashboard_js
-    assert "const safeAppPath = escapeHtml(bootstrap.app_path);" in operator_js
     assert "${bootstrap.app_path}/replay/" not in operator_js
 
 

@@ -261,9 +261,12 @@ class Default(WorkerEntrypoint):
                 )
             except Exception:
                 body = {}
-            session_id = f"connect-{uuid.uuid4().hex[:12]}"
-            display_name = str(body.get("display_name") or session_id)
             connector_type = str(body.get("connector_type", "shell"))
+            if connector_type == "ushell":
+                session_id = f"ushell-{uuid.uuid4().hex[:12]}"
+            else:
+                session_id = f"connect-{uuid.uuid4().hex[:12]}"
+            display_name = str(body.get("display_name") or session_id)
             input_mode = str(body.get("input_mode", "open"))
 
             # Write to KV so it shows in the dashboard
