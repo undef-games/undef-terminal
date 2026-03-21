@@ -51,10 +51,17 @@ function sidebarHtml(s: SessionSummary | null, appPath: string, sessionId: strin
 
     <div class="small" style="text-transform:uppercase;letter-spacing:0.06em">Actions</div>
     <div class="toolbar" style="margin:0">
-      <button class="btn" id="btn-analyze">Analyze screen</button>
       <a class="btn" href="${esc(appPath)}/replay/${encodeURIComponent(sessionId)}">View replay</a>
       <button class="btn" id="btn-clear">Clear runtime</button>
     </div>
+
+    <details style="margin-top:2px">
+      <summary class="small" style="cursor:pointer;user-select:none">Advanced</summary>
+      <div class="toolbar" style="margin:6px 0 0">
+        <button class="btn" id="btn-analyze">Analyze screen</button>
+      </div>
+      <div class="small" style="margin-top:4px;color:var(--muted)">AI-readable description of current terminal contents.</div>
+    </details>
 
     <div class="small" style="text-transform:uppercase;letter-spacing:0.06em">Session Info</div>
     <div>
