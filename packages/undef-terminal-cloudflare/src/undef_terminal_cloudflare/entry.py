@@ -46,7 +46,7 @@ try:
     from undef_terminal_cloudflare.cf_types import json_response
     from undef_terminal_cloudflare.config import CloudflareConfig
     from undef_terminal_cloudflare.do.session_runtime import SessionRuntime
-    from undef_terminal_cloudflare.state.registry import list_kv_sessions
+    from undef_terminal_cloudflare.state.registry import delete_kv_session, list_kv_sessions
     from undef_terminal_cloudflare.ui.assets import read_asset_text, serve_asset
 
     if Response is None:  # workers module wasn't available (test env)
@@ -61,7 +61,7 @@ except Exception:
         from cf_types import json_response  # type: ignore[import-not-found]
         from config import CloudflareConfig  # type: ignore[import-not-found]
         from do.session_runtime import SessionRuntime  # type: ignore[import-not-found]
-        from state.registry import list_kv_sessions  # type: ignore[import-not-found]
+        from state.registry import delete_kv_session, list_kv_sessions  # type: ignore[import-not-found]
         from ui.assets import read_asset_text, serve_asset  # type: ignore[import-not-found]
 
         if Response is None:  # workers module wasn't available
@@ -90,6 +90,9 @@ except Exception:
             async def fetch(self, _request):  # type: ignore[override]
                 return Response.json({"error": "not initialized"}, status=503)  # type: ignore[union-attr]
 
+        def delete_kv_session(*_a: object, **_k: object) -> None:  # type: ignore[assignment]
+            return None
+
         def list_kv_sessions(*_a: object, **_k: object) -> None:  # type: ignore[assignment]
             return None
 
@@ -113,6 +116,7 @@ _WORKER_ROUTE_PATTERNS = (
     ),
 )
 _STATIC_ASSET_PATH = re.compile(r"^/[a-zA-Z0-9._/-]+\.(?:html|css|js)$")
+_SESSION_ID_RE = re.compile(r"^/api/sessions/(?P<session_id>[a-zA-Z0-9_-]{1,64})$")
 
 _XTERM_CDN = "https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0"
 _FITADDON_CDN = "https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.11.0"
@@ -310,6 +314,23 @@ class Default(WorkerEntrypoint):
             return serve_asset(path.removeprefix("/assets/"))
         if _STATIC_ASSET_PATH.match(path):
             return serve_asset(path.removeprefix("/"))
+
+        # DELETE /api/sessions/{id} — remove from KV and forward teardown to DO.
+        session_delete_match = _SESSION_ID_RE.match(path)
+        if session_delete_match and str(getattr(request, "method", "GET")).upper() == "DELETE":
+            auth_error = await _require_jwt(request, config)
+            if auth_error is not None:
+                return auth_error
+            sid = session_delete_match.group("session_id")
+            await delete_kv_session(self.env, sid)
+            namespace = getattr(self.env, "SESSION_RUNTIME", None)
+            if namespace is not None:
+                import contextlib as _contextlib
+
+                with _contextlib.suppress(Exception):
+                    stub = namespace.get(namespace.idFromName(sid))
+                    await stub.fetch(request)
+            return json_response({"ok": True, "session_id": sid, "deleted": True})
 
         worker_id = _extract_worker_id(path)
         if worker_id is None:

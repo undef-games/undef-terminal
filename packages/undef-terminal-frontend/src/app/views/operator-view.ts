@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 
+import { deleteSession, restartSession } from "../api.js";
 import { clearRuntime, loadOperatorWorkspaceState, requestAnalysis, switchSessionMode } from "../state.js";
 import type { AppBootstrap, SessionSummary } from "../types.js";
 import { mountHijackWidget } from "../widgets/hijack-widget-host.js";
@@ -63,6 +64,7 @@ function sidebarHtml(s: SessionSummary | null, appPath: string, sessionId: strin
         <a class="btn" href="${esc(appPath)}/replay/${encodeURIComponent(sessionId)}">View replay</a>
         <button class="btn" id="btn-clear">Clear runtime</button>
         <button class="btn" id="btn-restart">Restart session</button>
+        <button class="btn" id="btn-delete">Delete session</button>
       </div>
     </div>
 
@@ -140,7 +142,17 @@ export async function renderOperator(root: HTMLElement, bootstrap: AppBootstrap)
     });
     root.querySelector<HTMLButtonElement>("#btn-restart")?.addEventListener("click", () => {
       if (!window.confirm("Restart this session? The current connection will be dropped.")) return;
-      void refresh();
+      void restartSession(sessionId)
+        .then(() => void refresh())
+        .catch((e) => setStatus("error", `Restart failed: ${String(e)}`));
+    });
+    root.querySelector<HTMLButtonElement>("#btn-delete")?.addEventListener("click", () => {
+      if (!window.confirm(`Delete session "${sessionId}"? This cannot be undone.`)) return;
+      void deleteSession(sessionId)
+        .then(() => {
+          window.location.href = `${bootstrap.app_path}/`;
+        })
+        .catch((e) => setStatus("error", `Delete failed: ${String(e)}`));
     });
   };
 

@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 
-import { restartSession } from "../api.js";
+import { deleteSession, restartSession } from "../api.js";
 import { loadDashboardState, summarizeSessions } from "../state.js";
 import type { AppBootstrap, SessionSummary } from "../types.js";
 import { renderAppHeader } from "./app-header.js";
@@ -59,6 +59,7 @@ function sectionMarkup(title: string, sessions: SessionSummary[], appPath: strin
               <a class="btn" href="${safeAppPath}/session/${encodeURIComponent(session.sessionId)}">Watch</a>
               <a class="btn" href="${safeAppPath}/replay/${encodeURIComponent(session.sessionId)}">Replay</a>
               <button class="btn btn-restart" data-session-id="${escapeHtml(session.sessionId)}">Restart</button>
+              <button class="btn btn-delete" data-session-id="${escapeHtml(session.sessionId)}">Delete</button>
             </div>
           </article>
         `,
@@ -108,20 +109,39 @@ export async function renderDashboard(root: HTMLElement, bootstrap: AppBootstrap
     void loadSessions(status, content);
   });
   content.addEventListener("click", (e) => {
-    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".btn-restart");
-    if (!btn) return;
-    const sid = btn.dataset.sessionId;
-    if (!sid) return;
-    btn.disabled = true;
-    btn.textContent = "…";
-    void restartSession(sid)
-      .then(() => loadSessions(status, content))
-      .catch((err: unknown) => {
-        btn.disabled = false;
-        btn.textContent = "Restart";
-        status.className = "status-chip error";
-        status.textContent = `Restart failed: ${String(err)}`;
-      });
+    const target = e.target as HTMLElement;
+    const restartBtn = target.closest<HTMLButtonElement>(".btn-restart");
+    if (restartBtn) {
+      const sid = restartBtn.dataset.sessionId;
+      if (!sid) return;
+      restartBtn.disabled = true;
+      restartBtn.textContent = "…";
+      void restartSession(sid)
+        .then(() => loadSessions(status, content))
+        .catch((err: unknown) => {
+          restartBtn.disabled = false;
+          restartBtn.textContent = "Restart";
+          status.className = "status-chip error";
+          status.textContent = `Restart failed: ${String(err)}`;
+        });
+      return;
+    }
+    const deleteBtn = target.closest<HTMLButtonElement>(".btn-delete");
+    if (deleteBtn) {
+      const sid = deleteBtn.dataset.sessionId;
+      if (!sid) return;
+      if (!window.confirm(`Delete session "${sid}"? This cannot be undone.`)) return;
+      deleteBtn.disabled = true;
+      deleteBtn.textContent = "…";
+      void deleteSession(sid)
+        .then(() => loadSessions(status, content))
+        .catch((err: unknown) => {
+          deleteBtn.disabled = false;
+          deleteBtn.textContent = "Delete";
+          status.className = "status-chip error";
+          status.textContent = `Delete failed: ${String(err)}`;
+        });
+    }
   });
   await loadSessions(status, content);
 }

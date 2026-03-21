@@ -476,6 +476,17 @@ async def _handle_session_route(
         analysis = await _wait_for_analysis(runtime, timeout_ms=5_000)
         return json_response({"ok": True, "analysis": analysis, "worker_id": runtime.worker_id})
 
+    if sub == "" and method == "DELETE":
+        role = await runtime.browser_role_for_request(request)
+        if role not in {"operator", "admin"}:
+            return json_response({"error": "operator or admin role required"}, status=403)
+        # Close any active worker connection.
+        worker_ws = runtime.worker_ws
+        if worker_ws is not None:
+            with contextlib.suppress(Exception):
+                worker_ws.close(1001, "session deleted")
+        return json_response({"ok": True, "session_id": runtime.worker_id, "deleted": True})
+
     if sub == "restart" and method == "POST":
         role = await runtime.browser_role_for_request(request)
         if role not in {"operator", "admin"}:
