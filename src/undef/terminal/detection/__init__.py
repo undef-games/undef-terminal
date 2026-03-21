@@ -1,3 +1,4 @@
+from undef.terminal.detection.loader import load_ruleset
 from undef.terminal.detection.models import (
     PromptDetection,
     PromptDetectionDiagnostics,
@@ -12,4 +13,5 @@ __all__ = [
     "PromptMatch",
     "RuleSet",
     "ScreenSnapshot",
+    "load_ruleset",
 ]
