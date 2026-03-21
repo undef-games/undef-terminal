@@ -31,45 +31,62 @@ function sidebarHtml(s, appPath, sessionId) {
         ? '<span class="badge" style="background:rgba(49,196,141,0.15);border:1px solid rgba(49,196,141,0.4);color:#b7f7dd">Live</span>'
         : '<span class="badge badge-visibility">Offline</span>';
     return `<section class="card stack">
-    <div class="small" style="text-transform:uppercase;letter-spacing:0.06em">Operator Console</div>
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <span class="session-title">${esc(name)}</span>${liveBadge}
-    </div>
-    <div id="operator-status" class="status-chip info">Loading\u2026</div>
-
-    <div class="small" style="text-transform:uppercase;letter-spacing:0.06em;margin-top:4px">Input Mode</div>
-    <div class="toolbar" style="margin:0">
-      <button class="btn${isOpen ? " primary" : ""}" id="btn-open">Shared</button>
-      <button class="btn${!isOpen ? " primary" : ""}" id="btn-hijack">Exclusive</button>
-    </div>
-
-    <div class="small" style="text-transform:uppercase;letter-spacing:0.06em">Actions</div>
-    <div class="toolbar" style="margin:0">
-      <a class="btn" href="${esc(appPath)}/replay/${encodeURIComponent(sessionId)}">View replay</a>
-      <button class="btn" id="btn-clear">Clear runtime</button>
-    </div>
-
-    <details style="margin-top:2px">
-      <summary class="small" style="cursor:pointer;user-select:none">Advanced</summary>
-      <div class="toolbar" style="margin:6px 0 0">
-        <button class="btn" id="btn-analyze">Analyze screen</button>
+    <div class="sidebar-section">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div>
+          <div class="session-title">${esc(name)}</div>
+          <div class="small" style="margin-top:2px">Operator view</div>
+        </div>
+        ${liveBadge}
       </div>
-      <div class="small" style="margin-top:4px;color:var(--muted)">AI-readable description of current terminal contents.</div>
-    </details>
-
-    <div class="small" style="text-transform:uppercase;letter-spacing:0.06em">Session Info</div>
-    <div>
-      ${infoRow("Connector", s?.connectorType)}
-      ${infoRow("State", s?.lifecycleState)}
-      ${infoRow("Owner", s?.owner)}
-      ${infoRow("Visibility", s?.visibility)}
-      ${infoRow("Auto-start", s?.autoStart ? "yes" : "no")}
+      <div id="operator-status" class="status-chip info">Loading\u2026</div>
     </div>
 
-    <div class="small" style="text-transform:uppercase;letter-spacing:0.06em">Tags</div>
-    ${renderTags(s?.tags ?? [])}
+    <div class="sidebar-section">
+      <div class="small" style="text-transform:uppercase;letter-spacing:0.06em">Input Mode</div>
+      <div class="toolbar" style="margin:0">
+        <button class="btn${isOpen ? " primary" : ""}" id="btn-open">${isOpen ? "\u2713 " : ""}Shared</button>
+        <button class="btn${!isOpen ? " primary" : ""}" id="btn-hijack">${!isOpen ? "\u2713 " : ""}Exclusive</button>
+      </div>
+      <div class="small">${isOpen ? "All operators can type." : "Only the hijack holder can type."}</div>
+    </div>
 
-    <button class="btn" id="btn-restart" style="margin-top:auto">Restart session</button>
+    <div class="sidebar-section">
+      <div class="small" style="text-transform:uppercase;letter-spacing:0.06em">Actions</div>
+      <div class="toolbar" style="margin:0">
+        <a class="btn" href="${esc(appPath)}/replay/${encodeURIComponent(sessionId)}">View replay</a>
+        <button class="btn" id="btn-clear">Clear runtime</button>
+        <button class="btn" id="btn-restart">Restart session</button>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <details>
+        <summary class="small" style="cursor:pointer;user-select:none;text-transform:uppercase;letter-spacing:0.06em">Advanced</summary>
+        <div class="toolbar" style="margin:6px 0 0">
+          <button class="btn" id="btn-analyze">Analyze screen</button>
+        </div>
+        <pre id="analysis-result" class="small" style="display:none;margin-top:8px;white-space:pre-wrap;background:var(--panel2);border-radius:8px;padding:10px"></pre>
+        <div class="small" style="margin-top:4px">AI-readable description of current terminal contents.</div>
+      </details>
+    </div>
+
+    <div class="sidebar-section">
+      <details>
+        <summary class="small" style="cursor:pointer;user-select:none;text-transform:uppercase;letter-spacing:0.06em">Session Info</summary>
+        <div style="margin-top:6px">
+          ${infoRow("Connector", s?.connectorType)}
+          ${infoRow("State", s?.lifecycleState)}
+          ${infoRow("Owner", s?.owner)}
+          ${infoRow("Visibility", s?.visibility)}
+          ${infoRow("Auto-start", s?.autoStart ? "yes" : "no")}
+        </div>
+        <div style="margin-top:6px">
+          <div class="small" style="text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Tags</div>
+          ${renderTags(s?.tags ?? [])}
+        </div>
+      </details>
+    </div>
   </section>`;
 }
 export async function renderOperator(root, bootstrap) {
@@ -97,16 +114,28 @@ export async function renderOperator(root, bootstrap) {
             void switchSessionMode(sessionId, "hijack").then(() => void refresh());
         });
         root.querySelector("#btn-clear")?.addEventListener("click", () => {
+            if (!window.confirm("Clear the runtime state for this session?"))
+                return;
             void clearRuntime(sessionId)
                 .then(() => void refresh())
                 .catch((e) => setStatus("error", `Clear failed: ${String(e)}`));
         });
         root.querySelector("#btn-analyze")?.addEventListener("click", () => {
             void requestAnalysis(sessionId)
-                .then((a) => window.alert(a))
+                .then((a) => {
+                const el = root.querySelector("#analysis-result");
+                if (el) {
+                    el.textContent = a;
+                    el.style.display = "block";
+                }
+            })
                 .catch((e) => setStatus("error", `Analyze failed: ${String(e)}`));
         });
-        root.querySelector("#btn-restart")?.addEventListener("click", () => void refresh());
+        root.querySelector("#btn-restart")?.addEventListener("click", () => {
+            if (!window.confirm("Restart this session? The current connection will be dropped."))
+                return;
+            void refresh();
+        });
     };
     const setStatus = (tone, text) => {
         const el = root.querySelector("#operator-status");
