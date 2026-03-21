@@ -175,13 +175,12 @@ class Default(WorkerEntrypoint):
                 auth_error = await _require_jwt(request, config)
                 if auth_error is not None:
                     return auth_error
-                if path in {"/app", "/app/"}:
-                    body = read_asset_text("terminal.html")
-                    if body is not None:
-                        body = body.replace("<head>", '<head><base href="/assets/">', 1)
-                        return Response(body, status=200, headers={"content-type": "text/html; charset=utf-8"})
-                    return serve_asset("terminal.html")
-                return serve_asset("hijack.html")
+                # All routes serve the SPA terminal app (terminal.html).
+                body = read_asset_text("terminal.html")
+                if body is not None:
+                    body = body.replace("<head>", '<head><base href="/assets/">', 1)
+                    return Response(body, status=200, headers={"content-type": "text/html; charset=utf-8"})
+                return serve_asset("terminal.html")
             return json_response({"error": "not_found", "path": path}, status=404)
 
         namespace = getattr(self.env, "SESSION_RUNTIME", None)
