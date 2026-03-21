@@ -1,5 +1,6 @@
 from undef.terminal.detection.buffer import BufferManager, ScreenBuffer
 from undef.terminal.detection.detector import PromptDetector
+from undef.terminal.detection.engine import DetectionEngine
 from undef.terminal.detection.extractor import KVExtractor, extract_kv
 from undef.terminal.detection.loader import load_ruleset
 from undef.terminal.detection.models import (
@@ -13,6 +14,7 @@ from undef.terminal.detection.saver import ScreenSaver
 
 __all__ = [
     "BufferManager",
+    "DetectionEngine",
     "KVExtractor",
     "PromptDetection",
     "PromptDetectionDiagnostics",

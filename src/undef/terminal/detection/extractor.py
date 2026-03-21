@@ -107,7 +107,7 @@ class KVExtractor:
                 continue
 
             value = extracted.get(field)
-            validate_rules = cfg.get("validate", {})
+            validate_rules = cfg.get("validate") or {}
             is_required = cfg.get("required", False)
             field_type = cfg.get("type", "string")
 
