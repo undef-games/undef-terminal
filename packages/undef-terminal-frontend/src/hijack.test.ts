@@ -61,6 +61,7 @@ class MockTerminal {
   disposed = false;
   focused = false;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny: test mock
   addon: any = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _onData: ((data: string) => void) | null = null;
@@ -80,6 +81,7 @@ class MockTerminal {
     this.disposed = true;
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny: test mock
   loadAddon(a: any): void {
     this.addon = a;
   }

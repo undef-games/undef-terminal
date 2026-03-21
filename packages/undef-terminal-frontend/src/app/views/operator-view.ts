@@ -41,7 +41,7 @@ function sidebarHtml(s: SessionSummary | null, appPath: string, sessionId: strin
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div>
           <div class="session-title">${esc(name)}</div>
-          <div class="small" style="margin-top:2px">Operator view</div>
+          <div class="small" style="margin-top:2px">Control</div>
         </div>
         ${liveBadge}
       </div>

@@ -223,7 +223,7 @@ export class UndefHijack {
   private _buildDOM(): void {
     const p = (id: string) => `h-${this._uid}-${id}`; // ID prefix helper
     const workerId = this._config.workerId ?? "";
-    const title = this._config.title ?? (workerId ? `Terminal: ${workerId}` : "Terminal");
+    const title = this._config.title ?? (workerId ? workerId : "Terminal");
     const showAnalysis = this._config.showAnalysis;
 
     const root = document.createElement("div");
@@ -236,12 +236,12 @@ export class UndefHijack {
           <span id="${p("statustext")}">Connecting…</span>
         </span>
         <div class="hijack-controls">
-          <button class="hbtn primary" id="${p("hijack")}" disabled>Hijack</button>
-          <button class="hbtn" id="${p("step")}" disabled>Step</button>
-          <button class="hbtn danger" id="${p("release")}" disabled>Release</button>
-          <button class="hbtn" id="${p("resync")}" disabled title="Request snapshot">⟳ Resync</button>
-          <button class="hbtn" id="${p("analyze")}" disabled>Analyze</button>
-          <button class="hbtn" id="${p("kbdtoggle")}" title="Mobile key toolbar">⌨</button>
+          <button class="hbtn primary" id="${p("hijack")}" disabled title="Take exclusive control">Hijack</button>
+          <button class="hbtn" id="${p("step")}" disabled title="Send one step, then pause">Step</button>
+          <button class="hbtn danger" id="${p("release")}" disabled title="Release hijack control">Release</button>
+          <button class="hbtn" id="${p("resync")}" disabled title="Request full screen snapshot">⟳ Resync</button>
+          <button class="hbtn" id="${p("analyze")}" disabled title="AI-readable screen description">Analyze</button>
+          <button class="hbtn" id="${p("kbdtoggle")}" title="Toggle mobile key toolbar">⌨</button>
         </div>
         <span class="hijack-prompt" id="${p("prompt")}" title="Current prompt ID"></span>
       </div>
@@ -286,11 +286,15 @@ export class UndefHijack {
       fontSize: 13,
       theme: { background: "#0b0f14" },
       allowTransparency: true,
+      scrollback: 10000,
+      scrollOnUserInput: true,
+      overviewRulerWidth: 15,
     });
     this._term.open(termDiv);
     this._term.focus();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: window global access
     const fitAddonGlobal = ((window as any).FitAddon ?? (globalThis as any).FitAddon) as
       | { FitAddon: new () => FitAddonInstance }
       | undefined;
@@ -308,6 +312,16 @@ export class UndefHijack {
         } catch (_) {}
       });
       this._ro.observe(termDiv);
+    }
+
+    // Load WebLinksAddon if available
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: window global access
+    const webLinksAddonGlobal = (window as any).WebLinksAddon ?? (globalThis as any).WebLinksAddon;
+    if (webLinksAddonGlobal) {
+      try {
+        this._term.loadAddon(new webLinksAddonGlobal.WebLinksAddon());
+      } catch (_) {}
     }
 
     // Forward keyboard input to WS when hijacked or in open mode
