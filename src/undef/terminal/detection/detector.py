@@ -177,6 +177,12 @@ class PromptDetector:
         h = hashlib.blake2s(norm.encode("utf-8", errors="replace")).hexdigest()
         cursor_at_end = int(bool(snapshot.get("cursor_at_end", True)))
         trailing = int(bool(snapshot.get("has_trailing_space", False)))
+        # cursor_at_end and trailing are included in the fingerprint so that a
+        # screen whose cursor position oscillates (e.g. mid-burst telnet frames)
+        # is re-evaluated rather than served stale from cache.  The trade-off is
+        # that cache hits are missed on cursor-only changes between otherwise
+        # identical screens.  A future optimisation could fingerprint content
+        # only and use the flags purely as detection inputs, not cache keys.
         return f"{h}:{cursor_at_end}:{trailing}"
 
     @staticmethod
@@ -216,6 +222,11 @@ class PromptDetector:
                 continue
 
             negative = self._resolve_negative_regex(pattern)
+            # NOTE: negative_match is intentionally case-insensitive (re.IGNORECASE) so
+            # that exclusion rules like "stardock" block "STARDOCK", "Stardock", etc.
+            # Positive patterns (compiled above) are case-sensitive by design — prompt
+            # authors rely on exact case to distinguish prompts.  This asymmetry is
+            # deliberate: exclusions are broad guards; positive matches are precise.
             if negative and re.search(negative, full_screen, re.MULTILINE | re.IGNORECASE):
                 regex_matched_but_failed.append(
                     {

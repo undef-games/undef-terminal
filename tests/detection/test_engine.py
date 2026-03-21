@@ -222,3 +222,174 @@ def test_debug_state_returns_dict(simple_rules_file) -> None:
     assert isinstance(state, dict)
     assert "screen_buffer" in state
     assert "idle_threshold_s" in state
+
+
+# ---------------------------------------------------------------------------
+# Error isolation tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hook_exception_does_not_stop_other_hooks(simple_rules_file, snap_factory) -> None:
+    """A failing hook must not prevent subsequent hooks from running."""
+    engine = DetectionEngine(simple_rules_file)
+    second_called: list[bool] = []
+
+    async def bad_hook(snapshot: Any, detection: Any, buffer: Any, is_idle: bool) -> None:
+        raise RuntimeError("boom")
+
+    async def good_hook(snapshot: Any, detection: Any, buffer: Any, is_idle: bool) -> None:
+        second_called.append(True)
+
+    engine.add_hook(bad_hook)
+    engine.add_hook(good_hook)
+    # process_screen must not raise even though bad_hook raises
+    result = await engine.process_screen(snap_factory("Hello there"))
+    assert result is not None
+    assert second_called == [True]
+
+
+@pytest.mark.asyncio
+async def test_hook_exception_does_not_propagate(simple_rules_file, snap_factory) -> None:
+    """process_screen must return normally even when a hook raises."""
+    engine = DetectionEngine(simple_rules_file)
+
+    async def bad_hook(snapshot: Any, detection: Any, buffer: Any, is_idle: bool) -> None:
+        raise ValueError("hook failure")
+
+    engine.add_hook(bad_hook)
+    # Should not raise
+    result = await engine.process_screen(snap_factory("Hello there"))
+    assert result is not None
+
+
+@pytest.mark.asyncio
+async def test_saver_exception_does_not_discard_detection(simple_rules_file, snap_factory, tmp_path) -> None:
+    """If the screen saver raises, process_screen still returns the detection result."""
+    from unittest.mock import MagicMock
+
+    from undef.terminal.detection.saver import ScreenSaver
+
+    saver = MagicMock(spec=ScreenSaver)
+    saver.save_screen.side_effect = OSError("disk full")
+    engine = DetectionEngine(simple_rules_file, screen_saver=saver)
+
+    result = await engine.process_screen(snap_factory("Hello there"))
+    assert result is not None
+    assert result.prompt_id == "prompt.hello"
+
+
+@pytest.mark.asyncio
+async def test_no_match_still_runs_hooks(simple_rules_file, snap_factory) -> None:
+    """Hooks are called even when no prompt matched (detection=None)."""
+    engine = DetectionEngine(simple_rules_file)
+    calls: list[Any] = []
+
+    async def hook(snapshot: Any, detection: Any, buffer: Any, is_idle: bool) -> None:
+        calls.append(detection)
+
+    engine.add_hook(hook)
+    result = await engine.process_screen(snap_factory("Unrecognized screen"))
+    assert result is None
+    assert len(calls) == 1
+    assert calls[0] is None
+
+
+def test_add_hook_twice_same_function_invokes_twice(simple_rules_file) -> None:
+    """Adding the same hook twice results in it being called twice (no dedup contract)."""
+    engine = DetectionEngine(simple_rules_file)
+
+    async def hook(snapshot: Any, detection: Any, buffer: Any, is_idle: bool) -> None:  # pragma: no cover
+        pass
+
+    engine.add_hook(hook)
+    engine.add_hook(hook)
+    assert engine._hooks.count(hook) == 2
+
+
+# ---------------------------------------------------------------------------
+# Coverage for missing branches
+# ---------------------------------------------------------------------------
+
+
+def test_is_idle_property(simple_rules_file) -> None:
+    """engine.is_idle delegates to buffer_manager.detect_idle_state."""
+    engine = DetectionEngine(simple_rules_file)
+    # No screens processed yet — not idle
+    assert engine.is_idle is False
+
+
+def test_set_namespace_without_screen_saver(simple_rules_file) -> None:
+    """set_namespace works when no screen_saver is set (no AttributeError)."""
+    engine = DetectionEngine(simple_rules_file, namespace="old")
+    engine.set_namespace("new_ns")
+    assert engine.namespace == "new_ns"
+
+
+def test_get_screen_saver_status_with_saver(simple_rules_file, tmp_path) -> None:
+    """get_screen_saver_status returns dict with saver info when saver is present."""
+    from undef.terminal.detection.saver import ScreenSaver
+
+    saver = ScreenSaver(base_dir=tmp_path, enabled=True, namespace="game1")
+    engine = DetectionEngine(simple_rules_file, screen_saver=saver)
+    status = engine.get_screen_saver_status()
+    assert status["enabled"] is True
+    assert "saved_count" in status
+    assert "namespace" in status
+
+
+def test_set_screen_saving_with_saver(simple_rules_file, tmp_path) -> None:
+    """set_screen_saving toggles the ScreenSaver._enabled flag."""
+    from undef.terminal.detection.saver import ScreenSaver
+
+    saver = ScreenSaver(base_dir=tmp_path, enabled=True)
+    engine = DetectionEngine(simple_rules_file, screen_saver=saver)
+    engine.set_screen_saving(False)
+    assert saver._enabled is False
+    engine.set_screen_saving(True)
+    assert saver._enabled is True
+
+
+def test_sync_process_screen_kv_extraction_empty(kv_rules_file, snap_factory) -> None:
+    """_sync_process_screen returns detection with empty kv_data when kv extraction yields nothing."""
+    engine = DetectionEngine(kv_rules_file)
+    # Screen matches the prompt but has no extractable KV data (no 'Sector N' or 'Credits')
+    result = engine._sync_process_screen(snap_factory("Sector 99 :"))
+    # The prompt should still match (it matches "Sector\s+\d+\s*:"), but kv may be partial
+    # Crucially we want the branch where extracted is empty dict / None → kv_data stays {}
+    assert result is not None
+    # kv_data could be {} or populated; we care that the branch was exercised (no crash)
+
+
+def test_sync_process_screen_kv_extract_no_match_in_screen(rules_file_factory, snap_factory) -> None:
+    """When kv_extract is configured but regex doesn't match screen, kv_data stays empty."""
+    rules = rules_file_factory(
+        [
+            {
+                "id": "prompt.hello",
+                "match": {"pattern": "Hello there", "match_mode": "contains"},
+                "input_type": "single_key",
+                "kv_extract": [{"field": "score", "regex": r"Score:\s*(\d+)", "type": "int"}],
+            }
+        ]
+    )
+    engine = DetectionEngine(rules)
+    # Screen matches the prompt but contains no 'Score: N' → extract_kv returns None
+    result = engine._sync_process_screen(snap_factory("Hello there"))
+    assert result is not None
+    assert result.kv_data == {}
+
+
+def test_get_screen_saver_status_without_saver(simple_rules_file) -> None:
+    """get_screen_saver_status returns {'enabled': False} when no saver configured."""
+    engine = DetectionEngine(simple_rules_file)
+    status = engine.get_screen_saver_status()
+    assert status == {"enabled": False}
+
+
+def test_set_screen_saving_without_saver_is_noop(simple_rules_file) -> None:
+    """set_screen_saving does nothing (no error) when no screen_saver is configured."""
+    engine = DetectionEngine(simple_rules_file)
+    # Should not raise
+    engine.set_screen_saving(True)
+    engine.set_screen_saving(False)

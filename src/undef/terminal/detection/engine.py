@@ -131,15 +131,21 @@ class DetectionEngine:
             buffer.matched_prompt_id = detection.match.prompt_id
 
         if self._screen_saver is not None:
-            prompt_id = detection.prompt_id if detection else None
-            self._screen_saver.save_screen(snapshot, prompt_id=prompt_id)
+            try:
+                prompt_id = detection.prompt_id if detection else None
+                self._screen_saver.save_screen(snapshot, prompt_id=prompt_id)
+            except Exception:
+                logger.warning("Screen saver failed; detection continues", exc_info=True)
 
         if detection is not None:
             detection.is_idle = is_idle
             detection.buffer = buffer
 
         for hook in self._hooks:
-            await hook(snapshot, detection, buffer, is_idle)
+            try:
+                await hook(snapshot, detection, buffer, is_idle)
+            except Exception:
+                logger.warning("Hook %r raised; continuing", hook, exc_info=True)
 
         return detection
 

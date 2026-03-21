@@ -369,5 +369,69 @@ class TestScreenSaverDirectoryCreation:
         assert result.parent.parent.exists()
 
 
+class TestScreenSaverErrorPaths:
+    """Test error handling in ScreenSaver."""
+
+    def test_write_failure_does_not_add_hash(
+        self, screen_saver: ScreenSaver, sample_snapshot: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """If write_text raises, the hash must NOT be added to _saved_hashes."""
+        from pathlib import Path
+
+        def bad_write(content: str, *args: object, **kwargs: object) -> None:
+            raise OSError("disk full")
+
+        monkeypatch.setattr(Path, "write_text", bad_write)
+
+        with pytest.raises(OSError, match="disk full"):
+            screen_saver.save_screen(sample_snapshot)
+
+        # Hash must not have been recorded
+        assert screen_saver.get_saved_count() == 0
+        assert sample_snapshot["screen_hash"] not in screen_saver._saved_hashes
+
+    def test_write_failure_allows_retry(
+        self, screen_saver: ScreenSaver, sample_snapshot: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """After a write failure the same screen can be attempted again."""
+        from pathlib import Path
+
+        call_count = {"n": 0}
+        original_write = Path.write_text
+
+        def flaky_write(self_path: Path, content: str, *args: object, **kwargs: object) -> None:
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise OSError("transient error")
+            original_write(self_path, content, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "write_text", flaky_write)
+
+        # First attempt fails
+        with pytest.raises(OSError):
+            screen_saver.save_screen(sample_snapshot)
+        assert screen_saver.get_saved_count() == 0
+
+        # Second attempt (monkeypatch restored — use raw call which now succeeds)
+        result = screen_saver.save_screen(sample_snapshot)
+        assert result is not None
+        assert screen_saver.get_saved_count() == 1
+
+    def test_dup_fallback_exhaustion_raises(self, screen_saver: ScreenSaver, sample_snapshot: dict[str, Any]) -> None:
+        """When all 10,000 dup slots are taken, OSError is raised instead of overwriting."""
+        # Save once to create the base file
+        result = screen_saver.save_screen(sample_snapshot)
+        assert result is not None
+        base_stem = result.stem
+        screens_dir = screen_saver.get_screens_dir()
+
+        # Pre-create all 10,000 dup slots
+        for i in range(1, 10_000):
+            (screens_dir / f"{base_stem}-dup{i}.txt").write_text("dummy")
+
+        with pytest.raises(OSError, match="10,000"):
+            screen_saver.save_screen(sample_snapshot, force=True)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

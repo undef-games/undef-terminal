@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, NotRequired, Required, TypedDict
+from typing import TYPE_CHECKING, Any, NotRequired, Required, TypedDict
 
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from undef.terminal.detection.buffer import ScreenBuffer
 
 
 class ScreenSnapshot(TypedDict):
@@ -34,7 +37,15 @@ class PromptDetection(BaseModel):
     kv_data: dict[str, Any] = Field(default_factory=dict)
     match: PromptMatch | None = None
     is_idle: bool | None = None
-    buffer: Any | None = None
+    buffer: ScreenBuffer | None = None
+
+
+# Resolve the ScreenBuffer forward-reference for Pydantic at runtime.
+# ruff TC001 wants the import under TYPE_CHECKING, but Pydantic needs the
+# name in module globals to evaluate the annotation string 'ScreenBuffer'.
+from undef.terminal.detection.buffer import ScreenBuffer  # noqa: E402, TC001
+
+PromptDetection.model_rebuild()
 
 
 class PromptDetectionDiagnostics(BaseModel):
