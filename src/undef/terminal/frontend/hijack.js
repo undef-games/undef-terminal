@@ -56,10 +56,10 @@ export class UndefHijack {
         this._hijackStepSupported = true;
         this._restHijackId = null;
         this._resumeToken = null;
-        this._resumeSupported = false;
         this._mobileKeysVisible = false;
+        this._wakingTimer = null;
+        this._wakingTimedOut = false;
         this._activityFlashTimer = null;
-        this._indicatorStyleCache = null;
         this._statusDotElement = null;
         this._root = null;
         this._container = container;
@@ -119,7 +119,6 @@ export class UndefHijack {
         }
         this._fitAddon = null;
         this._statusDotElement = null;
-        this._indicatorStyleCache = null;
         if (this._root?.parentNode) {
             this._root.parentNode.removeChild(this._root);
         }
@@ -237,7 +236,7 @@ export class UndefHijack {
     _ensureTerm() {
         if (this._term)
             return this._term;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // biome-ignore lint/suspicious/noExplicitAny: window global access
         const terminalCtor = window.Terminal;
         if (!terminalCtor)
             throw new Error("xterm.js not loaded");
@@ -357,7 +356,17 @@ export class UndefHijack {
                 return; // stale handler: a newer socket already replaced this one
             this._stopReconnectAnim();
             this._reconnectAttempt = 0;
-            this._setStatus("live", "Connected (watching)");
+            this._wakingTimedOut = false;
+            if (this._wakingTimer)
+                clearTimeout(this._wakingTimer);
+            this._wakingTimer = setTimeout(() => {
+                this._wakingTimer = null;
+                if (!this._workerOnline && this._ws?.readyState === WebSocket.OPEN) {
+                    this._wakingTimedOut = true;
+                    this._updateStatus();
+                }
+            }, 10000);
+            this._setStatus("warn", "Waking…");
             this._updateButtons();
             // Attempt session resumption if we have a stored token
             const storedToken = this._resumeToken ?? this._loadResumeToken();
@@ -390,6 +399,11 @@ export class UndefHijack {
             if (ws !== this._ws)
                 return; // stale handler from a replaced socket
             this._clearHeartbeat();
+            if (this._wakingTimer) {
+                clearTimeout(this._wakingTimer);
+                this._wakingTimer = null;
+            }
+            this._wakingTimedOut = false;
             this._hijacked = false;
             this._hijackedByMe = false;
             this._canHijack = false;
@@ -464,31 +478,6 @@ export class UndefHijack {
             }
             catch (_) { }
         }
-    }
-    /** Get the configured indicator style (cached, defaults to "dot"). */
-    _getIndicatorStyle() {
-        if (this._indicatorStyleCache !== null)
-            return this._indicatorStyleCache;
-        const VALID_STYLES = new Set(["dot", "pulse", "both"]);
-        try {
-            // Try localStorage first
-            const stored = localStorage.getItem("undef_hijack_indicator_style");
-            if (stored && VALID_STYLES.has(stored)) {
-                this._indicatorStyleCache = stored;
-                return stored;
-            }
-            // Fall back to environment variable
-            const envStr = globalThis.HIJACK_INDICATOR_STYLE;
-            if (envStr && VALID_STYLES.has(envStr)) {
-                this._indicatorStyleCache = envStr;
-                return envStr;
-            }
-        }
-        catch (_) {
-            // Ignore localStorage errors
-        }
-        this._indicatorStyleCache = "dot";
-        return "dot"; // safe default
     }
     /** Show activity indicator with the configured style (reuses DOM reference and timeout). */
     _showActivityIndicator() {
@@ -594,9 +583,6 @@ export class UndefHijack {
                     msg.hijack_control ?? caps?.hijack_control ?? "ws";
                 const stepSupported = msg.hijack_step_supported ?? caps?.hijack_step_supported;
                 this._hijackStepSupported = stepSupported !== false;
-                const resumeSupported = msg.resume_supported;
-                if (resumeSupported !== undefined)
-                    this._resumeSupported = !!resumeSupported;
                 const resumeToken = msg.resume_token;
                 if (resumeToken) {
                     this._resumeToken = resumeToken;
@@ -607,6 +593,11 @@ export class UndefHijack {
                 break;
             }
             case "worker_connected":
+                if (this._wakingTimer) {
+                    clearTimeout(this._wakingTimer);
+                    this._wakingTimer = null;
+                }
+                this._wakingTimedOut = false;
                 this._workerOnline = true;
                 this._updateStatus();
                 this._updateButtons();
@@ -632,6 +623,11 @@ export class UndefHijack {
                 break;
             }
             case "worker_disconnected":
+                if (this._wakingTimer) {
+                    clearTimeout(this._wakingTimer);
+                    this._wakingTimer = null;
+                }
+                this._wakingTimedOut = false;
                 this._workerOnline = false;
                 this._hijacked = false;
                 this._hijackedByMe = false;
@@ -670,7 +666,12 @@ export class UndefHijack {
             this._setStatus("bad", "Disconnected"); // red — WS down
         }
         else if (!this._workerOnline) {
-            this._setStatus("warn", "Waking…"); // orange — connected but worker not yet online (DO waking)
+            if (this._wakingTimedOut) {
+                this._setStatus("bad", "Offline"); // red — worker never came online
+            }
+            else {
+                this._setStatus("warn", "Waking…"); // orange — connected but worker not yet online
+            }
         }
         else if (this._hijackedByMe) {
             this._setStatus("live", "Hijacked (you)"); // green — active hijack by this browser
@@ -846,6 +847,6 @@ export class UndefHijack {
     }
 }
 // ── Global exposure for CDN / script-tag use ──────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: window global access
 if (typeof window !== "undefined")
     window.UndefHijack = UndefHijack;

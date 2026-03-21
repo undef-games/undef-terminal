@@ -132,9 +132,9 @@ beforeEach(() => {
   instances = [];
   vi.useFakeTimers();
   vi.stubGlobal("WebSocket", MockWebSocket);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny: test mock
   (window as any).Terminal = MockTerminal;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny: test mock
   (window as any).FitAddon = { FitAddon: MockFitAddon };
 });
 
@@ -455,6 +455,7 @@ describe("message dispatch", () => {
   it("heartbeat_ack is a no-op", () => {
     const { container } = makeWidget();
     getWs().open();
+    sendMessage({ type: "worker_connected" });
     sendMessage({ type: "heartbeat_ack" });
     expect(q(container, "statustext")?.textContent).toBe("Connected (watching)");
   });
@@ -754,12 +755,11 @@ describe("mobileKeys=false option", () => {
 describe("local echo and activity indicator", () => {
   it("widget has local echo tracking state variables", () => {
     const { widget } = makeWidget();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: test mock
     const w = widget as any;
 
     // Verify state variables exist for activity indicator feature
     expect(w._activityFlashTimer).toBeNull();
-    expect(w._indicatorStyleCache).toBeNull();
     expect(w._statusDotElement).toBeNull();
   });
 
@@ -801,7 +801,7 @@ describe("local echo and activity indicator", () => {
     const { widget } = makeWidget();
     getWs().open();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: test mock
     const w = widget as any;
 
     // Set up timer
@@ -810,25 +810,8 @@ describe("local echo and activity indicator", () => {
     // Dispose should clear it
     widget.dispose();
 
-    // After dispose, timers should be null and cache cleared
+    // After dispose, timers should be null
     expect(w._activityFlashTimer).toBeNull();
     expect(w._statusDotElement).toBeNull();
-    expect(w._indicatorStyleCache).toBeNull();
-  });
-
-  it("indicator style caching works on repeated access", () => {
-    const { widget } = makeWidget();
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const w = widget as any;
-
-    // First call caches the style
-    const style1 = w._getIndicatorStyle();
-    expect(w._indicatorStyleCache).toBe(style1);
-
-    // Second call returns cached value (no localStorage access)
-    const style2 = w._getIndicatorStyle();
-    expect(style2).toBe(style1);
-    expect(w._indicatorStyleCache).toBe(style1);
   });
 });

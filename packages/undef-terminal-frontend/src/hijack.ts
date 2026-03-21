@@ -68,10 +68,10 @@ export class UndefHijack {
   private _hijackStepSupported = true;
   private _restHijackId: string | null = null;
   private _resumeToken: string | null = null;
-  private _resumeSupported = false;
   private _mobileKeysVisible = false;
+  private _wakingTimer: ReturnType<typeof setTimeout> | null = null;
+  private _wakingTimedOut = false;
   private _activityFlashTimer: ReturnType<typeof setTimeout> | null = null;
-  private _indicatorStyleCache: string | null = null;
   private _statusDotElement: HTMLElement | null = null;
   private _root: HTMLElement | null = null;
 
@@ -143,7 +143,6 @@ export class UndefHijack {
     }
     this._fitAddon = null;
     this._statusDotElement = null;
-    this._indicatorStyleCache = null;
     if (this._root?.parentNode) {
       this._root.parentNode.removeChild(this._root);
     }
@@ -273,7 +272,7 @@ export class UndefHijack {
 
   private _ensureTerm(): XTerminal {
     if (this._term) return this._term;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: window global access
     const terminalCtor = (window as any).Terminal as (new (opts: Record<string, unknown>) => XTerminal) | undefined;
     if (!terminalCtor) throw new Error("xterm.js not loaded");
 
@@ -396,7 +395,16 @@ export class UndefHijack {
       if (ws !== this._ws) return; // stale handler: a newer socket already replaced this one
       this._stopReconnectAnim();
       this._reconnectAttempt = 0;
-      this._setStatus("live", "Connected (watching)");
+      this._wakingTimedOut = false;
+      if (this._wakingTimer) clearTimeout(this._wakingTimer);
+      this._wakingTimer = setTimeout(() => {
+        this._wakingTimer = null;
+        if (!this._workerOnline && this._ws?.readyState === WebSocket.OPEN) {
+          this._wakingTimedOut = true;
+          this._updateStatus();
+        }
+      }, 10_000);
+      this._setStatus("warn", "Waking…");
       this._updateButtons();
       // Attempt session resumption if we have a stored token
       const storedToken = this._resumeToken ?? this._loadResumeToken();
@@ -429,6 +437,11 @@ export class UndefHijack {
     ws.onclose = () => {
       if (ws !== this._ws) return; // stale handler from a replaced socket
       this._clearHeartbeat();
+      if (this._wakingTimer) {
+        clearTimeout(this._wakingTimer);
+        this._wakingTimer = null;
+      }
+      this._wakingTimedOut = false;
       this._hijacked = false;
       this._hijackedByMe = false;
       this._canHijack = false;
@@ -500,30 +513,6 @@ export class UndefHijack {
         this._term.write("\x1b7\x1b[B\x1b[G \x1b8");
       } catch (_) {}
     }
-  }
-
-  /** Get the configured indicator style (cached, defaults to "dot"). */
-  private _getIndicatorStyle(): string {
-    if (this._indicatorStyleCache !== null) return this._indicatorStyleCache;
-    const VALID_STYLES = new Set(["dot", "pulse", "both"]);
-    try {
-      // Try localStorage first
-      const stored = localStorage.getItem("undef_hijack_indicator_style");
-      if (stored && VALID_STYLES.has(stored)) {
-        this._indicatorStyleCache = stored;
-        return stored;
-      }
-      // Fall back to environment variable
-      const envStr = (globalThis as Record<string, unknown>).HIJACK_INDICATOR_STYLE as string | undefined;
-      if (envStr && VALID_STYLES.has(envStr)) {
-        this._indicatorStyleCache = envStr;
-        return envStr;
-      }
-    } catch (_) {
-      // Ignore localStorage errors
-    }
-    this._indicatorStyleCache = "dot";
-    return "dot"; // safe default
   }
 
   /** Show activity indicator with the configured style (reuses DOM reference and timeout). */
@@ -632,8 +621,6 @@ export class UndefHijack {
         const stepSupported =
           (msg.hijack_step_supported as boolean | undefined) ?? (caps?.hijack_step_supported as boolean | undefined);
         this._hijackStepSupported = stepSupported !== false;
-        const resumeSupported = msg.resume_supported as boolean | undefined;
-        if (resumeSupported !== undefined) this._resumeSupported = !!resumeSupported;
         const resumeToken = msg.resume_token as string | undefined;
         if (resumeToken) {
           this._resumeToken = resumeToken;
@@ -645,6 +632,11 @@ export class UndefHijack {
       }
 
       case "worker_connected":
+        if (this._wakingTimer) {
+          clearTimeout(this._wakingTimer);
+          this._wakingTimer = null;
+        }
+        this._wakingTimedOut = false;
         this._workerOnline = true;
         this._updateStatus();
         this._updateButtons();
@@ -669,6 +661,11 @@ export class UndefHijack {
       }
 
       case "worker_disconnected":
+        if (this._wakingTimer) {
+          clearTimeout(this._wakingTimer);
+          this._wakingTimer = null;
+        }
+        this._wakingTimedOut = false;
         this._workerOnline = false;
         this._hijacked = false;
         this._hijackedByMe = false;
@@ -710,7 +707,11 @@ export class UndefHijack {
     if (!connected) {
       this._setStatus("bad", "Disconnected"); // red — WS down
     } else if (!this._workerOnline) {
-      this._setStatus("warn", "Waking…"); // orange — connected but worker not yet online (DO waking)
+      if (this._wakingTimedOut) {
+        this._setStatus("bad", "Offline"); // red — worker never came online
+      } else {
+        this._setStatus("warn", "Waking…"); // orange — connected but worker not yet online
+      }
     } else if (this._hijackedByMe) {
       this._setStatus("live", "Hijacked (you)"); // green — active hijack by this browser
     } else if (this._hijacked) {
@@ -869,5 +870,5 @@ export class UndefHijack {
 }
 
 // ── Global exposure for CDN / script-tag use ──────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: window global access
 if (typeof window !== "undefined") (window as any).UndefHijack = UndefHijack;
