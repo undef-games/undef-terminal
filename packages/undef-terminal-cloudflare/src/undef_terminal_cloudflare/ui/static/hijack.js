@@ -108,6 +108,7 @@ export class UndefHijack {
     /** Tear down entirely: xterm, WebSocket, ResizeObserver, and DOM. */
     dispose() {
         this.disconnect(); // handles _ro, _heartbeatTimer, _ws, _reconnectTimer
+        this._stopReconnectAnim();
         if (this._activityFlashTimer) {
             clearTimeout(this._activityFlashTimer);
             this._activityFlashTimer = null;

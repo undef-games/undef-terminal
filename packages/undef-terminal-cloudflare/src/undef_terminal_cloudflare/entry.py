@@ -239,6 +239,71 @@ class Default(WorkerEntrypoint):
             scope = "fleet" if kv_configured else "local"
             return json_response(sessions, headers={"X-Sessions-Scope": scope})
 
+        if path == "/api/connect":
+            auth_error = await _require_jwt(request, config)
+            if auth_error is not None:
+                return auth_error
+            method = str(getattr(request, "method", "GET")).upper()
+            if method != "POST":
+                return json_response({"error": "method not allowed"}, status=405)
+            # Create a session by registering it in KV and pre-creating the DO.
+            import uuid
+
+            try:
+                body = (
+                    (await request.json()).to_py() if hasattr(await request.json(), "to_py") else await request.json()
+                )
+            except Exception:
+                body = {}
+            session_id = f"connect-{uuid.uuid4().hex[:12]}"
+            display_name = str(body.get("display_name") or session_id)
+            connector_type = str(body.get("connector_type", "shell"))
+            input_mode = str(body.get("input_mode", "open"))
+
+            # Write to KV so it shows in the dashboard
+            import json as _json
+
+            kv = getattr(self.env, "SESSION_REGISTRY", None)
+            if kv is not None:
+                kv_entry = _json.dumps(
+                    {
+                        "session_id": session_id,
+                        "display_name": display_name,
+                        "connector_type": connector_type,
+                        "lifecycle_state": "waiting",
+                        "input_mode": input_mode,
+                        "connected": False,
+                        "auto_start": False,
+                        "tags": [],
+                        "recording_enabled": False,
+                        "recording_available": False,
+                        "owner": None,
+                        "visibility": "public",
+                        "last_error": None,
+                        "hijacked": False,
+                    }
+                )
+                await kv.put(f"session:{session_id}", kv_entry)
+
+            return json_response(
+                {
+                    "session_id": session_id,
+                    "url": f"/app/session/{session_id}",
+                    "display_name": display_name,
+                    "connector_type": connector_type,
+                    "lifecycle_state": "waiting",
+                    "input_mode": input_mode,
+                    "connected": False,
+                    "auto_start": False,
+                    "tags": [],
+                    "recording_enabled": False,
+                    "recording_available": False,
+                    "owner": None,
+                    "visibility": "public",
+                    "last_error": None,
+                }
+            )
+
         if path.startswith("/assets/"):
             return serve_asset(path.removeprefix("/assets/"))
         if _STATIC_ASSET_PATH.match(path):
