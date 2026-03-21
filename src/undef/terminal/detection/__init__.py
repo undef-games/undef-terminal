@@ -4,10 +4,12 @@ from undef.terminal.detection.models import (
     PromptMatch,
     ScreenSnapshot,
 )
+from undef.terminal.detection.rules import RuleSet
 
 __all__ = [
     "PromptDetection",
     "PromptDetectionDiagnostics",
     "PromptMatch",
+    "RuleSet",
     "ScreenSnapshot",
 ]
