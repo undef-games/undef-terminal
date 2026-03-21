@@ -112,26 +112,48 @@ _WORKER_ROUTE_PATTERNS = (
 )
 _STATIC_ASSET_PATH = re.compile(r"^/[a-zA-Z0-9._/-]+\.(?:html|css|js)$")
 
-# SPA routes → page_kind for the bootstrap JSON.  The SPA JS reads page_kind
-# from #app-bootstrap to decide which view to render (dashboard, session, etc.).
-_SPA_ROUTES: dict[str, str] = {
-    "/": "dashboard",
-    "/app": "dashboard",
-    "/app/": "dashboard",
-}
-
 _XTERM_CDN = "https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0"
 _FITADDON_CDN = "https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.11.0"
 _FONTS_CDN = "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&display=swap"
+
+# SPA route patterns → (page_kind, needs_session_id, extra_scripts).
+_SPA_SESSION_RE = re.compile(r"^/app/(?P<kind>session|operator|replay)/(?P<sid>[a-zA-Z0-9_-]{1,64})$")
+
+
+def _resolve_spa_route(path: str) -> tuple[str, dict[str, object]] | None:
+    """Return (page_kind, extra_bootstrap) for SPA routes, or None."""
+    if path in {"/", "/app", "/app/"}:
+        return ("dashboard", {})
+    if path in {"/app/connect", "/app/connect/"}:
+        return ("connect", {})
+    m = _SPA_SESSION_RE.match(path)
+    if m:
+        kind = m.group("kind")
+        sid = m.group("sid")
+        extra: dict[str, object] = {"session_id": sid, "surface": "operator" if kind != "session" else "user"}
+        return (kind, extra)
+    return None
 
 
 def _spa_response(page_kind: str, **extra_bootstrap: object) -> Response:
     """Build the SPA shell HTML with a bootstrap JSON payload."""
     import json as _json
 
-    bootstrap = {"page_kind": page_kind, "title": "Undef Terminal", "app_path": "/app", "assets_path": "/assets"}
-    bootstrap.update(extra_bootstrap)  # type: ignore[arg-type]
+    bootstrap: dict[str, object] = {
+        "page_kind": page_kind,
+        "title": "Undef Terminal",
+        "app_path": "/app",
+        "assets_path": "/assets",
+    }
+    bootstrap.update(extra_bootstrap)
     blob = _json.dumps(bootstrap).replace("</", "<\\/")
+    # Session/operator/replay pages need hijack.js loaded before the SPA bundle.
+    pre_scripts = ""
+    page_script = "server-session-page.js"
+    if page_kind in {"session", "operator"}:
+        pre_scripts = "<script type='module' src='/assets/hijack.js'></script>"
+    elif page_kind == "replay":
+        page_script = "server-replay-page.js"
     html = (
         "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
@@ -144,11 +166,12 @@ def _spa_response(page_kind: str, **extra_bootstrap: object) -> Response:
         f"<link href='{_FONTS_CDN}' rel='stylesheet'>"
         f"<script src='{_XTERM_CDN}/lib/xterm.js'></script>"
         f"<script src='{_FITADDON_CDN}/lib/addon-fit.js'></script>"
-        "</head><body>"
+        f"</head><body>"
         "<div id='app-root'></div>"
         "<noscript><div class='page'><div class='card'>This application requires JavaScript.</div></div></noscript>"
         f"<script type='application/json' id='app-bootstrap'>{blob}</script>"
-        "<script type='module' src='/assets/server-session-page.js'></script>"
+        f"{pre_scripts}"
+        f"<script type='module' src='/assets/{page_script}'></script>"
         "</body></html>"
     )
     return Response(html, status=200, headers={"content-type": "text/html; charset=utf-8"})
@@ -196,6 +219,19 @@ class Default(WorkerEntrypoint):
             auth_error = await _require_jwt(request, config)
             if auth_error is not None:
                 return auth_error
+
+            method = str(getattr(request, "method", "GET")).upper()
+            if method == "DELETE":
+                # Purge all stale KV session entries.
+                kv = getattr(self.env, "SESSION_REGISTRY", None)
+                if kv is None:
+                    return json_response({"error": "SESSION_REGISTRY not configured"}, status=500)
+                keys_resp = await kv.list()
+                keys = [k.name for k in keys_resp.keys]
+                for key in keys:
+                    await kv.delete(key)
+                return json_response({"ok": True, "deleted": len(keys)})
+
             # Fleet-wide list: query KV registry populated by each DO on connect/disconnect.
             # Falls back to empty list when SESSION_REGISTRY KV binding is not configured.
             kv_configured = getattr(self.env, "SESSION_REGISTRY", None) is not None
@@ -210,13 +246,14 @@ class Default(WorkerEntrypoint):
 
         worker_id = _extract_worker_id(path)
         if worker_id is None:
-            # SPA page routes — all serve the same shell with different bootstrap data.
-            spa_page_kind = _SPA_ROUTES.get(path)
-            if spa_page_kind is not None:
+            # SPA page routes — serve the shell HTML with route-specific bootstrap data.
+            spa = _resolve_spa_route(path)
+            if spa is not None:
                 auth_error = await _require_jwt(request, config)
                 if auth_error is not None:
                     return auth_error
-                return _spa_response(spa_page_kind)
+                page_kind, extra = spa
+                return _spa_response(page_kind, **extra)
             return json_response({"error": "not_found", "path": path}, status=404)
 
         namespace = getattr(self.env, "SESSION_RUNTIME", None)
