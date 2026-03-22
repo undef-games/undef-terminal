@@ -87,6 +87,37 @@ class ControlStreamDecoder:
             raise ControlStreamProtocolError("truncated control frame")
         return events
 
+    def _try_parse_frame(self, buf: str, idx: int, buf_len: int, *, final: bool) -> tuple[ControlChunk, int] | None:
+        """Parse a control frame at buf[idx]. Returns (chunk, frame_end) or None if incomplete.
+
+        Raises ControlStreamProtocolError on protocol violations.
+        Returns None when the frame is not yet complete (only valid when final=False).
+        """
+        if buf_len - idx < _HEADER_BYTES:
+            if final:
+                raise ControlStreamProtocolError("truncated control frame")
+            return None
+        length_hex = buf[idx + 2 : idx + 10]
+        separator = buf[idx + 10]
+        if separator != ":" or any(char not in _HEX_DIGITS for char in length_hex):
+            raise ControlStreamProtocolError("invalid control header")
+        payload_bytes = int(length_hex, 16)
+        if payload_bytes > self._max_control_payload_bytes:
+            raise ControlStreamProtocolError("control payload too large")
+        frame_end = idx + _HEADER_BYTES + payload_bytes
+        if buf_len < frame_end:
+            if final:
+                raise ControlStreamProtocolError("truncated control frame")
+            return None
+        payload_raw = buf[idx + _HEADER_BYTES : frame_end]
+        try:
+            payload = json.loads(payload_raw)
+        except json.JSONDecodeError as exc:
+            raise ControlStreamProtocolError("invalid control json") from exc
+        if not isinstance(payload, dict):
+            raise ControlStreamProtocolError("control payload must be an object")
+        return ControlChunk(payload), frame_end
+
     def _drain(self, *, final: bool) -> list[ControlStreamChunk]:
         events: list[ControlStreamChunk] = []
         buf = self._buffer
@@ -130,36 +161,12 @@ class ControlStreamDecoder:
 
             _flush_data()
 
-            if buf_len - idx < _HEADER_BYTES:
-                if final:
-                    raise ControlStreamProtocolError("truncated control frame")
+            result = self._try_parse_frame(buf, idx, buf_len, final=final)
+            if result is None:
                 break
-
-            length_hex = buf[idx + 2 : idx + 10]
-            separator = buf[idx + 10]
-            if separator != ":" or any(char not in _HEX_DIGITS for char in length_hex):
-                raise ControlStreamProtocolError("invalid control header")
-
-            payload_bytes = int(length_hex, 16)
-            if payload_bytes > self._max_control_payload_bytes:
-                raise ControlStreamProtocolError("control payload too large")
-
-            frame_end = idx + _HEADER_BYTES + payload_bytes
-            if buf_len < frame_end:
-                if final:
-                    raise ControlStreamProtocolError("truncated control frame")
-                break
-
-            payload_raw = buf[idx + _HEADER_BYTES : frame_end]
-            try:
-                payload = json.loads(payload_raw)
-            except json.JSONDecodeError as exc:
-                raise ControlStreamProtocolError("invalid control json") from exc
-            if not isinstance(payload, dict):
-                raise ControlStreamProtocolError("control payload must be an object")
-            events.append(ControlChunk(payload))
-            idx = frame_end
+            chunk, idx = result
             data_start = idx
+            events.append(chunk)
 
         if idx > 0:
             self._buffer = buf[idx:]

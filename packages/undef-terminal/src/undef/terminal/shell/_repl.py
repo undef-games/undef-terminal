@@ -83,21 +83,7 @@ class LineBuffer:
 
             elif ch == "\x1b":
                 # VT escape sequence — swallow entirely (arrow keys, F-keys, etc.).
-                j = i + 1
-                if j < len(data) and data[j] == "[":
-                    j += 1
-                    # Consume parameter bytes (0x30-0x3F) and intermediate bytes (0x20-0x2F)
-                    while j < len(data) and data[j] < "\x40":
-                        j += 1
-                    # Consume the final byte (0x40-0x7E)
-                    if j < len(data) and "\x40" <= data[j] <= "\x7e":
-                        j += 1
-                elif j < len(data) and data[j] == "O":
-                    # SS3 sequences (e.g. F1-F4 on some terminals)
-                    j += 1
-                    if j < len(data):
-                        j += 1
-                i = j
+                i = LineBuffer._consume_escape(data, i)
 
             elif ch >= " " or ch == "\t":
                 # Printable character (or tab — shown as-is).
@@ -130,3 +116,22 @@ class LineBuffer:
         """Discard current line buffer without emitting a completed line."""
         self._buf.clear()
         self._echo.clear()
+
+    @staticmethod
+    def _consume_escape(data: str, i: int) -> int:
+        """Consume a VT escape sequence starting at data[i]. Returns index of next character."""
+        j = i + 1
+        if j < len(data) and data[j] == "[":
+            j += 1
+            # Consume parameter bytes (0x30-0x3F) and intermediate bytes (0x20-0x2F)
+            while j < len(data) and data[j] < "\x40":
+                j += 1
+            # Consume the final byte (0x40-0x7E)
+            if j < len(data) and "\x40" <= data[j] <= "\x7e":
+                j += 1
+        elif j < len(data) and data[j] == "O":
+            # SS3 sequences (e.g. F1-F4 on some terminals)
+            j += 1
+            if j < len(data):
+                j += 1
+        return j

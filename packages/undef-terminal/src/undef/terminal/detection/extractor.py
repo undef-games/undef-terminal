@@ -83,6 +83,29 @@ class KVExtractor:
         return extracted
 
     @staticmethod
+    def _validate_numeric(field: str, value: Any, rules: dict[str, Any], errors: list[str], field_type: str) -> None:
+        """Validate an int or float field against type and min/max constraints."""
+        expected: type = int if field_type == "int" else float
+        if not isinstance(value, expected):
+            errors.append(f"{field}: expected {field_type}, got {type(value).__name__}")
+            return
+        if "min" in rules and value < rules["min"]:
+            errors.append(f"{field}: value {value} below min {rules['min']}")
+        if "max" in rules and value > rules["max"]:
+            errors.append(f"{field}: value {value} exceeds max {rules['max']}")
+
+    @staticmethod
+    def _validate_string(field: str, value: Any, rules: dict[str, Any], errors: list[str]) -> None:
+        """Validate a string field against type, pattern, and allowed_values constraints."""
+        if not isinstance(value, str):
+            errors.append(f"{field}: expected string, got {type(value).__name__}")
+            return
+        if "pattern" in rules and not re.match(rules["pattern"], value):
+            errors.append(f"{field}: value '{value}' does not match pattern {rules['pattern']}")
+        if "allowed_values" in rules and value not in rules["allowed_values"]:
+            errors.append(f"{field}: value '{value}' not in allowed values {rules['allowed_values']}")
+
+    @staticmethod
     def _validate(
         extracted: dict[str, Any],
         kv_config: dict[str, Any] | list[dict[str, Any]],
@@ -111,54 +134,16 @@ class KVExtractor:
             is_required = cfg.get("required", False)
             field_type = cfg.get("type", "string")
 
-            # Check required fields
             if is_required and value is None:
                 errors.append(f"{field}: required but not found")
                 continue
-
-            # Skip validation if value is None and not required
             if value is None:
                 continue
 
-            # Type validation
-            if field_type == "int":
-                if not isinstance(value, int):
-                    errors.append(f"{field}: expected int, got {type(value).__name__}")
-                    continue
-
-                # Check min/max constraints
-                if "min" in validate_rules and value < validate_rules["min"]:
-                    errors.append(f"{field}: value {value} below min {validate_rules['min']}")
-                if "max" in validate_rules and value > validate_rules["max"]:
-                    errors.append(f"{field}: value {value} exceeds max {validate_rules['max']}")
-
-            elif field_type == "float":
-                if not isinstance(value, float):
-                    errors.append(f"{field}: expected float, got {type(value).__name__}")
-                    continue
-
-                # Check min/max constraints
-                if "min" in validate_rules and value < validate_rules["min"]:
-                    errors.append(f"{field}: value {value} below min {validate_rules['min']}")
-                if "max" in validate_rules and value > validate_rules["max"]:
-                    errors.append(f"{field}: value {value} exceeds max {validate_rules['max']}")
-
+            if field_type in ("int", "float"):
+                KVExtractor._validate_numeric(field, value, validate_rules, errors, field_type)
             elif field_type == "string":
-                if not isinstance(value, str):
-                    errors.append(f"{field}: expected string, got {type(value).__name__}")
-                    continue
-
-                # Check pattern constraint if present
-                if "pattern" in validate_rules:
-                    pattern = validate_rules["pattern"]
-                    if not re.match(pattern, value):
-                        errors.append(f"{field}: value '{value}' does not match pattern {pattern}")
-
-                # Check allowed values
-                if "allowed_values" in validate_rules:
-                    allowed = validate_rules["allowed_values"]
-                    if value not in allowed:
-                        errors.append(f"{field}: value '{value}' not in allowed values {allowed}")
+                KVExtractor._validate_string(field, value, validate_rules, errors)
 
         return {"valid": len(errors) == 0, "errors": errors}
 
