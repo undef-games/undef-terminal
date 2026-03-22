@@ -23,18 +23,21 @@ classifiers = [
 ]
 dependencies = [
   "pyjwt>=2.9",
-  "undef-terminal>=0.4.0",
+  "undef-terminal>=0.3.0",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=9.0",
   "pytest-asyncio>=1.3",
+  "pytest-cov>=6.0",
   "pytest-playwright>=0.5",
   "ruff>=0.15",
   "mypy>=1.19",
   "workers-py>=0.4.0",
   "websockets>=16.0",
+  "undef-shell>=0.1.0",
+  "cryptography>=44.0",
 ]
 
 [project.urls]
@@ -73,6 +76,9 @@ branch = true
 fail_under = 100
 show_missing = true
 skip_covered = false
+
+[tool.uv.sources]
+undef-shell = { path = "../../packages/undef-shell", editable = true }
 
 [tool.mutmut]
 paths_to_mutate = ["src/"]
