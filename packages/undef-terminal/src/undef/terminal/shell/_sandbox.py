@@ -19,7 +19,12 @@ rather than to provide a true isolation layer.
 
 from __future__ import annotations
 
+import base64
 import builtins
+import datetime
+import hashlib
+import json
+import re
 import traceback
 
 # ---------------------------------------------------------------------------
@@ -130,6 +135,12 @@ class Sandbox:
         # Capture print output into a buffer
         self._output: list[str] = []
         self.namespace["print"] = self._print
+
+        self.namespace["json"] = json
+        self.namespace["datetime"] = datetime
+        self.namespace["re"] = re
+        self.namespace["hashlib"] = hashlib
+        self.namespace["base64"] = base64
 
     def _print(self, *args: object, sep: str = " ", end: str = "\n") -> None:
         text = sep.join(str(a) for a in args) + end

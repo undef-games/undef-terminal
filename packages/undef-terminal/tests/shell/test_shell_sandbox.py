@@ -106,3 +106,38 @@ def test_unsafe_builtin_not_available():
     out = sb.run("open('test')")
     # open not in builtins → NameError
     assert "NameError" in out or "open" in out
+
+
+# ---------------------------------------------------------------------------
+# Pre-imported safe modules
+# ---------------------------------------------------------------------------
+
+
+def test_json_available():
+    sb = Sandbox()
+    out = sb.run("json.dumps({'x': 1})")
+    assert '"x"' in out
+
+
+def test_datetime_available():
+    sb = Sandbox()
+    out = sb.run("datetime.date(2025, 1, 1).year")
+    assert "2025" in out
+
+
+def test_re_available():
+    sb = Sandbox()
+    out = sb.run(r"re.findall(r'\d+', 'a1b2')")
+    assert "['1', '2']" in out
+
+
+def test_hashlib_available():
+    sb = Sandbox()
+    out = sb.run("hashlib.md5(b'hello').hexdigest()")
+    assert "5d41402abc4b" in out
+
+
+def test_base64_available():
+    sb = Sandbox()
+    out = sb.run("base64.b64encode(b'hi').decode()")
+    assert "aGk=" in out

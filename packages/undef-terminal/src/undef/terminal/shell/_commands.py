@@ -6,15 +6,20 @@
 
 Commands
 --------
-help            — list all commands
-clear           — erase the terminal screen
-py <expr>       — evaluate a Python expression (or exec a statement)
-sessions        — list active sessions from the KV registry
-kv list         — list all KV keys with the session: prefix
-kv get <key>    — read a KV value by key
-fetch <url>     — HTTP GET (uses urllib; CF runtime uses js.fetch)
-env             — show available context keys
-exit / quit     — end the shell session
+help [cmd]          — list all commands, or show detail for <cmd>
+clear               — erase the terminal screen
+py <expr>           — evaluate a Python expression (or exec a statement)
+sessions            — list active sessions from the KV registry
+sessions kill <id>  — force-terminate a session DO
+kv list             — list all KV keys with the session: prefix
+kv get <key>        — read a KV value by key
+kv set <key> <val>  — write a KV entry
+kv delete <key>     — delete a KV entry
+fetch [-X METHOD] <url> [body] — HTTP request (GET by default)
+storage list        — list DO storage keys
+storage get <key>   — read a DO storage value
+env                 — show available context keys
+exit / quit         — end the shell session
 """
 
 from __future__ import annotations
@@ -45,16 +50,52 @@ from undef.terminal.shell._sandbox import Sandbox
 
 _HELP = (
     f"{heading('ushell commands')}"
-    f"{fmt_kv('help', 'this help text')}"
+    f"{fmt_kv('help [cmd]', 'this help text, or detail for <cmd>')}"
     f"{fmt_kv('clear', 'erase the terminal screen')}"
     f"{fmt_kv('py <expr>', 'evaluate Python expression or statement')}"
     f"{fmt_kv('sessions', 'list active sessions from KV registry')}"
+    f"{fmt_kv('sessions kill <id>', 'force-terminate a session DO')}"
     f"{fmt_kv('kv list', 'list all KV session keys')}"
     f"{fmt_kv('kv get <key>', 'read a KV value')}"
-    f"{fmt_kv('fetch <url>', 'HTTP GET request')}"
+    f"{fmt_kv('kv set <key> <value>', 'write a KV entry')}"
+    f"{fmt_kv('kv delete <key>', 'delete a KV entry')}"
+    f"{fmt_kv('fetch [-X METHOD] <url> [body]', 'HTTP request (GET by default)')}"
+    f"{fmt_kv('storage list', 'list DO storage keys')}"
+    f"{fmt_kv('storage get <key>', 'read a DO storage value')}"
     f"{fmt_kv('env', 'show available context keys')}"
     f"{fmt_kv('exit / quit', 'end this shell session')}"
 )
+
+_COMMAND_HELP: dict[str, str] = {
+    "help": "help [cmd] — show all commands or detail for <cmd>.\r\n",
+    "clear": "clear — erase the terminal screen (ANSI reset).\r\n",
+    "py": (
+        "py <expr> — evaluate a Python expression or exec a statement.\r\n"
+        "Variables persist across py calls for the session lifetime.\r\n"
+        "Available: json, datetime, re, hashlib, base64, plus safe builtins.\r\n"
+    ),
+    "sessions": (
+        "sessions — list all sessions from the KV registry.\r\n"
+        "sessions kill <id> — force-terminate a session Durable Object.\r\n"
+    ),
+    "kv": (
+        "kv list                  — list all KV keys with session: prefix.\r\n"
+        "kv get <key>             — read a KV value (session: prefix added if absent).\r\n"
+        "kv set <key> <value>     — write a KV entry.\r\n"
+        "kv delete <key>          — delete a KV entry.\r\n"
+    ),
+    "fetch": (
+        "fetch [-X METHOD] <url> [body] — HTTP request.\r\n"
+        "  Default method is GET.  Use -X POST, -X PUT, etc. to change it.\r\n"
+        "  Optional body is sent as the request body.\r\n"
+    ),
+    "storage": (
+        "storage list         — list all DO storage keys.\r\nstorage get <key>    — read a DO storage value by key.\r\n"
+    ),
+    "env": "env — show available context keys and their types.\r\n",
+    "exit": "exit / quit — end this shell session.\r\n",
+    "quit": "exit / quit — end this shell session.\r\n",
+}
 
 _KV_PREFIX = "session:"
 
@@ -69,6 +110,8 @@ class CommandDispatcher:
                      Async callable ``() -> list[dict]`` — KV session list.
                  ``env``
                      CF env object with KV/DO bindings.
+                 ``storage``
+                     DO storage object (ctx.storage).
 
         sandbox: :class:`~undef.terminal.shell._sandbox.Sandbox` instance
                  for ``py`` commands.  A fresh one is created if omitted.
@@ -93,6 +136,11 @@ class CommandDispatcher:
             return [term(info_msg("Goodbye.\r\n") + PROMPT)]
 
         if cmd == "help":
+            if arg:
+                detail = _COMMAND_HELP.get(arg.lower())
+                if detail is None:
+                    return [term(error_msg(f"no help for {arg!r}") + PROMPT)]
+                return [term(detail + PROMPT)]
             return [term(_HELP + PROMPT)]
 
         if cmd == "clear":
@@ -102,6 +150,8 @@ class CommandDispatcher:
             return await self._cmd_py(arg)
 
         if cmd == "sessions":
+            if arg.startswith("kill ") or arg == "kill":
+                return await self._cmd_sessions_kill(arg[5:].strip() if arg.startswith("kill ") else "")
             return await self._cmd_sessions()
 
         if cmd == "kv":
@@ -109,6 +159,9 @@ class CommandDispatcher:
 
         if cmd == "fetch":
             return await self._cmd_fetch(arg)
+
+        if cmd == "storage":
+            return await self._cmd_storage(arg)
 
         if cmd == "env":
             return self._cmd_env()
@@ -148,6 +201,61 @@ class CommandDispatcher:
         table = fmt_table(rows, headers=("session_id", "state", "type", "status"))
         return [term(table + PROMPT)]
 
+    async def _cmd_sessions_kill(self, session_id: str) -> list[dict[str, Any]]:
+        if not session_id:
+            return [term(error_msg("usage: sessions kill <session_id>") + PROMPT)]
+        env = self._ctx.get("env")
+        namespace = getattr(env, "SESSION_RUNTIME", None) if env is not None else None
+        if namespace is None:
+            return [term(error_msg("SESSION_RUNTIME DO binding not available") + PROMPT)]
+        try:
+            stub_id = namespace.idFromName(session_id)
+            stub = namespace.get(stub_id)
+
+            class _FakeReq:
+                method = "DELETE"
+                # CF DO stub fetch — URL is routing-only, not a real network address.
+                url = f"https://worker/api/sessions/{session_id}"
+
+            await stub.fetch(_FakeReq())
+            return [term(success_msg(f"kill signal sent to {session_id}") + PROMPT)]
+        except Exception as exc:
+            return [term(error_msg(str(exc)) + PROMPT)]
+
+    async def _cmd_storage(self, arg: str) -> list[dict[str, Any]]:
+        storage = self._ctx.get("storage")
+        if storage is None:
+            return [term(error_msg("storage not available in this context") + PROMPT)]
+
+        sub_parts = arg.split(None, 1)
+        sub = sub_parts[0].lower() if sub_parts else ""
+        key_arg = sub_parts[1].strip() if len(sub_parts) > 1 else ""
+
+        if sub == "list":
+            try:
+                result = await storage.list()
+                keys_raw = result.keys if hasattr(result, "keys") else list(result)
+                keys = [k.get("name") if isinstance(k, dict) else getattr(k, "name", str(k)) for k in keys_raw]
+                if not keys:
+                    return [term(info_msg("no storage keys found") + PROMPT)]
+                lines = "\r\n".join(f"  {CYAN}{k}{RESET}" for k in keys if k)
+                return [term(lines + "\r\n" + PROMPT)]
+            except Exception as exc:
+                return [term(error_msg(str(exc)) + PROMPT)]
+
+        if sub == "get":
+            if not key_arg:
+                return [term(error_msg("usage: storage get <key>") + PROMPT)]
+            try:
+                value = await storage.get(key_arg)
+                if value is None:
+                    return [term(info_msg(f"key not found: {key_arg}") + PROMPT)]
+                return [term(f"{DIM}{key_arg}{RESET}\r\n{value}\r\n" + PROMPT)]
+            except Exception as exc:
+                return [term(error_msg(str(exc)) + PROMPT)]
+
+        return [term(error_msg("usage: storage list | storage get <key>") + PROMPT)]
+
     async def _cmd_kv(self, arg: str) -> list[dict[str, Any]]:
         env = self._ctx.get("env")
         kv = getattr(env, "SESSION_REGISTRY", None) if env is not None else None
@@ -182,28 +290,74 @@ class CommandDispatcher:
             except Exception as exc:
                 return [term(error_msg(str(exc)) + PROMPT)]
 
-        return [term(error_msg(f"usage: kv list | kv get <key>") + PROMPT)]  # noqa: F541
+        if sub == "set":
+            if not key_arg:
+                return [term(error_msg("usage: kv set <key> <value>") + PROMPT)]
+            key_val_parts = key_arg.split(None, 1)
+            if len(key_val_parts) < 2:
+                return [term(error_msg("usage: kv set <key> <value>") + PROMPT)]
+            raw_key, value = key_val_parts
+            full_key = raw_key if raw_key.startswith(_KV_PREFIX) else _KV_PREFIX + raw_key
+            try:
+                await kv.put(full_key, value)
+                return [term(success_msg(f"set {full_key}") + PROMPT)]
+            except Exception as exc:
+                return [term(error_msg(str(exc)) + PROMPT)]
 
-    async def _cmd_fetch(self, url: str) -> list[dict[str, Any]]:
+        if sub == "delete":
+            if not key_arg:
+                return [term(error_msg("usage: kv delete <key>") + PROMPT)]
+            full_key = key_arg if key_arg.startswith(_KV_PREFIX) else _KV_PREFIX + key_arg
+            try:
+                await kv.delete(full_key)
+                return [term(success_msg(f"deleted {full_key}") + PROMPT)]
+            except Exception as exc:
+                return [term(error_msg(str(exc)) + PROMPT)]
+
+        return [term(error_msg("usage: kv list | kv get <key> | kv set <key> <value> | kv delete <key>") + PROMPT)]
+
+    async def _cmd_fetch(self, arg: str) -> list[dict[str, Any]]:
+        if not arg:
+            return [term(error_msg("usage: fetch [-X METHOD] <url> [body]") + PROMPT)]
+
+        method = "GET"
+        rest = arg
+        if rest == "-X" or rest.startswith(("-X ", "-X\t")):
+            parts = rest[3:].lstrip().split(None, 1)
+            if not parts:
+                return [term(error_msg("usage: fetch [-X METHOD] <url> [body]") + PROMPT)]
+            method = parts[0].upper()
+            rest = parts[1] if len(parts) > 1 else ""
+
+        url_body = rest.split(None, 1)
+        url = url_body[0] if url_body else ""
+        body = url_body[1] if len(url_body) > 1 else None
+
         if not url:
-            return [term(error_msg("usage: fetch <url>") + PROMPT)]
+            return [term(error_msg("usage: fetch [-X METHOD] <url> [body]") + PROMPT)]
+
         try:
-            # Try js.fetch (CF runtime) first, fall back to urllib.
             try:
                 import js  # type: ignore[import-not-found]
 
-                resp = await js.fetch(url)
+                opts: dict[str, object] = {"method": method}
+                if body is not None:
+                    opts["body"] = body
+                resp = await js.fetch(url, opts)
                 status = int(resp.status)
-                body = await resp.text()
+                text = await resp.text()
             except (ImportError, AttributeError):
                 import urllib.request
 
-                with urllib.request.urlopen(url, timeout=10) as r:  # noqa: S310  # nosec B310
+                req = urllib.request.Request(url, method=method)  # noqa: S310  # nosec B310
+                if body is not None:
+                    req.data = body.encode("utf-8")
+                with urllib.request.urlopen(req, timeout=10) as r:  # noqa: S310  # nosec B310
                     status = r.status
-                    body = r.read(4096).decode("utf-8", errors="replace")
+                    text = r.read(4096).decode("utf-8", errors="replace")
 
-            preview = body[:800].replace("\n", "\r\n")
-            truncated = " …" if len(body) > 800 else ""
+            preview = text[:800].replace("\n", "\r\n")
+            truncated = " …" if len(text) > 800 else ""
             color = GREEN if status < 400 else YELLOW if status < 500 else "\x1b[31m"
             return [term(f"{color}HTTP {status}{RESET}\r\n{preview}{truncated}\r\n" + PROMPT)]
         except Exception as exc:

@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 _IMPORT_ERROR: str | None = None
 
 
-def _load_connector(session_id: str, env: Any) -> Any:
+def _load_connector(session_id: str, env: Any, storage: Any = None) -> Any:
     """Import and instantiate UshellConnector, wiring CF env bindings."""
     global _IMPORT_ERROR
     try:
@@ -61,6 +61,8 @@ def _load_connector(session_id: str, env: Any) -> Any:
 
     # Build context dict with CF bindings available to commands.
     ctx: dict[str, Any] = {"env": env}
+    if storage is not None:
+        ctx["storage"] = storage
     try:
         from undef_terminal_cloudflare.state.registry import list_kv_sessions
 
@@ -96,7 +98,8 @@ def init_ushell(runtime: Any) -> None:
         return
     if runtime._ushell is not None:
         return
-    connector = _load_connector(runtime.worker_id, runtime.env)
+    storage = getattr(getattr(runtime, "ctx", None), "storage", None)
+    connector = _load_connector(runtime.worker_id, runtime.env, storage=storage)
     if connector is None:
         logger.error("ushell: failed to load connector for %s", runtime.worker_id)
         return

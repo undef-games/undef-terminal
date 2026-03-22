@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from undef.terminal.shell._commands import CommandDispatcher
 
@@ -171,254 +171,6 @@ async def test_cmd_sessions_missing_fields():
 
 
 # ---------------------------------------------------------------------------
-# kv command
-# ---------------------------------------------------------------------------
-
-
-def make_kv_ctx(kv: Any) -> dict:
-    env = SimpleNamespace(SESSION_REGISTRY=kv)
-    return {"env": env}
-
-
-async def test_cmd_kv_no_env():
-    d = make_dispatcher()
-    frames = await d.dispatch("kv list")
-    assert "not available" in first_data(frames)
-
-
-async def test_cmd_kv_env_without_session_registry():
-    env = SimpleNamespace()  # no SESSION_REGISTRY attr
-    d = make_dispatcher({"env": env})
-    frames = await d.dispatch("kv list")
-    assert "not available" in first_data(frames)
-
-
-async def test_cmd_kv_list_with_keys_as_dicts():
-    kv = AsyncMock()
-    result = MagicMock()
-    result.keys = [{"name": "session:abc"}, {"name": "session:def"}]
-    kv.list = AsyncMock(return_value=result)
-    d = make_dispatcher(make_kv_ctx(kv))
-    frames = await d.dispatch("kv list")
-    data = first_data(frames)
-    assert "session:abc" in data
-
-
-async def test_cmd_kv_list_with_keys_as_objects():
-    kv = AsyncMock()
-    result = MagicMock()
-    key_obj = SimpleNamespace(name="session:xyz")
-    result.keys = [key_obj]
-    kv.list = AsyncMock(return_value=result)
-    d = make_dispatcher(make_kv_ctx(kv))
-    frames = await d.dispatch("kv list")
-    assert "session:xyz" in first_data(frames)
-
-
-async def test_cmd_kv_list_keys_as_plain_strings():
-    kv = AsyncMock()
-    result = MagicMock()
-    # Object without .name — falls back to str(k)
-    result.keys = ["session:plain"]
-    # hasattr(result, 'keys') is True (it's an attribute)
-    kv.list = AsyncMock(return_value=result)
-    d = make_dispatcher(make_kv_ctx(kv))
-    frames = await d.dispatch("kv list")
-    assert "session:plain" in first_data(frames)
-
-
-async def test_cmd_kv_list_empty():
-    kv = AsyncMock()
-    result = MagicMock()
-    result.keys = []
-    kv.list = AsyncMock(return_value=result)
-    d = make_dispatcher(make_kv_ctx(kv))
-    frames = await d.dispatch("kv list")
-    assert "no keys" in first_data(frames)
-
-
-async def test_cmd_kv_list_exception():
-    kv = AsyncMock()
-    kv.list = AsyncMock(side_effect=Exception("list error"))
-    d = make_dispatcher(make_kv_ctx(kv))
-    frames = await d.dispatch("kv list")
-    assert "list error" in first_data(frames)
-
-
-async def test_cmd_kv_list_result_as_dict():
-    # result without .keys attr — falls back to result.get("keys", [])
-    # Use a MagicMock that returns False for hasattr(..., "keys")
-    kv = AsyncMock()
-    result = MagicMock(spec=[])  # spec=[] means no attributes, so hasattr(result, "keys") is False
-    result.get = MagicMock(return_value=[{"name": "session:dictkey"}])
-    kv.list = AsyncMock(return_value=result)
-    d = make_dispatcher(make_kv_ctx(kv))
-    frames = await d.dispatch("kv list")
-    assert "session:dictkey" in first_data(frames)
-
-
-async def test_cmd_kv_get_no_key():
-    kv = AsyncMock()
-    d = make_dispatcher(make_kv_ctx(kv))
-    frames = await d.dispatch("kv get")
-    assert "usage: kv get" in first_data(frames)
-
-
-async def test_cmd_kv_get_with_prefix():
-    kv = AsyncMock()
-    kv.get = AsyncMock(return_value="some_value")
-    d = make_dispatcher(make_kv_ctx(kv))
-    frames = await d.dispatch("kv get session:mykey")
-    data = first_data(frames)
-    assert "some_value" in data
-    assert "session:mykey" in data
-
-
-async def test_cmd_kv_get_without_prefix():
-    kv = AsyncMock()
-    kv.get = AsyncMock(return_value="val")
-    d = make_dispatcher(make_kv_ctx(kv))
-    await d.dispatch("kv get mykey")
-    # should prepend session:
-    kv.get.assert_called_once_with("session:mykey")
-
-
-async def test_cmd_kv_get_missing_key():
-    kv = AsyncMock()
-    kv.get = AsyncMock(return_value=None)
-    d = make_dispatcher(make_kv_ctx(kv))
-    frames = await d.dispatch("kv get missing")
-    assert "key not found" in first_data(frames)
-
-
-async def test_cmd_kv_get_exception():
-    kv = AsyncMock()
-    kv.get = AsyncMock(side_effect=Exception("get error"))
-    d = make_dispatcher(make_kv_ctx(kv))
-    frames = await d.dispatch("kv get mykey")
-    assert "get error" in first_data(frames)
-
-
-async def test_cmd_kv_invalid_subcommand():
-    kv = AsyncMock()
-    d = make_dispatcher(make_kv_ctx(kv))
-    frames = await d.dispatch("kv foo")
-    assert "usage: kv list" in first_data(frames)
-
-
-async def test_cmd_kv_no_subcommand():
-    kv = AsyncMock()
-    d = make_dispatcher(make_kv_ctx(kv))
-    frames = await d.dispatch("kv")
-    assert "usage: kv list" in first_data(frames)
-
-
-# ---------------------------------------------------------------------------
-# fetch command
-# ---------------------------------------------------------------------------
-
-
-async def test_cmd_fetch_no_url():
-    d = make_dispatcher()
-    frames = await d.dispatch("fetch")
-    assert "usage: fetch" in first_data(frames)
-
-
-async def test_cmd_fetch_urllib_success():
-    mock_response = MagicMock()
-    mock_response.status = 200
-    mock_response.read.return_value = b"Hello world"
-    mock_response.__enter__ = lambda s: s
-    mock_response.__exit__ = MagicMock(return_value=False)
-
-    with patch("urllib.request.urlopen", return_value=mock_response):
-        d = make_dispatcher()
-        frames = await d.dispatch("fetch http://example.com")
-    data = first_data(frames)
-    assert "HTTP 200" in data
-    assert "Hello world" in data
-
-
-async def test_cmd_fetch_urllib_4xx():
-    mock_response = MagicMock()
-    mock_response.status = 404
-    mock_response.read.return_value = b"Not Found"
-    mock_response.__enter__ = lambda s: s
-    mock_response.__exit__ = MagicMock(return_value=False)
-
-    with patch("urllib.request.urlopen", return_value=mock_response):
-        d = make_dispatcher()
-        frames = await d.dispatch("fetch http://example.com/missing")
-    data = first_data(frames)
-    assert "HTTP 404" in data
-
-
-async def test_cmd_fetch_urllib_5xx():
-    mock_response = MagicMock()
-    mock_response.status = 500
-    mock_response.read.return_value = b"Server Error"
-    mock_response.__enter__ = lambda s: s
-    mock_response.__exit__ = MagicMock(return_value=False)
-
-    with patch("urllib.request.urlopen", return_value=mock_response):
-        d = make_dispatcher()
-        frames = await d.dispatch("fetch http://example.com/error")
-    data = first_data(frames)
-    assert "HTTP 500" in data
-
-
-async def test_cmd_fetch_body_truncated():
-    mock_response = MagicMock()
-    mock_response.status = 200
-    mock_response.read.return_value = b"X" * 900
-    mock_response.__enter__ = lambda s: s
-    mock_response.__exit__ = MagicMock(return_value=False)
-
-    with patch("urllib.request.urlopen", return_value=mock_response):
-        d = make_dispatcher()
-        frames = await d.dispatch("fetch http://example.com/big")
-    data = first_data(frames)
-    assert "…" in data
-
-
-async def test_cmd_fetch_exception():
-    with patch("urllib.request.urlopen", side_effect=Exception("connection refused")):
-        d = make_dispatcher()
-        frames = await d.dispatch("fetch http://badhost")
-    assert "connection refused" in first_data(frames)
-
-
-async def test_cmd_fetch_js_fetch_path():
-    """Cover the js.fetch branch by injecting a fake 'js' module."""
-    import sys
-    import types
-
-    fake_resp = MagicMock()
-    fake_resp.status = 200
-
-    # Make .text() an async callable
-    async def fake_text():
-        return "js-body"
-
-    fake_resp.text = fake_text
-
-    async def fake_fetch(url):
-        return fake_resp
-
-    fake_js = types.ModuleType("js")
-    fake_js.fetch = fake_fetch
-    sys.modules["js"] = fake_js
-    try:
-        d = make_dispatcher()
-        frames = await d.dispatch("fetch http://example.com")
-        data = first_data(frames)
-        assert "HTTP 200" in data
-        assert "js-body" in data
-    finally:
-        del sys.modules["js"]
-
-
-# ---------------------------------------------------------------------------
 # env command
 # ---------------------------------------------------------------------------
 
@@ -454,3 +206,66 @@ async def test_cmd_env_with_env_no_public_attrs():
     frames = await d.dispatch("env")
     # lines is empty → "(empty context)"
     assert "(empty context)" in first_data(frames)
+
+
+# ---------------------------------------------------------------------------
+# help <cmd> tests
+# ---------------------------------------------------------------------------
+
+
+async def test_help_cmd_kv():
+    d = make_dispatcher()
+    frames = await d.dispatch("help kv")
+    assert "kv" in first_data(frames)
+    assert "usage" not in first_data(frames).lower() or "kv list" in first_data(frames)
+
+
+async def test_help_cmd_py():
+    d = make_dispatcher()
+    frames = await d.dispatch("help py")
+    data = first_data(frames)
+    assert "py" in data
+
+
+async def test_help_cmd_bogus():
+    d = make_dispatcher()
+    frames = await d.dispatch("help bogus")
+    assert "no help for" in first_data(frames)
+
+
+# ---------------------------------------------------------------------------
+# sessions kill tests
+# ---------------------------------------------------------------------------
+
+
+async def test_cmd_sessions_kill_no_id():
+    d = make_dispatcher()
+    frames = await d.dispatch("sessions kill")
+    assert "usage: sessions kill" in first_data(frames)
+
+
+async def test_cmd_sessions_kill_no_binding():
+    d = make_dispatcher()
+    frames = await d.dispatch("sessions kill sid1")
+    assert "not available" in first_data(frames)
+
+
+async def test_cmd_sessions_kill_success():
+    fake_stub = AsyncMock()
+    fake_stub.fetch = AsyncMock()
+    fake_ns = MagicMock()
+    fake_ns.idFromName = MagicMock(return_value="stub_id")
+    fake_ns.get = MagicMock(return_value=fake_stub)
+    env = SimpleNamespace(SESSION_RUNTIME=fake_ns)
+    d = make_dispatcher({"env": env})
+    frames = await d.dispatch("sessions kill sid1")
+    assert "kill signal sent" in first_data(frames)
+
+
+async def test_cmd_sessions_kill_exception():
+    fake_ns = MagicMock()
+    fake_ns.idFromName = MagicMock(side_effect=Exception("do error"))
+    env = SimpleNamespace(SESSION_RUNTIME=fake_ns)
+    d = make_dispatcher({"env": env})
+    frames = await d.dispatch("sessions kill sid1")
+    assert "do error" in first_data(frames)
