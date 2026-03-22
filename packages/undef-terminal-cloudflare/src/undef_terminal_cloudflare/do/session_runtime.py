@@ -214,14 +214,19 @@ class SessionRuntime(_SessionRuntimeIoMixin, _WsHelperMixin, DurableObject):
         # guarantees worker_bearer_token is set (ValueError otherwise).
         _is_worker_ws = upgrade_header == "websocket" and path.startswith("/ws/worker/")
         if _is_worker_ws and self.config.worker_bearer_token:
-            token = extract_bearer_or_cookie(request)
-            if not token or not secrets.compare_digest(token, self.config.worker_bearer_token):
-                return Response(
-                    json.dumps({"error": "worker authentication required"}),
-                    status=403,
-                    headers={"content-type": "application/json"},
-                )
-            principal, auth_error = None, None
+            # CF Access service tokens bypass worker bearer token check.
+            _cf_client = str(request.headers.get("CF-Access-Client-Id") or "")  # type: ignore[union-attr]
+            if _cf_client.endswith(".access"):
+                principal, auth_error = None, None
+            else:
+                token = extract_bearer_or_cookie(request)
+                if not token or not secrets.compare_digest(token, self.config.worker_bearer_token):
+                    return Response(
+                        json.dumps({"error": "worker authentication required"}),
+                        status=403,
+                        headers={"content-type": "application/json"},
+                    )
+                principal, auth_error = None, None
         else:
             principal, auth_error = await self._resolve_principal(request)
             if auth_error is not None:

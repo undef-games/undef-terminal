@@ -36,6 +36,7 @@ _HTTP_UA = "undef-terminal-e2e-test/1.0"
 # Set via env vars or fall back to empty (local pywrangler dev uses AUTH_MODE=dev).
 _CF_CLIENT_ID = os.environ.get("CF_ACCESS_CLIENT_ID", "")
 _CF_CLIENT_SECRET = os.environ.get("CF_ACCESS_CLIENT_SECRET", "")
+_WORKER_BEARER_TOKEN = os.environ.get("CF_WORKER_BEARER_TOKEN", "")
 
 
 # ---------------------------------------------------------------------------
@@ -62,8 +63,11 @@ def _new_worker_id() -> str:
 
 
 def _ws_connect(uri: str):
-    """Connect with CF Access headers when available."""
+    """Connect with CF Access headers and worker bearer token when available."""
     extra = _cf_access_headers()
+    # Worker WS connections need the bearer token for the DO auth check.
+    if _WORKER_BEARER_TOKEN and "/ws/worker/" in uri:
+        extra["Authorization"] = f"Bearer {_WORKER_BEARER_TOKEN}"
     if extra:
         return websockets.connect(uri, additional_headers=extra)
     return websockets.connect(uri)
@@ -98,16 +102,55 @@ def _http_post(base: str, path: str, body: dict) -> tuple[int, dict]:
             return exc.code, {}
 
 
+def _decode_control_frames(raw: str) -> list[dict]:
+    """Extract JSON control frames from a control-stream-encoded WS message."""
+    dle, stx = "\x10", "\x02"
+    frames: list[dict] = []
+    i = 0
+    while i < len(raw):
+        if raw[i] == dle and i + 1 < len(raw) and raw[i + 1] == stx:
+            i += 2
+            colon = raw.index(":", i)
+            length = int(raw[i:colon], 16)
+            frames.append(json.loads(raw[colon + 1 : colon + 1 + length]))
+            i = colon + 1 + length
+        elif raw[i] == dle and i + 1 < len(raw) and raw[i + 1] == dle:
+            i += 2
+        else:
+            i += 1
+    return frames
+
+
 async def _recv_ws(ws, timeout: float = _WS_TIMEOUT_S) -> dict:
+    """Receive one JSON frame, decoding control stream framing if present."""
     raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
-    return json.loads(raw)
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    frames = _decode_control_frames(raw)
+    if frames:
+        return frames[0]
+    msg = f"no JSON frame in: {raw[:100]!r}"
+    raise ValueError(msg)
 
 
 async def _drain_until(ws, target_type: str, max_frames: int = 10) -> dict | None:
     for _ in range(max_frames):
-        frame = await _recv_ws(ws)
-        if frame.get("type") == target_type:
-            return frame
+        try:
+            raw = await asyncio.wait_for(ws.recv(), timeout=_WS_TIMEOUT_S)
+        except TimeoutError:
+            return None
+        try:
+            frame = json.loads(raw)
+            if frame.get("type") == target_type:
+                return frame
+            continue
+        except (json.JSONDecodeError, TypeError):
+            pass
+        for frame in _decode_control_frames(raw):
+            if frame.get("type") == target_type:
+                return frame
     return None
 
 
