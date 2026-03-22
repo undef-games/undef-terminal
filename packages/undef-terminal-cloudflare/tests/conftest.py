@@ -100,11 +100,13 @@ def wrangler_server():
 
     dev_vars_path = _PACKAGE_ROOT / ".dev.vars"
     _dev_vars_original: str | None = dev_vars_path.read_text(encoding="utf-8") if dev_vars_path.exists() else None
-    dev_vars_path.write_text("AUTH_MODE=dev\nENVIRONMENT=development\n", encoding="utf-8")
+    dev_vars_path.write_text("AUTH_MODE=dev\n", encoding="utf-8")
 
     pywrangler = shutil.which("pywrangler") or "pywrangler"
     proc = subprocess.Popen(  # noqa: S603
-        [pywrangler, "dev", "--port", str(_E2E_PORT), "--ip", "127.0.0.1"],
+        # Pass ENVIRONMENT=development via --var so it overrides wrangler.toml's
+        # ENVIRONMENT="production", which would otherwise block AUTH_MODE=dev.
+        [pywrangler, "dev", "--port", str(_E2E_PORT), "--ip", "127.0.0.1", "--var", "ENVIRONMENT:development"],
         cwd=_PACKAGE_ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
