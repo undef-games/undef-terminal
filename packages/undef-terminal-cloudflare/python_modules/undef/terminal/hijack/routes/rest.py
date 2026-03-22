@@ -76,10 +76,6 @@ from undef.terminal.hijack.models import (
     HijackHeartbeatRequest,
     HijackSendRequest,
     InputModeRequest,
-)
-from undef.terminal.hijack.rest_helpers import (
-    build_hijack_events_response,
-    build_hijack_snapshot_response,
     extract_prompt_id,
 )
 
@@ -266,12 +262,14 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         # Re-read lease_expires_at under the lock: a concurrent heartbeat may
         # have extended it during the wait_for_snapshot poll loop.
         fresh_expires = await hub.get_fresh_hijack_expiry(worker_id, hijack_id, hs.lease_expires_at)
-        return build_hijack_snapshot_response(
-            worker_id=worker_id,
-            hijack_id=hijack_id,
-            snapshot=snapshot,
-            lease_expires_at=fresh_expires,
-        )
+        return {
+            "ok": True,
+            "worker_id": worker_id,
+            "hijack_id": hijack_id,
+            "snapshot": snapshot,
+            "prompt_id": extract_prompt_id(snapshot),
+            "lease_expires_at": fresh_expires,
+        }
 
     @router.get("/worker/{worker_id}/hijack/{hijack_id}/events")
     async def hijack_events(
@@ -288,16 +286,17 @@ def register_rest_routes(hub: TermHub, router: APIRouter) -> None:
         latest_seq = events_data["latest_seq"]
         min_event_seq = events_data["min_event_seq"]
         fresh_expires = events_data["fresh_expires"]
-        return build_hijack_events_response(
-            worker_id=worker_id,
-            hijack_id=hijack_id,
-            after_seq=after_seq,
-            latest_seq=latest_seq,
-            min_event_seq=min_event_seq,
-            events=rows,
-            limit=limit,
-            lease_expires_at=fresh_expires,
-        )
+        return {
+            "ok": True,
+            "worker_id": worker_id,
+            "hijack_id": hijack_id,
+            "after_seq": after_seq,
+            "latest_seq": latest_seq,
+            "min_event_seq": min_event_seq,
+            "has_more": len(rows) >= limit,
+            "events": rows,
+            "lease_expires_at": fresh_expires,
+        }
 
     @router.post("/worker/{worker_id}/hijack/{hijack_id}/send")
     async def hijack_send(

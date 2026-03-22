@@ -50,7 +50,6 @@
   background: var(--panel2);
   color: var(--text);
   cursor: pointer;
-  font-size: 13px;
 }
 
 .btn.primary {
@@ -60,8 +59,7 @@
 }
 
 .small {
-  font-size: 11px;
-  letter-spacing: 0.04em;
+  font-size: 13px;
   color: var(--muted);
 }
 
@@ -202,19 +200,6 @@ textarea {
 
 .replay-entry {
   text-align: left;
-}
-
-.sidebar-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-
-.sidebar-section:first-child {
-  padding-top: 0;
-  border-top: none;
 }
 
 .field {

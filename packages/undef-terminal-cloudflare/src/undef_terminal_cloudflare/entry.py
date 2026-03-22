@@ -10,8 +10,8 @@ from urllib.parse import urlparse
 # detects Default/SessionRuntime as registered event handlers.
 _DurableObject: type = object  # type: ignore[assignment]
 try:
-    from workers import DurableObject as _DurableObject  # type: ignore[import-not-found]
-    from workers import (
+    from workers import DurableObject as _DurableObject  # type: ignore[import-not-found]  # pragma: no cover
+    from workers import (  # pragma: no cover
         Response,  # type: ignore[import-not-found]
         WorkerEntrypoint,  # type: ignore[import-not-found]
     )
@@ -66,7 +66,7 @@ except Exception:
 
         if Response is None:  # workers module wasn't available
             from cf_types import Response, WorkerEntrypoint  # type: ignore[assignment,no-redef,import-not-found]
-    except Exception:
+    except Exception:  # pragma: no cover — Pyodide validation phase only
         # Last resort for Pyodide validation phase — stubs for non-handler imports.
         # WorkerEntrypoint/Response/DurableObject are imported directly from workers
         # above, so handler registration always succeeds.
@@ -84,7 +84,7 @@ except Exception:
 
         CloudflareConfig = object  # type: ignore[assignment]
 
-        class SessionRuntime(_DurableObject):  # type: ignore[assignment]  # pragma: no cover
+        class SessionRuntime(_DurableObject):  # type: ignore[assignment]
             """Stub DO for validation phase — real impl loaded at runtime."""
 
             async def fetch(self, _request):  # type: ignore[override]

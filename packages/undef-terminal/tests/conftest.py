@@ -10,6 +10,12 @@ import asyncio
 import importlib.resources
 import importlib.util
 import json
+
+# Ensure this repo's src/undef package wins over sibling workspaces on sys.path.
+# Skip in mutant context — mutmut's root conftest already prepends mutants/src/
+# with trampolined modules; overriding it here would load non-trampolined copies
+# and cause all connectors mutants to report no_tests.
+import os as _os
 import socket
 import socketserver
 import sys
@@ -23,19 +29,19 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
-# Ensure this repo's src/undef package wins over sibling workspaces on sys.path.
-_PROJECT_SRC = Path(__file__).resolve().parents[1] / "src"
-_PROJECT_SRC_STR = str(_PROJECT_SRC)
-if _PROJECT_SRC_STR in sys.path:
-    sys.path.remove(_PROJECT_SRC_STR)
-sys.path.insert(0, _PROJECT_SRC_STR)
-_loaded_undef = sys.modules.get("undef")
-if _loaded_undef is not None:
-    loaded_path = str(getattr(_loaded_undef, "__file__", ""))
-    if "/undef-terminal/src/undef/" not in loaded_path:
-        for name in list(sys.modules):
-            if name == "undef" or name.startswith("undef."):
-                del sys.modules[name]
+if not _os.environ.get("MUTANT_UNDER_TEST"):
+    _PROJECT_SRC = Path(__file__).resolve().parents[1] / "src"
+    _PROJECT_SRC_STR = str(_PROJECT_SRC)
+    if _PROJECT_SRC_STR in sys.path:
+        sys.path.remove(_PROJECT_SRC_STR)
+    sys.path.insert(0, _PROJECT_SRC_STR)
+    _loaded_undef = sys.modules.get("undef")
+    if _loaded_undef is not None:
+        loaded_path = str(getattr(_loaded_undef, "__file__", ""))
+        if "/undef-terminal/src/undef/" not in loaded_path:
+            for name in list(sys.modules):
+                if name == "undef" or name.startswith("undef."):
+                    del sys.modules[name]
 
 from undef.terminal.hijack.hub import TermHub
 from undef.terminal.server import create_server_app, default_server_config

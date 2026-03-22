@@ -112,7 +112,9 @@ def _find_jwk(jwks_data: dict[str, Any], kid: str | None, alg: str | None) -> di
     raise JwtValidationError("no matching key found in JWKS")
 
 
-async def _verify_web_crypto(token: str, config: JwtConfig) -> dict[str, Any]:
+async def _verify_web_crypto(
+    token: str, config: JwtConfig
+) -> dict[str, Any]:  # pragma: no cover — requires Pyodide runtime
     """Verify and decode a JWT using the Web Crypto API (CF Workers / Pyodide).
 
     Returns the validated claims dict.

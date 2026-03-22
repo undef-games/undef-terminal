@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from undef.terminal.server.connectors import KNOWN_CONNECTOR_TYPES, build_connector
 from undef.terminal.server.connectors.websocket import WebSocketSessionConnector
 
 
@@ -303,24 +304,17 @@ class TestWebSocketSessionConnector:
     # -- build_connector integration -----------------------------------------
 
     def test_build_connector_websocket(self) -> None:
-        from undef.terminal.server.connectors import build_connector
-
         c = build_connector("sid", "dn", "websocket", {"url": "ws://test"})
         assert isinstance(c, WebSocketSessionConnector)
 
     def test_known_connector_types_includes_websocket(self) -> None:
-        from undef.terminal.server.connectors import KNOWN_CONNECTOR_TYPES
-
         assert "websocket" in KNOWN_CONNECTOR_TYPES
 
     def test_build_connector_ushell(self) -> None:
         from undef.shell.terminal._connector import UshellConnector
-        from undef.terminal.server.connectors import build_connector
 
         c = build_connector("sid", "dn", "ushell", {})
         assert isinstance(c, UshellConnector)
 
     def test_known_connector_types_includes_ushell(self) -> None:
-        from undef.terminal.server.connectors import KNOWN_CONNECTOR_TYPES
-
         assert "ushell" in KNOWN_CONNECTOR_TYPES

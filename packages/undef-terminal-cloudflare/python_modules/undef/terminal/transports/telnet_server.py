@@ -18,8 +18,6 @@ from typing import Any
 
 from undef.telemetry import get_logger
 
-from undef.terminal.defaults import TerminalDefaults
-
 logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 # Telnet protocol constants (subset used for server handshake)
@@ -86,8 +84,8 @@ def _build_telnet_handshake() -> bytes:
 
 async def start_telnet_server(
     handler: ConnectionHandler,
-    host: str = TerminalDefaults.BIND_ALL,  # nosec B104
-    port: int = TerminalDefaults.TELNET_PORT,
+    host: str = "0.0.0.0",  # nosec B104
+    port: int = 2102,
     *,
     negotiation_delay_s: float = 0.1,
 ) -> asyncio.Server:
@@ -98,8 +96,8 @@ async def start_telnet_server(
 
     Args:
         handler: Async callback ``(reader, writer) -> None`` called per connection.
-        host: Network interface to bind to (default ``TerminalDefaults.BIND_ALL``).
-        port: TCP port number (default ``TerminalDefaults.TELNET_PORT``).
+        host: Network interface to bind to (default ``0.0.0.0``).
+        port: TCP port number (default ``2102``).
         negotiation_delay_s: Seconds to pause after sending the IAC negotiation
             preamble before handing off to *handler*.  Gives slow clients time to
             process the negotiation options.  Defaults to ``0.1`` (100 ms).
