@@ -342,3 +342,25 @@ async def test_poll_messages_sleep_duration():
         await conn.poll_messages()  # first call: welcome frames, no sleep
         await conn.poll_messages()  # second call: should sleep(0.05)
     mock_sleep.assert_awaited_once_with(0.05)
+
+
+# ---------------------------------------------------------------------------
+# __init__ defaults — kills __init____mutmut_1 (session_id "XXXX"),
+#                          __init____mutmut_2 (display_name "XXXX"),
+#                          __init____mutmut_8 (_welcomed None)
+# ---------------------------------------------------------------------------
+
+
+def test_default_session_id_is_empty_string():
+    conn = UshellConnector()
+    assert conn._session_id == ""
+
+
+def test_default_display_name_is_empty_string():
+    conn = UshellConnector()
+    assert conn._display_name == ""
+
+
+def test_welcomed_starts_as_exactly_false():
+    conn = UshellConnector("s1")
+    assert conn._welcomed is False
