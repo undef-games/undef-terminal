@@ -2,7 +2,7 @@
 
 ## Current State (2026-03-22)
 
-- **Main package (`undef-terminal`)**: 4035 tests passing. 100% branch coverage. Pre-commit hooks active.
+- **Main package (`undef-terminal`)**: 4039 tests passing. 100% branch coverage. Pre-commit hooks active.
 - **CF package (`undef-terminal-cloudflare`)**: 584 unit tests + 14 real_cf E2E tests — all pass.
   100% coverage on entry.py, jwt.py, session_runtime.py, registry.py. Deployed to
   `https://undef-terminal-cloudflare.neurotic.workers.dev` with JWT auth via Cloudflare Access.
@@ -79,6 +79,19 @@
 - CF overall package coverage at 96.5% (pre-existing gaps in contracts.py, ws_routes.py)
 - 13 xenon blocks above B in pre-existing files (config.py at D)
 - `undef-shell` 0.1.0 not yet on PyPI (blocked on non-publishing decision; undef-terminal 0.4.0 also not yet published)
+
+### 2026-03-22: _bridge_session recv bug fix
+- **Bug**: `ShellSessionConnector.poll_messages()` returns `[]` instantly, so `poll_task` always
+  beat `recv_task` in `asyncio.wait(FIRST_COMPLETED)`. The old code then called `_cancel_and_wait(pending)`
+  which always cancelled `recv_task`, preventing the runtime from ever reading inbound browser messages.
+  Symptom: typing in the operator view produced "Worker connection lost." or no response.
+- **Fix** (`server/runtime.py`): persist `recv_task` across loop iterations; only cancel `poll_task`
+  each cycle. Added `CancelledError` guard on `recv_task.result()` for clean `stop()` shutdown.
+  Added `finally` block to cancel `recv_task` on exit.
+- **Coverage**: added `test_cancel_and_wait_empty_set_is_noop` and updated
+  `test_backoff_reset_after_clean_session` to directly mock `_bridge_session`; 100% branch coverage restored.
+- **E2E verified**: Playwright browser at `http://127.0.0.1:8780/app/operator/undef-shell` shows
+  "Connected (shared)" and responds to `/status` with full session info.
 
 ## Backlog
 
