@@ -17,8 +17,8 @@ def make_dispatcher(ctx: dict[str, Any] | None = None) -> CommandDispatcher:
     return CommandDispatcher(ctx or {})
 
 
-def first_data(frames: list[dict]) -> str:
-    return frames[0]["data"]
+def first_data(frames: list[str]) -> str:
+    return frames[0]
 
 
 def make_storage_ctx(storage: Any) -> dict:

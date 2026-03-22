@@ -17,8 +17,8 @@ def make_dispatcher(ctx: dict[str, Any] | None = None) -> CommandDispatcher:
     return CommandDispatcher(ctx or {})
 
 
-def first_data(frames: list[dict]) -> str:
-    return frames[0]["data"]
+def first_data(frames: list[str]) -> str:
+    return frames[0]
 
 
 # ---------------------------------------------------------------------------
@@ -29,7 +29,7 @@ def first_data(frames: list[dict]) -> str:
 async def test_dispatch_empty_line():
     d = make_dispatcher()
     frames = await d.dispatch("")
-    assert frames[0]["data"].endswith(" ")  # PROMPT ends with space
+    assert frames[0].endswith(" ")  # PROMPT ends with space
 
 
 async def test_dispatch_ctrl_c():

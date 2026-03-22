@@ -10,6 +10,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "undef-shell",
     "undef-terminal",
     "undef-terminal-cloudflare",
 ]
@@ -2972,6 +2973,19 @@ wheels = [
 ]
 
 [[package]]
+name = "undef-shell"
+source = { editable = "packages/undef-shell" }
+
+[package.optional-dependencies]
+terminal = [
+    { name = "undef-terminal" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "undef-terminal", marker = "extra == 'terminal'", editable = "packages/undef-terminal" }]
+provides-extras = ["terminal"]
+
+[[package]]
 name = "undef-telemetry"
 version = "0.3.17"
 source = { registry = "https://pypi.org/simple" }
@@ -2987,6 +3001,7 @@ wheels = [
 name = "undef-terminal"
 source = { editable = "packages/undef-terminal" }
 dependencies = [
+    { name = "undef-shell" },
     { name = "undef-telemetry" },
 ]
 
@@ -3090,6 +3105,7 @@ requires-dist = [
     { name = "pyte", marker = "extra == 'emulator'", specifier = ">=0.8" },
     { name = "pyyaml", marker = "extra == 'all'", specifier = ">=6.0" },
     { name = "pyyaml", marker = "extra == 'manager'", specifier = ">=6.0" },
+    { name = "undef-shell", editable = "packages/undef-shell" },
     { name = "undef-telemetry", specifier = ">=0.3" },
     { name = "uvicorn", marker = "extra == 'all'", specifier = ">=0.24" },
     { name = "uvicorn", marker = "extra == 'cli'", specifier = ">=0.24" },

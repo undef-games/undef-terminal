@@ -4,6 +4,9 @@
 #
 """Tests for undef.shell.terminal._connector — UshellConnector."""
 
+import importlib
+import sys
+
 from undef.shell._output import BANNER, PROMPT
 from undef.shell.terminal._connector import UshellConnector
 
@@ -221,3 +224,38 @@ async def test_config_param_accepted():
     conn = UshellConnector("s1", _config={"unused": True})
     await conn.start()
     assert conn.is_connected()
+
+
+# ---------------------------------------------------------------------------
+# ImportError fallback for SessionConnector base class
+# ---------------------------------------------------------------------------
+
+
+def test_session_connector_import_error_falls_back_to_object():
+    """Cover the except-ImportError branch in _connector.py (lines 35-36).
+
+    When undef.terminal is not installed, UshellConnector falls back to
+    inheriting from object instead of SessionConnector.
+    """
+    import undef.shell.terminal._connector as mod_ref
+
+    base_module = "undef.terminal.server.connectors.base"
+    _sentinel = object()
+    orig = sys.modules.get(base_module, _sentinel)
+
+    # Block the import so the except-branch fires on reimport.
+    sys.modules[base_module] = None  # type: ignore[assignment]
+    try:
+        importlib.reload(mod_ref)
+        # After reload with blocked import, _SessionConnector should be object.
+        assert mod_ref._SessionConnector is object
+        # UshellConnector is still functional.
+        conn = mod_ref.UshellConnector("fallback-test")
+        assert conn._session_id == "fallback-test"
+    finally:
+        if orig is _sentinel:
+            sys.modules.pop(base_module, None)
+        else:
+            sys.modules[base_module] = orig  # type: ignore[assignment]
+        # Reload to restore the module to its correct state.
+        importlib.reload(mod_ref)
