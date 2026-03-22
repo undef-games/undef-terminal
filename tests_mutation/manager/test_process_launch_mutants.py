@@ -386,7 +386,9 @@ class TestMonitorHeartbeat:
         import time
 
         old_time = time.time() - 200  # 200s ago, well past timeout
-        manager.agents["agent_000"] = AgentStatusBase(agent_id="agent_000", state="running", last_update_time=old_time, pid=0)
+        manager.agents["agent_000"] = AgentStatusBase(
+            agent_id="agent_000", state="running", last_update_time=old_time, pid=0
+        )
         manager.config.heartbeat_timeout_s = 1  # 1 second
         manager.broadcast_status = AsyncMock()
         manager.config.health_check_interval_s = 0

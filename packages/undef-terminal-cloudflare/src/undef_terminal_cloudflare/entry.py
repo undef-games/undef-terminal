@@ -200,160 +200,140 @@ async def _require_jwt(request: object, config: CloudflareConfig) -> Response | 
     return None
 
 
+async def _handle_sessions(request: object, env: object, _config: CloudflareConfig) -> Response:
+    """Handle GET/DELETE /api/sessions."""
+    method = str(getattr(request, "method", "GET")).upper()
+    if method == "DELETE":
+        kv = getattr(env, "SESSION_REGISTRY", None)
+        if kv is None:
+            return json_response({"error": "SESSION_REGISTRY not configured"}, status=500)
+        keys_resp = await kv.list()
+        keys = [k.name for k in keys_resp.keys]
+        for key in keys:
+            await kv.delete(key)
+        return json_response({"ok": True, "deleted": len(keys)})
+    kv_configured = getattr(env, "SESSION_REGISTRY", None) is not None
+    sessions = await list_kv_sessions(env)
+    scope = "fleet" if kv_configured else "local"
+    return json_response(sessions, headers={"X-Sessions-Scope": scope})
+
+
+async def _handle_connect(request: object, env: object) -> Response:
+    """Handle POST /api/connect — create a session in KV."""
+    import json as _json
+    import uuid
+
+    method = str(getattr(request, "method", "GET")).upper()
+    if method != "POST":
+        return json_response({"error": "method not allowed"}, status=405)
+    try:
+        raw = await request.json()  # type: ignore[union-attr]
+        body = raw.to_py() if hasattr(raw, "to_py") else raw
+    except Exception:
+        body = {}
+    connector_type = str(body.get("connector_type", "shell"))
+    prefix = "ushell" if connector_type == "ushell" else "connect"
+    session_id = f"{prefix}-{uuid.uuid4().hex[:12]}"
+    display_name = str(body.get("display_name") or session_id)
+    input_mode = str(body.get("input_mode", "open"))
+    entry = {
+        "session_id": session_id,
+        "display_name": display_name,
+        "connector_type": connector_type,
+        "lifecycle_state": "waiting",
+        "input_mode": input_mode,
+        "connected": False,
+        "auto_start": False,
+        "tags": [],
+        "recording_enabled": False,
+        "recording_available": False,
+        "owner": None,
+        "visibility": "public",
+        "last_error": None,
+    }
+    kv = getattr(env, "SESSION_REGISTRY", None)
+    if kv is not None:
+        await kv.put(f"session:{session_id}", _json.dumps({**entry, "hijacked": False}))
+    return json_response({**entry, "url": f"/app/session/{session_id}"})
+
+
+async def _handle_session_delete(request: object, env: object, sid: str) -> Response:
+    """Handle DELETE /api/sessions/{id}."""
+    await delete_kv_session(env, sid)
+    namespace = getattr(env, "SESSION_RUNTIME", None)
+    if namespace is not None:
+        import contextlib as _contextlib
+
+        with _contextlib.suppress(Exception):
+            stub = namespace.get(namespace.idFromName(sid))
+            await stub.fetch(request)
+    return json_response({"ok": True, "session_id": sid, "deleted": True})
+
+
+async def _route_request(request: object, env: object, config: CloudflareConfig) -> Response:
+    """Route an incoming request to the appropriate handler."""
+    path = urlparse(str(request.url)).path
+
+    # Public routes (no auth).
+    if path == "/api/health":
+        return json_response({"ok": True, "service": "undef-terminal-cloudflare", "environment": config.environment})
+    if path.startswith("/assets/"):
+        return serve_asset(path.removeprefix("/assets/"))
+    if _STATIC_ASSET_PATH.match(path):
+        return serve_asset(path.removeprefix("/"))
+
+    # Authenticated API routes.
+    handler = _match_api_route(path, request)
+    if handler is not None:
+        auth_error = await _require_jwt(request, config)
+        if auth_error is not None:
+            return auth_error
+        return await handler(request, env, config)
+
+    # DO-proxied routes.
+    worker_id = _extract_worker_id(path)
+    if worker_id is not None:
+        namespace = getattr(env, "SESSION_RUNTIME", None)
+        if namespace is None:
+            return json_response({"error": "SESSION_RUNTIME binding missing"}, status=500)
+        return await namespace.get(namespace.idFromName(worker_id)).fetch(request)
+
+    return json_response({"error": "not_found", "path": path}, status=404)
+
+
+def _match_api_route(path: str, request: object) -> object | None:
+    """Return the handler coroutine for an authenticated route, or None."""
+    if path == "/api/sessions":
+        return _api_sessions
+    if path == "/api/connect":
+        return _api_connect
+    session_delete_match = _SESSION_ID_RE.match(path)
+    if session_delete_match and str(getattr(request, "method", "GET")).upper() == "DELETE":
+        # Stash the match for the handler.
+        return lambda req, env, _cfg: _handle_session_delete(req, env, session_delete_match.group("session_id"))
+    spa = _resolve_spa_route(path)
+    if spa is not None:
+        return lambda _req, _env, _cfg: _as_future(_spa_response(spa[0], **spa[1]))
+    return None
+
+
+async def _api_sessions(request: object, env: object, config: CloudflareConfig) -> Response:
+    return await _handle_sessions(request, env, config)
+
+
+async def _api_connect(request: object, env: object, _config: CloudflareConfig) -> Response:
+    return await _handle_connect(request, env)
+
+
+async def _as_future(value: Response) -> Response:
+    return value
+
+
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
         if not hasattr(self, "_config"):
-            # `Default` is a stateless Worker (not a Durable Object), so each
-            # isolate instance is reused across multiple requests within the same
-            # V8 isolate lifetime.  This guard caches config per-isolate to avoid
-            # re-reading env vars on every request; it does NOT persist across
-            # isolate restarts or across different Workers instances.
             self._config = CloudflareConfig.from_env(self.env)
-        config = self._config
-        path = urlparse(str(request.url)).path
-
-        if path == "/api/health":
-            return json_response(
-                {
-                    "ok": True,
-                    "service": "undef-terminal-cloudflare",
-                    "environment": config.environment,
-                }
-            )
-
-        if path == "/api/sessions":
-            auth_error = await _require_jwt(request, config)
-            if auth_error is not None:
-                return auth_error
-
-            method = str(getattr(request, "method", "GET")).upper()
-            if method == "DELETE":
-                # Purge all stale KV session entries.
-                kv = getattr(self.env, "SESSION_REGISTRY", None)
-                if kv is None:
-                    return json_response({"error": "SESSION_REGISTRY not configured"}, status=500)
-                keys_resp = await kv.list()
-                keys = [k.name for k in keys_resp.keys]
-                for key in keys:
-                    await kv.delete(key)
-                return json_response({"ok": True, "deleted": len(keys)})
-
-            # Fleet-wide list: query KV registry populated by each DO on connect/disconnect.
-            # Falls back to empty list when SESSION_REGISTRY KV binding is not configured.
-            kv_configured = getattr(self.env, "SESSION_REGISTRY", None) is not None
-            sessions = await list_kv_sessions(self.env)
-            scope = "fleet" if kv_configured else "local"
-            return json_response(sessions, headers={"X-Sessions-Scope": scope})
-
-        if path == "/api/connect":
-            auth_error = await _require_jwt(request, config)
-            if auth_error is not None:
-                return auth_error
-            method = str(getattr(request, "method", "GET")).upper()
-            if method != "POST":
-                return json_response({"error": "method not allowed"}, status=405)
-            # Create a session by registering it in KV and pre-creating the DO.
-            import uuid
-
-            try:
-                body = (
-                    (await request.json()).to_py() if hasattr(await request.json(), "to_py") else await request.json()
-                )
-            except Exception:
-                body = {}
-            connector_type = str(body.get("connector_type", "shell"))
-            if connector_type == "ushell":
-                session_id = f"ushell-{uuid.uuid4().hex[:12]}"
-            else:
-                session_id = f"connect-{uuid.uuid4().hex[:12]}"
-            display_name = str(body.get("display_name") or session_id)
-            input_mode = str(body.get("input_mode", "open"))
-
-            # Write to KV so it shows in the dashboard
-            import json as _json
-
-            kv = getattr(self.env, "SESSION_REGISTRY", None)
-            if kv is not None:
-                kv_entry = _json.dumps(
-                    {
-                        "session_id": session_id,
-                        "display_name": display_name,
-                        "connector_type": connector_type,
-                        "lifecycle_state": "waiting",
-                        "input_mode": input_mode,
-                        "connected": False,
-                        "auto_start": False,
-                        "tags": [],
-                        "recording_enabled": False,
-                        "recording_available": False,
-                        "owner": None,
-                        "visibility": "public",
-                        "last_error": None,
-                        "hijacked": False,
-                    }
-                )
-                await kv.put(f"session:{session_id}", kv_entry)
-
-            return json_response(
-                {
-                    "session_id": session_id,
-                    "url": f"/app/session/{session_id}",
-                    "display_name": display_name,
-                    "connector_type": connector_type,
-                    "lifecycle_state": "waiting",
-                    "input_mode": input_mode,
-                    "connected": False,
-                    "auto_start": False,
-                    "tags": [],
-                    "recording_enabled": False,
-                    "recording_available": False,
-                    "owner": None,
-                    "visibility": "public",
-                    "last_error": None,
-                }
-            )
-
-        if path.startswith("/assets/"):
-            return serve_asset(path.removeprefix("/assets/"))
-        if _STATIC_ASSET_PATH.match(path):
-            return serve_asset(path.removeprefix("/"))
-
-        # DELETE /api/sessions/{id} — remove from KV and forward teardown to DO.
-        session_delete_match = _SESSION_ID_RE.match(path)
-        if session_delete_match and str(getattr(request, "method", "GET")).upper() == "DELETE":
-            auth_error = await _require_jwt(request, config)
-            if auth_error is not None:
-                return auth_error
-            sid = session_delete_match.group("session_id")
-            await delete_kv_session(self.env, sid)
-            namespace = getattr(self.env, "SESSION_RUNTIME", None)
-            if namespace is not None:
-                import contextlib as _contextlib
-
-                with _contextlib.suppress(Exception):
-                    stub = namespace.get(namespace.idFromName(sid))
-                    await stub.fetch(request)
-            return json_response({"ok": True, "session_id": sid, "deleted": True})
-
-        worker_id = _extract_worker_id(path)
-        if worker_id is None:
-            # SPA page routes — serve the shell HTML with route-specific bootstrap data.
-            spa = _resolve_spa_route(path)
-            if spa is not None:
-                auth_error = await _require_jwt(request, config)
-                if auth_error is not None:
-                    return auth_error
-                page_kind, extra = spa
-                return _spa_response(page_kind, **extra)
-            return json_response({"error": "not_found", "path": path}, status=404)
-
-        namespace = getattr(self.env, "SESSION_RUNTIME", None)
-        if namespace is None:
-            return json_response({"error": "SESSION_RUNTIME binding missing"}, status=500)
-
-        stub_id = namespace.idFromName(worker_id)
-        stub = namespace.get(stub_id)
-        return await stub.fetch(request)
+        return await _route_request(request, self.env, self._config)
 
 
 UndefTerminalCloudflareWorker = Default

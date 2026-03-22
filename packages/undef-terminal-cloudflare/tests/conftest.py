@@ -103,7 +103,7 @@ def wrangler_server():
     dev_vars_path.write_text("AUTH_MODE=dev\n", encoding="utf-8")
 
     pywrangler = shutil.which("pywrangler") or "pywrangler"
-    proc = subprocess.Popen(  # noqa: S603
+    proc = subprocess.Popen(
         # Pass ENVIRONMENT=development via --var so it overrides wrangler.toml's
         # ENVIRONMENT="production", which would otherwise block AUTH_MODE=dev.
         [pywrangler, "dev", "--port", str(_E2E_PORT), "--ip", "127.0.0.1", "--var", "ENVIRONMENT:development"],

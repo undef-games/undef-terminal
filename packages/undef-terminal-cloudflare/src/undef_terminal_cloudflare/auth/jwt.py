@@ -150,32 +150,49 @@ async def _verify_web_crypto(token: str, config: JwtConfig) -> dict[str, Any]:
     if not valid:  # pragma: no cover
         raise JwtValidationError("signature verification failed")
 
-    # Validate standard claims.
+    _validate_claims(payload, config)
+    return payload
+
+
+def _validate_claims(payload: dict[str, Any], config: JwtConfig) -> None:
+    """Validate standard JWT claims (exp, nbf, iss, aud)."""
     now = time.time()
     leeway = max(0, int(config.clock_skew_seconds))
+    _check_exp(payload, now, leeway)
+    _check_nbf(payload, now, leeway)
+    _check_issuer(payload, config)
+    _check_audience(payload, config)
 
+
+def _check_exp(payload: dict[str, Any], now: float, leeway: int) -> None:
     exp = payload.get("exp")
     if exp is None:
         raise JwtValidationError("missing exp claim")
     if now > exp + leeway:
         raise JwtValidationError("token has expired")
 
+
+def _check_nbf(payload: dict[str, Any], now: float, leeway: int) -> None:
     nbf = payload.get("nbf")
     if nbf is not None and now < nbf - leeway:
         raise JwtValidationError("token not yet valid")
 
+
+def _check_issuer(payload: dict[str, Any], config: JwtConfig) -> None:
     if config.issuer and payload.get("iss") != config.issuer:
         raise JwtValidationError("invalid issuer")
 
-    if config.audience:
-        aud = payload.get("aud")
-        if isinstance(aud, list):
-            if config.audience not in aud:
-                raise JwtValidationError("invalid audience")
-        elif aud != config.audience:
-            raise JwtValidationError("invalid audience")
 
-    return payload
+def _check_audience(payload: dict[str, Any], config: JwtConfig) -> None:
+    if not config.audience:
+        return
+    aud = payload.get("aud")
+    expected = config.audience
+    if isinstance(aud, list):
+        if expected not in aud:
+            raise JwtValidationError("invalid audience")
+    elif aud != expected:
+        raise JwtValidationError("invalid audience")
 
 
 async def _resolve_signing_key(token: str, config: JwtConfig) -> Any:
@@ -257,36 +274,37 @@ async def decode_jwt(token: str, config: JwtConfig) -> Principal:
     if not sub:
         raise JwtValidationError("missing sub")
 
-    roles_claim = getattr(config, "jwt_roles_claim", "roles")
-    scopes_claim = getattr(config, "jwt_scopes_claim", "scope")
+    roles = _extract_roles(claims, config)
+    return Principal(subject_id=sub, roles=roles)
 
-    raw_roles = claims.get(roles_claim, [])
-    if isinstance(raw_roles, str):
-        roles = tuple(part.strip() for part in raw_roles.split(",") if part.strip())
-    elif isinstance(raw_roles, list):
-        roles = tuple(str(role) for role in raw_roles)
-    else:
-        roles = ()
 
-    # Fall back to scope claim when no roles are present (e.g. Auth0 machine-to-machine tokens).
-    if not roles:
-        raw_scope = claims.get(scopes_claim, "")
-        if isinstance(raw_scope, str) and raw_scope:
-            roles = tuple(part.strip() for part in raw_scope.split() if part.strip())
+def _parse_roles_claim(raw: object) -> tuple[str, ...]:
+    """Parse a roles claim value (string, list, or other) into a tuple."""
+    if isinstance(raw, str):
+        return tuple(part.strip() for part in raw.split(",") if part.strip())
+    if isinstance(raw, list):
+        return tuple(str(role) for role in raw)
+    return ()
 
-    # Apply group→role mapping when configured (e.g. JWT_ROLE_MAP={"engineering":"admin"}).
-    # Each role value is looked up in the map; unrecognised values pass through unchanged.
+
+def _apply_role_map(roles: tuple[str, ...], config: JwtConfig) -> tuple[str, ...]:
+    """Apply group→role mapping and default role fallback."""
     role_map: dict[str, str] = getattr(config, "jwt_role_map", {}) or {}
     if role_map:
         roles = tuple(role_map.get(r, r) for r in roles)
-
-    # If still no roles (e.g. CF Access JWTs which omit roles by default),
-    # assign the configured default role so operators don't end up as viewers.
     if not roles:
-        default_role = getattr(config, "jwt_default_role", "viewer") or "viewer"
-        roles = (default_role,)
+        roles = (getattr(config, "jwt_default_role", "viewer") or "viewer",)
+    return roles
 
-    return Principal(subject_id=sub, roles=roles)
+
+def _extract_roles(claims: dict[str, Any], config: JwtConfig) -> tuple[str, ...]:
+    """Extract roles from JWT claims with fallback to scopes."""
+    roles = _parse_roles_claim(claims.get(getattr(config, "jwt_roles_claim", "roles"), []))
+    if not roles:
+        raw_scope = claims.get(getattr(config, "jwt_scopes_claim", "scope"), "")
+        if isinstance(raw_scope, str) and raw_scope:
+            roles = tuple(part.strip() for part in raw_scope.split() if part.strip())
+    return _apply_role_map(roles, config)
 
 
 def resolve_role(principal: Principal) -> str:
