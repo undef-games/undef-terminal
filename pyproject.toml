@@ -3,17 +3,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 
-[tool.uv.workspace]
-members = [
-    "packages/undef-terminal",
-    "packages/undef-terminal-cloudflare",
-    "packages/undef-shell",
-]
+[build-system]
+requires = ["setuptools>=67"]
+build-backend = "setuptools.build_meta"
 
-[tool.uv.sources]
-undef-terminal = { workspace = true }
-undef-terminal-cloudflare = { workspace = true }
-undef-shell = { workspace = true }
+[project]
+name = "undef-terminal"
+version = "0.3.0"
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [dependency-groups]
 dev = [
@@ -132,7 +132,29 @@ exclude_dirs = [
 min_confidence = 80
 paths = ["packages/undef-terminal/src", "packages/undef-terminal/tests", "packages/undef-shell/src"]
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
 [tool.xenon]
 max_absolute = "C"
 max_modules = "B"
 max_average = "A"
+
+[tool.mutmut]
+paths_to_mutate = ["src/undef/shell/terminal/_connector.py", "src/undef/terminal/server/connectors/__init__.py"]
+tests_dir = [
+    "packages/undef-terminal/tests/shell/test_shell_connector.py",
+    "packages/undef-terminal/tests/server/test_app_ushell.py",
+    "packages/undef-terminal/tests/server/test_connectors_websocket.py",
+]
+also_copy = [
+    "packages/undef-shell/src",
+    "packages/undef-terminal/src",
+    "packages/undef-terminal-cloudflare/src",
+    "packages/undef-terminal/tests",
+    "packages/undef-shell/tests",
+    "src/undef",
+    "conftest.py",
+]
+pytest_add_cli_args = ["--timeout=30", "-p", "no:randomly", "-p", "no:hypothesis"]
+debug = true

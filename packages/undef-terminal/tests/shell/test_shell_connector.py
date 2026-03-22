@@ -221,3 +221,28 @@ async def test_config_param_accepted():
     conn = UshellConnector("s1", _config={"unused": True})
     await conn.start()
     assert conn.is_connected()
+
+
+# ---------------------------------------------------------------------------
+# extra_ctx propagation (mutation killers)
+# ---------------------------------------------------------------------------
+
+
+async def test_extra_ctx_available_via_py_command():
+    # Kills mutmut_18: CommandDispatcher(ctx, None) creates a sandbox
+    # without extra_ctx names, so `py MY_CTX` would NameError.
+    conn = UshellConnector("s1", extra_ctx={"MY_CTX": 99})
+    await conn.start()
+    frames = await conn.handle_input("py MY_CTX\r")
+    data = " ".join(f["data"] for f in frames)
+    assert "99" in data
+
+
+async def test_extra_ctx_visible_in_env_command():
+    # Kills mutmut_13/17: ctx=None means self._ctx is None; env calls
+    # self._ctx.get(...) which raises AttributeError on None.
+    conn = UshellConnector("s1", extra_ctx={"MY_KEY": "hello"})
+    await conn.start()
+    frames = await conn.handle_input("env\r")
+    data = " ".join(f["data"] for f in frames)
+    assert "MY_KEY" in data

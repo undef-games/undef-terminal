@@ -242,7 +242,7 @@ async def test_fleet_sessions_lists_all_connected_workers(wrangler_server: str) 
         _ws_connect(f"{base_ws}/ws/worker/{worker_id_1}/term"),
         _ws_connect(f"{base_ws}/ws/worker/{worker_id_2}/term"),
     ):
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(5.0)  # KV writes are eventual — need extra time on real CF
         # Use asyncio.to_thread so the blocking HTTP call doesn't starve WS keepalives.
         status, body = await asyncio.to_thread(_http_get, wrangler_server, "/api/sessions")
 
@@ -412,7 +412,7 @@ async def test_resume_after_disconnect(wrangler_server: str) -> None:
         assert fresh_token is not None
 
         # Send resume with the old token
-        await ws2.send(json.dumps({"type": "resume", "token": token}))
+        await ws2.send(encode_control({"type": "resume", "token": token}))
 
         # Should receive a resumed hello
         resumed_hello = await _recv_ws(ws2)
@@ -440,7 +440,7 @@ async def test_resume_expired_or_invalid_token_ignored(wrangler_server: str) -> 
         assert hello["type"] == "hello"
 
         # Send resume with a fake token
-        await ws.send(json.dumps({"type": "resume", "token": "totally-bogus-token-12345"}))
+        await ws.send(encode_control({"type": "resume", "token": "totally-bogus-token-12345"}))
 
         # Send a ping to verify connection still works
         await ws.send(json.dumps({"type": "ping"}))
@@ -469,7 +469,7 @@ async def test_resume_token_is_one_time_use(wrangler_server: str) -> None:
     # First resume — should succeed
     async with _ws_connect(uri) as ws2:
         await _recv_ws(ws2)  # initial hello
-        await ws2.send(json.dumps({"type": "resume", "token": token}))
+        await ws2.send(encode_control({"type": "resume", "token": token}))
         resumed = await _recv_ws(ws2)
         assert resumed.get("resumed") is True, f"first resume failed: {resumed}"
 
@@ -477,7 +477,7 @@ async def test_resume_token_is_one_time_use(wrangler_server: str) -> None:
     async with _ws_connect(uri) as ws3:
         hello3 = await _recv_ws(ws3)
         assert hello3["type"] == "hello"
-        await ws3.send(json.dumps({"type": "resume", "token": token}))
+        await ws3.send(encode_control({"type": "resume", "token": token}))
 
         # Send ping to verify connection is alive — no resumed hello should come
         await ws3.send(json.dumps({"type": "ping"}))
