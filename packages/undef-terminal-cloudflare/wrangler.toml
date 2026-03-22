@@ -13,11 +13,11 @@ globs = ["**/*.js", "**/*.css"]
 fallthrough = true
 
 [build]
-command = "cp -r ../../src/undef/terminal/frontend/. src/undef_terminal_cloudflare/ui/static/"
+command = "cp -r ../../packages/undef-terminal/src/undef/terminal/frontend/. src/undef_terminal_cloudflare/ui/static/"
 # Watch the frontend source — NOT the CF package dir.  The build command
 # copies *into* ui/static/ which lives inside the CF source tree; watching
 # that tree would trigger an infinite rebuild loop.
-watch_dir = "../../src/undef/terminal/frontend"
+watch_dir = "../../packages/undef-terminal/src/undef/terminal/frontend"
 
 [dev]
 port = 8788
