@@ -152,4 +152,15 @@ describe("renderSession", () => {
     await renderSession(root, bootstrap);
     expect(widgetModule.mountHijackWidget).toHaveBeenCalledWith(expect.any(HTMLElement), "my-sess", "user");
   });
+
+  it("throws when session shell DOM elements are missing (line 36)", async () => {
+    // Make querySelector return null for #session-status so the guard fires
+    const origQuerySelector = root.querySelector.bind(root);
+    const spy = vi.spyOn(root, "querySelector").mockImplementation((sel: string) => {
+      if (sel === "#session-status") return null;
+      return origQuerySelector(sel);
+    });
+    await expect(renderSession(root, makeBootstrap())).rejects.toThrow("session shell is incomplete");
+    spy.mockRestore();
+  });
 });

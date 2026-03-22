@@ -320,4 +320,15 @@ describe("renderDashboard", () => {
     expect(content.innerHTML).toContain("Idle");
     expect(content.innerHTML).toContain("Error");
   });
+
+  it("throws when dashboard shell is incomplete (line 90)", async () => {
+    // Make querySelector return null for #dashboard-status to trigger the guard
+    const origQuerySelector = root.querySelector.bind(root);
+    const spy = vi.spyOn(root, "querySelector").mockImplementation((sel: string) => {
+      if (sel === "#dashboard-status") return null;
+      return origQuerySelector(sel);
+    });
+    await expect(renderDashboard(root, makeBootstrap())).rejects.toThrow("dashboard shell is incomplete");
+    spy.mockRestore();
+  });
 });

@@ -293,4 +293,116 @@ describe("renderOperator", () => {
     await renderOperator(root, makeBootstrap());
     expect(root.innerHTML).toContain("none");
   });
+
+  it("renders auto-start as 'yes' in session info (line 90 true branch)", async () => {
+    vi.mocked(stateModule.loadOperatorWorkspaceState).mockResolvedValue(makeWorkspaceState({ autoStart: true }));
+    await renderOperator(root, makeBootstrap());
+    // The sidebar should show "yes" for auto-start
+    expect(root.innerHTML).toContain("yes");
+  });
+
+  it("throws when #widget element is missing from DOM (line 116)", async () => {
+    // Make querySelector return null for #widget so the guard fires
+    const origQuerySelector = root.querySelector.bind(root);
+    const spy = vi.spyOn(root, "querySelector").mockImplementation((sel: string) => {
+      if (sel === "#widget") return null;
+      return origQuerySelector(sel);
+    });
+    await expect(renderOperator(root, makeBootstrap())).rejects.toThrow("operator shell is incomplete");
+    spy.mockRestore();
+  });
+
+  it("does not error when #analysis-result is missing when analyze runs (line 136 false branch)", async () => {
+    vi.mocked(stateModule.requestAnalysis).mockResolvedValue("AI result");
+    await renderOperator(root, makeBootstrap());
+    // Remove the analysis-result element from DOM so the if(el) branch is false
+    const analysisEl = root.querySelector<HTMLElement>("#analysis-result");
+    if (analysisEl) analysisEl.remove();
+    root.querySelector<HTMLButtonElement>("#btn-analyze")?.click();
+    await new Promise((r) => setTimeout(r, 20));
+    // No error thrown, requestAnalysis was still called
+    expect(stateModule.requestAnalysis).toHaveBeenCalledWith("sess-1");
+  });
+
+  it("setStatus does nothing when #operator-status element is missing (line 161 false branch)", async () => {
+    await renderOperator(root, makeBootstrap());
+    // Remove the status element so setStatus's if(el) is false
+    const statusEl = root.querySelector<HTMLElement>("#operator-status");
+    if (statusEl) statusEl.remove();
+    // Trigger an action that calls setStatus — clicking btn-analyze with an error
+    vi.mocked(stateModule.requestAnalysis).mockRejectedValue(new Error("analyze fail"));
+    root.querySelector<HTMLButtonElement>("#btn-analyze")?.click();
+    await new Promise((r) => setTimeout(r, 20));
+    // Should not throw — setStatus silently does nothing when el is null
+    expect(root.querySelector("#operator-status")).toBeNull();
+  });
+
+  it("refresh skips sidebar replacement when sidebar element is missing (line 172 false branch)", async () => {
+    // Override querySelector so that `.layout > section:first-child` returns null during the second refresh
+    // but other selectors still work (so the initial render completes normally).
+    let callCount = 0;
+    const origQuerySelector = root.querySelector.bind(root);
+    let sidebarSpy: ReturnType<typeof vi.spyOn> | null = null;
+    vi.mocked(stateModule.switchSessionMode).mockResolvedValue({
+      summary: makeSummary({ inputMode: "open" }),
+      snapshotPromptId: null,
+      analysis: null,
+    });
+    // On first call to loadOperatorWorkspaceState (initial refresh), allow sidebar replacement.
+    // On second call (after btn-open triggers switchSessionMode → refresh), block sidebar lookup.
+    vi.mocked(stateModule.loadOperatorWorkspaceState).mockImplementation(() => {
+      callCount++;
+      if (callCount >= 2 && sidebarSpy === null) {
+        // After the first refresh, intercept sidebar lookups to simulate it being gone
+        sidebarSpy = vi.spyOn(root, "querySelector").mockImplementation((sel: string) => {
+          if (sel === ".layout > section:first-child") return null;
+          // For all other selectors, call original without restoring spy (so it stays active)
+          return origQuerySelector(sel);
+        });
+      }
+      return Promise.resolve(makeWorkspaceState({ inputMode: "open" }));
+    });
+    await renderOperator(root, makeBootstrap());
+    root.querySelector<HTMLButtonElement>("#btn-open")?.click();
+    await new Promise((r) => setTimeout(r, 30));
+    if (sidebarSpy) (sidebarSpy as ReturnType<typeof vi.spyOn>).mockRestore();
+    // No error — the false branch of if(sidebar) was silently skipped
+    expect(stateModule.switchSessionMode).toHaveBeenCalledWith("sess-1", "open");
+  });
+
+  it("refresh skips sidebar replaceWith when tmp querySelector returns null (line 176 false branch)", async () => {
+    // Intercept document.createElement so that when "div" is created inside refresh,
+    // its querySelector always returns null — simulating no <section> in tmp.
+    let callCount = 0;
+    vi.mocked(stateModule.switchSessionMode).mockResolvedValue({
+      summary: makeSummary({ inputMode: "open" }),
+      snapshotPromptId: null,
+      analysis: null,
+    });
+    vi.mocked(stateModule.loadOperatorWorkspaceState).mockImplementation(() => {
+      callCount++;
+      if (callCount >= 2) {
+        // Override createElement for the next "div" call so its querySelector returns null
+        const origCreateElement = document.createElement.bind(document);
+        const createSpy = vi.spyOn(document, "createElement");
+        createSpy.mockImplementationOnce((tag: string) => {
+          if (tag === "div") {
+            const fakeDiv = origCreateElement("div");
+            // Make querySelector return null for "section"
+            vi.spyOn(fakeDiv, "querySelector").mockReturnValue(null);
+            createSpy.mockRestore();
+            return fakeDiv;
+          }
+          createSpy.mockRestore();
+          return origCreateElement(tag);
+        });
+      }
+      return Promise.resolve(makeWorkspaceState({ inputMode: "open" }));
+    });
+    await renderOperator(root, makeBootstrap());
+    root.querySelector<HTMLButtonElement>("#btn-open")?.click();
+    await new Promise((r) => setTimeout(r, 30));
+    // No error — if(next) false branch was silently skipped
+    expect(stateModule.switchSessionMode).toHaveBeenCalledWith("sess-1", "open");
+  });
 });

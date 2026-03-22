@@ -281,4 +281,47 @@ describe("renderConnect", () => {
     expect(payload.username).toBeUndefined();
     expect(payload.password).toBeUndefined();
   });
+
+  it("does not include input_mode when mode select is empty string", async () => {
+    vi.mocked(apiModule.quickConnect).mockResolvedValue({ session_id: "s1", url: "/op/s1" });
+    renderConnect(root, makeBootstrap());
+    // Force the mode select to empty string to cover the `if (mode)` false branch (line 48)
+    const modeSelect = root.querySelector<HTMLSelectElement>("#connect-mode")!;
+    modeSelect.value = "";
+    const form = root.querySelector<HTMLFormElement>("#connect-form")!;
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 50));
+    const payload = vi.mocked(apiModule.quickConnect).mock.calls[0][0];
+    expect(payload.input_mode).toBeUndefined();
+  });
+
+  it("uses default port 22 for ssh when port field is NaN", async () => {
+    vi.mocked(apiModule.quickConnect).mockResolvedValue({ session_id: "s1", url: "/op/s1" });
+    renderConnect(root, makeBootstrap());
+    const typeSelect = root.querySelector<HTMLSelectElement>("#connect-type")!;
+    typeSelect.value = "ssh";
+    typeSelect.dispatchEvent(new Event("change"));
+    const hostInput = root.querySelector<HTMLInputElement>("#connect-host")!;
+    hostInput.value = "myhost.example.com";
+    const portInput = root.querySelector<HTMLInputElement>("#connect-port")!;
+    portInput.value = "";
+    const form = root.querySelector<HTMLFormElement>("#connect-form")!;
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 50));
+    const payload = vi.mocked(apiModule.quickConnect).mock.calls[0][0];
+    // parseInt("") is NaN, so it should fall back to 22 for ssh (line 59)
+    expect(payload.port).toBe(22);
+  });
+
+  it("returns early without error when required DOM elements are missing (line 139)", () => {
+    // Intercept querySelector on root to return null for #connect-form so the guard fires
+    const origQuerySelector = root.querySelector.bind(root);
+    const spy = vi.spyOn(root, "querySelector").mockImplementation((sel: string) => {
+      if (sel === "#connect-form") return null;
+      return origQuerySelector(sel);
+    });
+    // Should not throw even though #connect-form is null
+    expect(() => renderConnect(root, makeBootstrap())).not.toThrow();
+    spy.mockRestore();
+  });
 });

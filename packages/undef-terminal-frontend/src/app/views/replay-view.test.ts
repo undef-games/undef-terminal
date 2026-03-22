@@ -251,4 +251,42 @@ describe("renderReplay", () => {
     root.querySelector<HTMLButtonElement>("#btn-next")?.click();
     expect(screen.textContent).toBe("only");
   });
+
+  it("throws when replay shell DOM elements are missing (line 103)", async () => {
+    // Make querySelector return null for #replay-filter so the shell-incomplete guard fires
+    const origQuerySelector = root.querySelector.bind(root);
+    const spy = vi.spyOn(root, "querySelector").mockImplementation((sel: string) => {
+      if (sel === "#replay-filter") return null;
+      return origQuerySelector(sel);
+    });
+    await expect(renderReplay(root, makeBootstrap())).rejects.toThrow("replay shell is incomplete");
+    spy.mockRestore();
+  });
+
+  it("updateReplayUi returns early when meta element is missing (line 31)", async () => {
+    vi.mocked(stateModule.loadReplayState).mockResolvedValue(makeReplayState([makeEntry()]));
+    await renderReplay(root, makeBootstrap());
+    // Remove #replay-meta so updateReplayUi early-returns on the next update
+    const meta = root.querySelector<HTMLElement>("#replay-meta");
+    if (meta) meta.remove();
+    // Trigger an update via btn-load — should not throw
+    vi.mocked(stateModule.loadReplayState).mockResolvedValue(makeReplayState([makeEntry()]));
+    root.querySelector<HTMLButtonElement>("#btn-load")?.click();
+    await new Promise((r) => setTimeout(r, 20));
+    // No error — early return path was taken
+    expect(root.querySelector("#replay-meta")).toBeNull();
+  });
+
+  it("clicking non-HTMLElement target in replay-list is a no-op (line 128 true branch)", async () => {
+    vi.mocked(stateModule.loadReplayState).mockResolvedValue(makeReplayState([makeEntry()]));
+    await renderReplay(root, makeBootstrap());
+    const list = root.querySelector<HTMLElement>("#replay-list")!;
+    // Dispatch a click event where target is not an HTMLElement (e.g. a Text node via synthetic event)
+    // We can simulate this by dispatching on the list itself but overriding event.target via a custom event
+    // In jsdom, all click targets are HTMLElements, so we use dispatchEvent with a manually constructed event
+    const event = new MouseEvent("click", { bubbles: true });
+    Object.defineProperty(event, "target", { value: document.createTextNode("text"), writable: false });
+    list.dispatchEvent(event);
+    // No error thrown — the instanceof check returned early
+  });
 });
