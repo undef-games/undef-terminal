@@ -61,6 +61,16 @@ jobs:
       - run: uv run python -m pip_audit --path .
       - run: uv run python scripts/check_licenses.py
       - run: uv run python scripts/run_pytest_gate.py -q --ignore=packages/undef-terminal/tests/playwright/test_example.py --ignore=packages/undef-terminal/tests/playwright/test_frontend_coverage.py
+      - name: Check undef.shell vendor tree
+        run: |
+          if [ ! -d "packages/undef-terminal-cloudflare/python_modules/undef/shell" ]; then
+            echo "ERROR: undef.shell missing from CF vendor tree"
+            exit 1
+          fi
+          if [ -z "$(find packages/undef-terminal-cloudflare/python_modules/undef/shell -name '*.py' -print -quit)" ]; then
+            echo "ERROR: undef.shell vendor tree is empty"
+            exit 1
+          fi
       - run: uv run pytest -q packages/undef-terminal-cloudflare/tests
       - run: uv run python scripts/verify_package_artifacts.py
 
