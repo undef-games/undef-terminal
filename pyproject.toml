@@ -110,6 +110,7 @@ warn_unused_ignores = false
 
 [tool.ty.environment]
 python-version = "3.11"
+extra-paths = ["packages/undef-shell/src"]
 
 [tool.ty.rules]
 invalid-argument-type = "ignore"
