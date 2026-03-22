@@ -40,10 +40,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import logging
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from undef.telemetry import get_logger
+
+from undef.terminal.defaults import TerminalDefaults
+
+logger = get_logger(__name__)
 
 
 def _require_websockets() -> None:
@@ -70,10 +73,10 @@ async def _tcp_to_ws(reader: asyncio.StreamReader, ws: object) -> None:
 async def _ws_to_tcp(ws: object, writer: asyncio.StreamWriter) -> None:
     """Forward WebSocket messages → raw TCP bytes."""
     async for message in ws:  # type: ignore[attr-defined]
-        if isinstance(message, str):
-            writer.write(message.encode("latin-1", errors="replace"))
-        else:
-            writer.write(message)
+        raw = message.encode("latin-1", errors="replace") if isinstance(message, str) else message
+        # Remap DEL (0x7F) → BS (0x08): xterm.js sends DEL for Backspace,
+        # but many BBS/telnet servers expect BS for character deletion.
+        writer.write(raw.replace(b"\x7f", b"\x08"))
         await writer.drain()
 
 
@@ -117,7 +120,11 @@ class TelnetWsGateway:
         _require_websockets()
         self._ws_url = ws_url
 
-    async def start(self, host: str = "0.0.0.0", port: int = 2112) -> asyncio.AbstractServer:  # nosec B104
+    async def start(
+        self,
+        host: str = "0.0.0.0",
+        port: int = TerminalDefaults.GATEWAY_TELNET_PORT,  # nosec B104
+    ) -> asyncio.AbstractServer:
         """Start the TCP listener and return the server object.
 
         Args:
@@ -180,7 +187,7 @@ class SshWsGateway:
         self._ws_url = ws_url
         self._server_key = server_key
 
-    async def start(self, host: str = "0.0.0.0", port: int = 2222) -> object:  # nosec B104
+    async def start(self, host: str = "0.0.0.0", port: int = TerminalDefaults.GATEWAY_SSH_PORT) -> object:  # nosec B104
         """Start the SSH server and return the server object.
 
         Args:
@@ -196,7 +203,11 @@ class SshWsGateway:
         ws_url = self._ws_url
 
         class _NoAuthServer(asyncssh.SSHServer):
-            def begin_auth(self, username: str) -> bool:  # noqa: ARG002
+            # begin_auth returns False → no credentials required from any SSH
+            # client.  This is intentional: the gateway trusts the caller to
+            # provide network-level access control.  Do NOT bind host="0.0.0.0"
+            # on a public interface without an external firewall or auth layer.
+            def begin_auth(self, username: str) -> bool:  # noqa: ARG002  # pragma: no cover
                 return False
 
         if self._server_key:

@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
+
 """Typed models for the hosted terminal server application."""
 
 from __future__ import annotations
@@ -13,7 +14,6 @@ from typing import Any, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-from undef.terminal.defaults import TerminalDefaults
 from undef.terminal.server.connectors import KNOWN_CONNECTOR_TYPES
 
 SessionLifecycle = Literal["stopped", "starting", "running", "error"]
@@ -91,7 +91,6 @@ class RecordingConfig(ServerBaseModel):
     enabled_by_default: bool = False
     directory: Path = Path(".uterm-recordings")
     max_bytes: int = 0  # 0 = unlimited
-    control_channel_mode: Literal["exclude", "wire"] = "exclude"
 
     @field_validator("max_bytes")
     @classmethod
@@ -104,18 +103,12 @@ class RecordingConfig(ServerBaseModel):
 class ServerBindConfig(ServerBaseModel):
     """Bind and public URL settings."""
 
-    host: str = TerminalDefaults.SERVER_HOST
-    port: int = TerminalDefaults.SERVER_PORT
-    public_base_url: str = ""
+    host: str = "127.0.0.1"
+    port: int = 8780
+    public_base_url: str = "http://127.0.0.1:8780"
     title: str = "undef-terminal-server"
     allowed_origins: list[str] = Field(default_factory=list)
     max_sessions: int | None = None
-
-    @model_validator(mode="after")
-    def _derive_public_base_url(self) -> ServerBindConfig:
-        if not self.public_base_url:
-            self.public_base_url = f"http://{self.host}:{self.port}"
-        return self
 
 
 class SessionDefinition(ServerBaseModel):
