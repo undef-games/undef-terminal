@@ -16,7 +16,7 @@ try:
         WorkerEntrypoint,  # type: ignore[import-not-found]
     )
 except ImportError:
-    # Outside CF runtime (tests / local dev): defer to cf_types (loaded below).
+    # Outside CF runtime (tests / local dev): stubs loaded below from cf_types.
     Response = None  # type: ignore[assignment]
     WorkerEntrypoint = None  # type: ignore[assignment]
 
@@ -43,14 +43,15 @@ try:
         decode_jwt,
         extract_bearer_or_cookie,
     )
-    from undef_terminal_cloudflare.cf_types import json_response
+    from undef_terminal_cloudflare.cf_types import (  # type: ignore[assignment,no-redef]
+        Response,
+        WorkerEntrypoint,
+        json_response,
+    )
     from undef_terminal_cloudflare.config import CloudflareConfig
     from undef_terminal_cloudflare.do.session_runtime import SessionRuntime
     from undef_terminal_cloudflare.state.registry import delete_kv_session, list_kv_sessions
     from undef_terminal_cloudflare.ui.assets import read_asset_text, serve_asset
-
-    if Response is None:  # workers module wasn't available (test env)
-        from undef_terminal_cloudflare.cf_types import Response, WorkerEntrypoint  # type: ignore[assignment,no-redef]
 except Exception:
     try:
         from auth.jwt import (  # type: ignore[import-not-found]
@@ -58,14 +59,15 @@ except Exception:
             decode_jwt,
             extract_bearer_or_cookie,
         )
-        from cf_types import json_response  # type: ignore[import-not-found]
+        from cf_types import (  # type: ignore[assignment,no-redef,import-not-found]
+            Response,
+            WorkerEntrypoint,
+            json_response,
+        )
         from config import CloudflareConfig  # type: ignore[import-not-found]
         from do.session_runtime import SessionRuntime  # type: ignore[import-not-found]
         from state.registry import delete_kv_session, list_kv_sessions  # type: ignore[import-not-found]
         from ui.assets import read_asset_text, serve_asset  # type: ignore[import-not-found]
-
-        if Response is None:  # workers module wasn't available
-            from cf_types import Response, WorkerEntrypoint  # type: ignore[assignment,no-redef,import-not-found]
     except Exception:  # pragma: no cover — Pyodide validation phase only
         # Last resort for Pyodide validation phase — stubs for non-handler imports.
         # WorkerEntrypoint/Response/DurableObject are imported directly from workers
