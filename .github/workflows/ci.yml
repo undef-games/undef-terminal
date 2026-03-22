@@ -51,7 +51,7 @@ jobs:
       - run: uv run mypy packages/undef-terminal/src/
       - run: uv run ty check packages/undef-terminal/src/
       - run: uv run bandit -r packages/undef-terminal/src/ -ll
-      - run: uv run xenon --max-absolute C --max-modules B --max-average A packages/undef-terminal/src/
+      - run: uv run xenon --max-absolute B --max-modules B --max-average A packages/undef-terminal/src/
       - run: uv run vulture packages/undef-terminal/src/ packages/undef-terminal/tests/ --ignore-names "since,password,kw,exc_type,tb"
       - run: uv run python -m pip_audit --path .
       - run: uv run python scripts/check_licenses.py
