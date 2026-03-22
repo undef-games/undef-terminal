@@ -65,6 +65,25 @@
 - 13 xenon blocks above B in pre-existing files (http_routes.py at F, config.py at D)
 - `undef-shell` 0.1.0 not yet on PyPI (blocked on non-publishing decision; undef-terminal 0.4.0 also not yet published)
 
+### 2026-03-22: Codebase Hygiene (current session)
+- Split `detection/detector.py` (501→437 lines): extracted `auto_detect_input_type` to `detection/input_type.py`
+- Split `api/http_routes.py` (504 lines): converted to `api/http_routes/` module dir (`_shared`, `_hijack`, `_session`, `_dispatch`)
+- Connector self-registration: replaced hardcoded `KNOWN_CONNECTOR_TYPES` frozenset + if/elif factory with `server/connectors/registry.py`; each connector registers itself at import time
+- Removed compiled frontend from git: build artifacts in `.gitignore`; `npm run build:frontend` step added to CI `quality` and `release-readiness` jobs
+- Vendored `undef.shell` into CF `python_modules/`; added guard test + CI check
+- Pre-commit config: `tsconfig.json` + `vite.config.ts` `outDir` fixed (was writing to stale repo-root path)
+
+## Known Issues
+
+- `tests/detection/test_extractor.py` is 540 lines — pre-existing LOC violation not in scope of hygiene pass; needs split
+- CF overall package coverage at 96.5% (pre-existing gaps in contracts.py, ws_routes.py)
+- 13 xenon blocks above B in pre-existing files (config.py at D)
+- `undef-shell` 0.1.0 not yet on PyPI (blocked on non-publishing decision; undef-terminal 0.4.0 also not yet published)
+
+## Backlog
+
+- **Session state unification**: `TermHub` (in-memory, hosted server) and `state/registry.py` (KV-backed, CF) are separate session state stores with divergent models. A future task should unify these under a shared contract/protocol so session lifecycle, visibility, and metadata are consistent between the two deployment targets.
+
 ## What's Next
 
-No explicit backlog. Ready to publish 0.4.0 when desired.
+Ready to publish 0.4.0 when desired.
