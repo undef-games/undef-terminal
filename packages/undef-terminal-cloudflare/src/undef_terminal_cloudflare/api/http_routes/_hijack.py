@@ -21,8 +21,8 @@ from undef_terminal_cloudflare.api.http_routes._shared import (
     build_hijack_events_response,
     build_hijack_snapshot_response,
     compile_expect_regex,
-    json_response,
 )
+from undef_terminal_cloudflare.cf_types import json_response
 
 if TYPE_CHECKING:
     import re

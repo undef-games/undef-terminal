@@ -45,10 +45,6 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover
 if TYPE_CHECKING:
     from undef_terminal_cloudflare.contracts import RuntimeProtocol
 
-    def json_response(data: Any, status: int = 200, headers: dict[str, str] | None = None) -> object: ...
-else:
-    pass
-
 # Matches /hijack/{hijack_id}/ in any path segment position.
 _HIJACK_ID_RE = re.compile(r"/hijack/([0-9a-fA-F\-]{1,64})/")
 _MIN_LEASE_S = 1

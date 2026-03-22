@@ -12,8 +12,8 @@ from undef_terminal_cloudflare.api.http_routes._session import route_session
 from undef_terminal_cloudflare.api.http_routes._shared import (
     _SESSION_ROUTE_RE,
     _session_status_item,
-    json_response,
 )
+from undef_terminal_cloudflare.cf_types import json_response
 
 if TYPE_CHECKING:
     from undef_terminal_cloudflare.contracts import RuntimeProtocol

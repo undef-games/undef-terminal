@@ -14,8 +14,8 @@ from undef_terminal_cloudflare.api.http_routes._shared import (
     _safe_int,
     _session_status_item,
     _wait_for_analysis,
-    json_response,
 )
+from undef_terminal_cloudflare.cf_types import json_response
 
 if TYPE_CHECKING:
     import re
