@@ -130,6 +130,14 @@ class SessionRuntime(_SessionRuntimeIoMixin, _WsHelperMixin, DurableObject):
         """
         if self.config.jwt.mode in {"none", "dev"}:
             return None, None
+        # CF Access Service Auth: if the request carries a service token
+        # header, CF Access already validated it — trust the request.
+        try:
+            cf_client_id = str(request.headers.get("CF-Access-Client-Id") or "")  # type: ignore[union-attr]
+            if len(cf_client_id) > 0:
+                return None, None
+        except Exception:  # noqa: S110
+            pass
         token = self._extract_token(request)
         if not token:
             return None, Response(

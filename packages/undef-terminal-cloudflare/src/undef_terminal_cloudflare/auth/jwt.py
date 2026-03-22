@@ -271,6 +271,9 @@ async def decode_jwt(token: str, config: JwtConfig) -> Principal:
         raise JwtValidationError(f"failed to verify token: {exc}") from exc
 
     sub = str(claims.get("sub") or "")
+    # CF Access service token JWTs have sub="" but common_name set to the client ID.
+    if not sub:
+        sub = str(claims.get("common_name") or "")
     if not sub:
         raise JwtValidationError("missing sub")
 

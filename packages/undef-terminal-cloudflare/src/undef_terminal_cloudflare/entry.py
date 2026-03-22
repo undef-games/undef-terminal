@@ -183,12 +183,36 @@ def _spa_response(page_kind: str, **extra_bootstrap: object) -> Response:
     return Response(html, status=200, headers={"content-type": "text/html; charset=utf-8"})
 
 
+def _has_cf_service_token(request: object) -> bool:
+    """Check if request carries CF Access service token headers.
+
+    When a Service Auth policy matches, CF Access validates the token and
+    forwards the request.  The presence of CF-Access-Client-Id means CF
+    Access already approved the request — the worker can trust it.
+
+    In Pyodide, request.headers is a JS Headers proxy.  .get() may return
+    a JS string or None.  We stringify and check length to be safe.
+    """
+    try:
+        headers = request.headers  # type: ignore[union-attr]
+        for name in ("cf-access-client-id", "CF-Access-Client-Id"):
+            val = str(headers.get(name) or "")
+            if val.endswith(".access"):
+                return True
+    except Exception:  # noqa: S110
+        pass
+    return False
+
+
 async def _require_jwt(request: object, config: CloudflareConfig) -> Response | None:
     """Return a 401 Response if JWT auth fails, or ``None`` if auth passes.
 
-    Skipped when auth mode is not ``jwt``.
+    Skipped when auth mode is not ``jwt``, or when a CF Access service
+    token is present (already validated by CF Access Service Auth policy).
     """
     if config.jwt.mode != "jwt":
+        return None
+    if _has_cf_service_token(request):
         return None
     token = extract_bearer_or_cookie(request)
     if not token:
