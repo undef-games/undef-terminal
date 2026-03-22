@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   base: "",
   build: {
-    outDir: "../../src/undef/terminal/frontend",
+    outDir: "../../packages/undef-terminal/src/undef/terminal/frontend",
     emptyOutDir: false,
     manifest: true,
     rollupOptions: {
