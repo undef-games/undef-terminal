@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: undef-shell
+Version: 0.1.0
+Summary: Standalone Python REPL shell — usable independently of undef-terminal
+Author: MindTenet LLC
+License-Expression: AGPL-3.0-or-later
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Provides-Extra: terminal
+Requires-Dist: undef-terminal>=0.3.0; extra == "terminal"
+
+# undef-shell
+
+Standalone Python REPL shell — usable independently of undef-terminal.
