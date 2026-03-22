@@ -83,8 +83,8 @@ class LineEditor:
         if self.on_write:
             await self.on_write(text)
 
-    async def _apply_edit_shortcut(self, ch: str) -> bool:
-        """Handle Ctrl+A/E/U/K readline shortcuts. Returns True if the character was handled."""
+    async def _apply_cursor_shortcut(self, ch: str) -> bool:
+        """Handle Ctrl+A/E cursor movement shortcuts. Returns True if handled."""
         if ch == "\x01":  # Ctrl+A: move to beginning of line
             if self.buffer:
                 await self._emit("\x1b[H")
@@ -93,17 +93,27 @@ class LineEditor:
             if self.buffer:
                 await self._emit(f"\x1b[{len(self.buffer)}G")
             return True
+        return False
+
+    async def _apply_clear_shortcut(self, ch: str) -> bool:
+        """Handle Ctrl+U/K line-clear shortcuts. Returns True if handled."""
         if ch == "\x15":  # Ctrl+U: delete entire line
-            if self.buffer and self.on_write:
+            if self.buffer:
                 self.buffer = ""
-                await self.on_write("\x1b[2K\r")
+                if self.on_write:
+                    await self.on_write("\x1b[2K\r")
             return True
         if ch == "\x0b":  # Ctrl+K: delete to end of line
-            if self.buffer and self.on_write:
+            if self.buffer:
                 self.buffer = ""
-                await self.on_write("\x1b[K")
+                if self.on_write:
+                    await self.on_write("\x1b[K")
             return True
         return False
+
+    async def _apply_edit_shortcut(self, ch: str) -> bool:
+        """Handle Ctrl+A/E/U/K readline shortcuts. Returns True if the character was handled."""
+        return await self._apply_cursor_shortcut(ch) or await self._apply_clear_shortcut(ch)
 
     async def process_char(self, ch: str) -> str | None:
         """Process a single character.

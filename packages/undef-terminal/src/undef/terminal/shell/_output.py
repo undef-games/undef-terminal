@@ -80,14 +80,19 @@ def fmt_kv(key: str, value: str, *, width: int = 20) -> str:
     return f"  {DIM}{key:<{width}}{RESET}{value}\r\n"
 
 
+def _column_widths(all_rows: list[tuple[str, ...]], headers: tuple[str, ...] | None) -> list[int]:
+    widths = [max(len(str(cell)) for cell in col) for col in zip(*all_rows, strict=False)]
+    if headers:
+        widths = [max(w, len(h)) for w, h in zip(widths, headers, strict=False)]
+    return widths
+
+
 def fmt_table(rows: list[tuple[str, ...]], headers: tuple[str, ...] | None = None) -> str:
     """Format a list of tuples as a fixed-width table."""
     all_rows = list(rows)
     if not all_rows:
         return info_msg("(no results)")
-    widths = [max(len(str(cell)) for cell in col) for col in zip(*all_rows, strict=False)]
-    if headers:
-        widths = [max(w, len(h)) for w, h in zip(widths, headers, strict=False)]
+    widths = _column_widths(all_rows, headers)
     lines: list[str] = []
     if headers:
         header_line = "  " + "  ".join(f"{BOLD}{h:<{w}}{RESET}" for h, w in zip(headers, widths, strict=False))

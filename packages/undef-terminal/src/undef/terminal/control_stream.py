@@ -87,6 +87,17 @@ class ControlStreamDecoder:
             raise ControlStreamProtocolError("truncated control frame")
         return events
 
+    @staticmethod
+    def _parse_frame_payload(payload_raw: str) -> dict[str, Any]:
+        """Parse and validate a control frame JSON payload."""
+        try:
+            payload = json.loads(payload_raw)
+        except json.JSONDecodeError as exc:
+            raise ControlStreamProtocolError("invalid control json") from exc
+        if not isinstance(payload, dict):
+            raise ControlStreamProtocolError("control payload must be an object")
+        return payload
+
     def _try_parse_frame(self, buf: str, idx: int, buf_len: int, *, final: bool) -> tuple[ControlChunk, int] | None:
         """Parse a control frame at buf[idx]. Returns (chunk, frame_end) or None if incomplete.
 
@@ -110,13 +121,39 @@ class ControlStreamDecoder:
                 raise ControlStreamProtocolError("truncated control frame")
             return None
         payload_raw = buf[idx + _HEADER_BYTES : frame_end]
-        try:
-            payload = json.loads(payload_raw)
-        except json.JSONDecodeError as exc:
-            raise ControlStreamProtocolError("invalid control json") from exc
-        if not isinstance(payload, dict):
-            raise ControlStreamProtocolError("control payload must be an object")
-        return ControlChunk(payload), frame_end
+        return ControlChunk(self._parse_frame_payload(payload_raw)), frame_end
+
+    @staticmethod
+    def _emit_data_chunk(
+        events: list[ControlStreamChunk],
+        data_parts: list[str],
+        buf: str,
+        data_start: int,
+        idx: int,
+    ) -> int:
+        """Emit accumulated plain data as a DataChunk. Returns new data_start (= idx)."""
+        if data_start < idx:
+            data_parts.append(buf[data_start:idx])
+        if data_parts:
+            events.append(DataChunk("".join(data_parts)))
+            data_parts.clear()
+        return idx
+
+    def _flush_remaining(
+        self,
+        buf: str,
+        idx: int,
+        data_start: int,
+        data_parts: list[str],
+        events: list[ControlStreamChunk],
+    ) -> None:
+        """Flush unconsumed buffer tail and any trailing plain data."""
+        if idx > 0:
+            self._buffer = buf[idx:]
+        if data_start < idx:
+            data_parts.append(buf[data_start:idx])
+        if data_parts:
+            events.append(DataChunk("".join(data_parts)))
 
     def _drain(self, *, final: bool) -> list[ControlStreamChunk]:
         events: list[ControlStreamChunk] = []
@@ -126,16 +163,6 @@ class ControlStreamDecoder:
         # Accumulate plain data parts (slices + escaped DLEs) to join later.
         data_parts: list[str] = []
         data_start = 0  # start of current plain-data slice
-
-        def _flush_data() -> None:
-            """Emit accumulated plain data as a single DataChunk."""
-            nonlocal data_start
-            if data_start < idx:
-                data_parts.append(buf[data_start:idx])
-            if data_parts:
-                events.append(DataChunk("".join(data_parts)))
-                data_parts.clear()
-            data_start = idx
 
         while idx < buf_len:
             if buf[idx] != DLE:
@@ -159,7 +186,7 @@ class ControlStreamDecoder:
             if next_char != STX:
                 raise ControlStreamProtocolError("invalid control prefix")
 
-            _flush_data()
+            data_start = self._emit_data_chunk(events, data_parts, buf, data_start, idx)
 
             result = self._try_parse_frame(buf, idx, buf_len, final=final)
             if result is None:
@@ -168,11 +195,5 @@ class ControlStreamDecoder:
             data_start = idx
             events.append(chunk)
 
-        if idx > 0:
-            self._buffer = buf[idx:]
-        # Emit trailing plain data.
-        if data_start < idx:
-            data_parts.append(buf[data_start:idx])
-        if data_parts:
-            events.append(DataChunk("".join(data_parts)))
+        self._flush_remaining(buf, idx, data_start, data_parts, events)
         return events

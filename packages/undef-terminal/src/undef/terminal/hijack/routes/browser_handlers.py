@@ -39,6 +39,47 @@ else:
 logger = get_logger(__name__)
 
 
+async def _handle_snapshot_req(hub: TermHub, ws: WebSocket, worker_id: str) -> None:
+    """Handle snapshot_req message type."""
+    is_owner = await hub.touch_if_owner(worker_id, ws) is not None
+    if is_owner:
+        await hub.request_snapshot(worker_id)
+    else:
+        # Non-owner viewers may request snapshots only when no hijack is
+        # active — forwarding during an active hijack disrupts the owner's
+        # wait_for_guard prompt detection.
+        if not await hub.check_still_hijacked(worker_id):
+            await hub.request_snapshot(worker_id)
+
+
+async def _handle_analyze_req(hub: TermHub, ws: WebSocket, worker_id: str) -> None:
+    """Handle analyze_req message type."""
+    if await hub.touch_if_owner(worker_id, ws) is not None:
+        await hub.request_analysis(worker_id)
+
+
+async def _handle_heartbeat(hub: TermHub, ws: WebSocket, worker_id: str) -> None:
+    """Handle heartbeat message type."""
+    lease_expires_at = await hub.touch_if_owner(worker_id, ws)
+    if lease_expires_at is not None:
+        await ws.send_text(encode_control(make_heartbeat_ack_frame(lease_expires_at, ts=time.time())))
+        await hub.broadcast_hijack_state(worker_id)
+
+
+async def _handle_hijack_step(hub: TermHub, ws: WebSocket, worker_id: str) -> None:
+    """Handle hijack_step message type."""
+    if await hub.touch_if_owner(worker_id, ws) is not None:
+        ok = await hub.send_worker(
+            worker_id,
+            {"type": "control", "action": "step", "owner": "dashboard", "lease_s": 0, "ts": time.time()},
+        )
+        if not ok:
+            await ws.send_text(encode_control(make_error_frame("No worker connected for this session.")))
+        else:
+            hub.metric("hijack_steps_total")
+            await hub.append_event(worker_id, "hijack_step", {"owner": "dashboard_ws"})
+
+
 async def handle_browser_message(
     hub: TermHub,
     ws: WebSocket,
@@ -55,51 +96,22 @@ async def handle_browser_message(
     mtype = msg_b.get("type")
 
     if mtype == "snapshot_req":
-        is_owner = await hub.touch_if_owner(worker_id, ws) is not None
-        if is_owner:
-            await hub.request_snapshot(worker_id)
-        else:
-            # Non-owner viewers may request snapshots only when no hijack is
-            # active — forwarding during an active hijack disrupts the owner's
-            # wait_for_guard prompt detection.
-            if not await hub.check_still_hijacked(worker_id):
-                await hub.request_snapshot(worker_id)
-
+        await _handle_snapshot_req(hub, ws, worker_id)
     elif mtype == "analyze_req":
-        if await hub.touch_if_owner(worker_id, ws) is not None:
-            await hub.request_analysis(worker_id)
-
+        await _handle_analyze_req(hub, ws, worker_id)
     elif mtype == "heartbeat":
-        lease_expires_at = await hub.touch_if_owner(worker_id, ws)
-        if lease_expires_at is not None:
-            await ws.send_text(encode_control(make_heartbeat_ack_frame(lease_expires_at, ts=time.time())))
-            await hub.broadcast_hijack_state(worker_id)
-
+        await _handle_heartbeat(hub, ws, worker_id)
     elif mtype == "hijack_request":
         return await _handle_hijack_request(hub, ws, worker_id, role, owned_hijack)
-
     elif mtype == "hijack_step":
-        if await hub.touch_if_owner(worker_id, ws) is not None:
-            ok = await hub.send_worker(
-                worker_id,
-                {"type": "control", "action": "step", "owner": "dashboard", "lease_s": 0, "ts": time.time()},
-            )
-            if not ok:
-                await ws.send_text(encode_control(make_error_frame("No worker connected for this session.")))
-            else:
-                hub.metric("hijack_steps_total")
-                await hub.append_event(worker_id, "hijack_step", {"owner": "dashboard_ws"})
-
+        await _handle_hijack_step(hub, ws, worker_id)
     elif mtype == "hijack_release":
         return await _handle_hijack_release(hub, ws, worker_id, owned_hijack)
-
     elif mtype == "ping":
         with suppress(Exception):
             await ws.send_text(encode_control(make_pong_frame(ts=time.time())))
-
     elif mtype == "input":
         await _handle_input(hub, ws, worker_id, msg_b)
-
     return owned_hijack
 
 
@@ -226,6 +238,26 @@ async def _resolve_resumed_role(
     return new_role, new_role == "admin"
 
 
+async def _attempt_reclaim_under_lock(hub: TermHub, ws: WebSocket, worker_id: str) -> bool:
+    """Attempt to acquire hijack ownership inside the hub lock.
+
+    Returns True if ownership was successfully set.
+    """
+    async with hub._lock:
+        st = hub._workers.get(worker_id)
+        if (  # pragma: no branch
+            st is not None
+            and st.worker_ws is not None
+            and st.input_mode != "open"
+            and st.hijack_owner is None
+            and not hub.is_hijacked(st)
+        ):
+            st.hijack_owner = ws
+            st.hijack_owner_expires_at = time.time() + hub._dashboard_hijack_lease_s
+            return True
+    return False
+
+
 async def _try_reclaim_hijack(
     hub: TermHub, ws: WebSocket, worker_id: str, session: Any, can_hijack: bool
 ) -> tuple[bool, bool]:
@@ -235,32 +267,20 @@ async def _try_reclaim_hijack(
     """
     if not (session.was_hijack_owner and can_hijack):
         return False, False
-    owned_hijack = False
-    reclaimed_hijack = False
     pause_sent = await hub.send_worker(
         worker_id,
         {"type": "control", "action": "pause", "owner": "dashboard", "lease_s": 0, "ts": time.time()},
     )
     if pause_sent:
-        async with hub._lock:
-            st = hub._workers.get(worker_id)
-            if (  # pragma: no branch
-                st is not None
-                and st.worker_ws is not None
-                and st.input_mode != "open"
-                and st.hijack_owner is None
-                and not hub.is_hijacked(st)
-            ):
-                st.hijack_owner = ws
-                st.hijack_owner_expires_at = time.time() + hub._dashboard_hijack_lease_s
-                owned_hijack = True
-                reclaimed_hijack = True
+        reclaimed_hijack = await _attempt_reclaim_under_lock(hub, ws, worker_id)
+        owned_hijack = reclaimed_hijack
         if not reclaimed_hijack and not await hub.check_still_hijacked(worker_id):
             await hub.send_worker(
                 worker_id,
                 {"type": "control", "action": "resume", "owner": "dashboard", "lease_s": 0, "ts": time.time()},
             )
-    return owned_hijack, reclaimed_hijack
+        return owned_hijack, reclaimed_hijack
+    return False, False
 
 
 async def _handle_resume(

@@ -285,6 +285,57 @@ class PromptDetector:
         """
         return self.detect_prompt_with_diagnostics(snapshot).match
 
+    def _run_two_pass_detection(
+        self,
+        snapshot: dict[str, Any],
+        screen: str,
+        cursor_at_end: bool,
+        compiled_fast: list[tuple[re.Pattern[str], dict[str, Any]]],
+        compiled_all: list[tuple[re.Pattern[str], dict[str, Any]]],
+        regex_matched_but_failed: list[dict[str, Any]],
+    ) -> tuple[PromptMatch | None, list[PromptMatch]]:
+        """Run two-pass prompt detection: prompt region first, then full screen.
+
+        Returns (match, cursor_miss_candidates).  match is None if nothing fired.
+        """
+        cursor_miss_candidates: list[PromptMatch] = []
+        region_text, cursor_in_region = self.prompt_region(snapshot)
+        if region_text:
+            match = self._detect_in_text(
+                text=region_text,
+                full_screen=screen,
+                cursor_at_end=cursor_at_end,
+                compiled=compiled_fast,
+                regex_matched_but_failed=regex_matched_but_failed,
+                cursor_miss_candidates=cursor_miss_candidates,
+            )
+            if match:
+                logger.info(
+                    "prompt_detection_matched_region prompt_id=%s input_type=%s",
+                    match.prompt_id,
+                    match.input_type,
+                )
+                return match, cursor_miss_candidates
+
+        if not cursor_in_region:
+            match = self._detect_in_text(
+                text=screen,
+                full_screen=screen,
+                cursor_at_end=cursor_at_end,
+                compiled=compiled_all,
+                regex_matched_but_failed=regex_matched_but_failed,
+                cursor_miss_candidates=cursor_miss_candidates,
+            )
+            if match:
+                logger.info(
+                    "prompt_detection_matched_full prompt_id=%s input_type=%s",
+                    match.prompt_id,
+                    match.input_type,
+                )
+                return match, cursor_miss_candidates
+
+        return None, cursor_miss_candidates
+
     def detect_prompt_with_diagnostics(self, snapshot: dict[str, Any]) -> PromptDetectionDiagnostics:
         """Detect prompt and include partial-match diagnostics.
 
@@ -320,43 +371,16 @@ class PromptDetector:
         compiled_all = self._compiled_all
         compiled_fast = self._compiled_no_cursor_end_req if not cursor_at_end else self._compiled_all
 
-        # Two-pass scan: first scan the prompt region (bottom-of-content),
-        # then fall back to full-screen scan if the cursor isn't within that region.
-        cursor_miss_candidates: list[PromptMatch] = []
-        region_text, cursor_in_region = self.prompt_region(snapshot)
-        if region_text:
-            match = self._detect_in_text(
-                text=region_text,
-                full_screen=screen,
-                cursor_at_end=bool(cursor_at_end),
-                compiled=compiled_fast,
-                regex_matched_but_failed=regex_matched_but_failed,
-                cursor_miss_candidates=cursor_miss_candidates,
-            )
-            if match:
-                logger.info(
-                    "prompt_detection_matched_region prompt_id=%s input_type=%s",
-                    match.prompt_id,
-                    match.input_type,
-                )
-                return PromptDetectionDiagnostics(match=match, regex_matched_but_failed=regex_matched_but_failed)
-
-        if not cursor_in_region:
-            match = self._detect_in_text(
-                text=screen,
-                full_screen=screen,
-                cursor_at_end=bool(cursor_at_end),
-                compiled=compiled_all,
-                regex_matched_but_failed=regex_matched_but_failed,
-                cursor_miss_candidates=cursor_miss_candidates,
-            )
-            if match:
-                logger.info(
-                    "prompt_detection_matched_full prompt_id=%s input_type=%s",
-                    match.prompt_id,
-                    match.input_type,
-                )
-                return PromptDetectionDiagnostics(match=match, regex_matched_but_failed=regex_matched_but_failed)
+        match, cursor_miss_candidates = self._run_two_pass_detection(
+            snapshot,
+            screen,
+            bool(cursor_at_end),
+            compiled_fast,
+            compiled_all,
+            regex_matched_but_failed,
+        )
+        if match:
+            return PromptDetectionDiagnostics(match=match, regex_matched_but_failed=regex_matched_but_failed)
 
         # Fallback: if we matched prompt regexes but the cursor heuristic disagreed, prefer progress.
         # Gate this on "trailing space" which strongly correlates with an active input field.

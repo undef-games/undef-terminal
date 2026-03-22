@@ -17,11 +17,67 @@ from typing import TYPE_CHECKING, Any
 from undef.telemetry import get_logger
 
 if TYPE_CHECKING:
+    import subprocess
+
     from undef.terminal.manager.process import AgentProcessManager
 
 logger = get_logger(__name__)
 
 _STOP_TIMEOUT_S = 5.0
+
+
+def _set_agent_exit_state(agent: Any, exit_code: int) -> None:
+    """Update agent state fields based on process exit code."""
+    if exit_code == 0:
+        if agent.state == "error" or agent.error_message:
+            agent.state = "error"
+            if not agent.exit_reason:
+                agent.exit_reason = "reported_error_then_exit_0"
+        else:
+            agent.state = "completed"
+            agent.completed_at = time.time()
+            agent.stopped_at = time.time()
+            if not agent.exit_reason:
+                agent.exit_reason = "target_reached"
+    else:
+        agent.state = "error"
+        if not agent.exit_reason:
+            agent.exit_reason = f"exit_code_{exit_code}"
+        if not agent.error_message:
+            agent.error_message = f"Process exited with code {exit_code}"
+        agent.stopped_at = time.time()
+
+
+async def _prune_terminal_agents(
+    pm: AgentProcessManager,
+) -> tuple[list[tuple[str, subprocess.Popen[bytes]]], list[Any]]:
+    """Remove terminal-state agents; return (stop_requests, dead_agents)."""
+
+    terminal_states = {"error", "stopped", "completed"}
+    prune_stop_requests: list[tuple[str, subprocess.Popen[bytes]]] = []
+    async with pm.manager._state_lock:
+        dead_agents = [b for b in pm.manager.agents.values() if b.state in terminal_states]
+        for dead in dead_agents:
+            with contextlib.suppress(OSError, RuntimeError):
+                pm.release_agent_account(dead.agent_id)
+            if (proc := pm.manager.processes.pop(dead.agent_id, None)) is not None:
+                prune_stop_requests.append((dead.agent_id, proc))
+            pm.manager.agents.pop(dead.agent_id, None)
+    return prune_stop_requests, dead_agents
+
+
+def _collect_spawn_configs(
+    active_agents: list[Any],
+    dead_agents: list[Any],
+    last_config: Any,
+) -> list[Any]:
+    """Collect available spawn configs from active agents, dead agents, or last known config."""
+    configs = [b.config for b in active_agents if b.config]
+    if not configs:
+        configs = [b.config for b in dead_agents if b.config]
+    if not configs and last_config:
+        configs = [last_config]
+    return configs
 
 
 async def _handle_exited_processes(pm: AgentProcessManager) -> None:
@@ -36,24 +92,7 @@ async def _handle_exited_processes(pm: AgentProcessManager) -> None:
             if agent is None:
                 pm.manager.processes.pop(agent_id, None)
                 continue
-            if exit_code == 0:
-                if agent.state == "error" or agent.error_message:
-                    agent.state = "error"
-                    if not agent.exit_reason:
-                        agent.exit_reason = "reported_error_then_exit_0"
-                else:
-                    agent.state = "completed"
-                    agent.completed_at = time.time()
-                    agent.stopped_at = time.time()
-                    if not agent.exit_reason:
-                        agent.exit_reason = "target_reached"
-            else:
-                agent.state = "error"
-                if not agent.exit_reason:
-                    agent.exit_reason = f"exit_code_{exit_code}"
-                if not agent.error_message:
-                    agent.error_message = f"Process exited with code {exit_code}"
-                agent.stopped_at = time.time()
+            _set_agent_exit_state(agent, exit_code)
             pm.manager.processes.pop(agent_id, None)
         pm.release_agent_account(agent_id)
         await pm.manager.broadcast_status()
@@ -64,7 +103,6 @@ async def _handle_heartbeat_timeouts(pm: AgentProcessManager) -> None:
     now = time.time()
     heartbeat_timeout = pm.manager.config.heartbeat_timeout_s
     heartbeat_timed_out: list[str] = []
-    import subprocess  # noqa: TC003
 
     heartbeat_stop_requests: list[tuple[str, subprocess.Popen[bytes]]] = []
     async with pm.manager._state_lock:
@@ -120,7 +158,6 @@ async def _handle_bust_respawn(pm: AgentProcessManager) -> None:
     if not pm.manager.bust_respawn or pm.manager.swarm_paused:
         return
     now = time.time()
-    import subprocess  # noqa: TC003
 
     bust_stop_requests: list[tuple[str, subprocess.Popen[bytes] | None, int | None]] = []
     for agent in list(pm.manager.agents.values()):
@@ -149,11 +186,7 @@ async def _spawn_to_desired(
     dead_agents: list[Any],
 ) -> None:
     """Spawn *deficit* new agents to reach the desired count."""
-    configs_available: list[Any] = [b.config for b in active_agents if b.config]
-    if not configs_available:
-        configs_available = [b.config for b in dead_agents if b.config]
-    if not configs_available and pm._last_spawn_config:
-        configs_available = [pm._last_spawn_config]
+    configs_available = _collect_spawn_configs(active_agents, dead_agents, pm._last_spawn_config)
     for _ in range(deficit):
         if not configs_available:
             break
@@ -195,20 +228,10 @@ async def _handle_desired_state(pm: AgentProcessManager) -> None:
     """Enforce the desired agent count: spawn deficits, kill excesses."""
     if pm.manager.desired_agents <= 0 or pm.manager.swarm_paused:
         return
-    import subprocess  # noqa: TC003
-
     active_states = {"running", "queued", "recovering", "blocked"}
-    terminal_states = {"error", "stopped", "completed"}
-    prune_stop_requests: list[tuple[str, subprocess.Popen[bytes]]] = []
 
+    prune_stop_requests, dead_agents = await _prune_terminal_agents(pm)
     async with pm.manager._state_lock:
-        dead_agents = [b for b in pm.manager.agents.values() if b.state in terminal_states]
-        for dead in dead_agents:
-            with contextlib.suppress(OSError, RuntimeError):
-                pm.release_agent_account(dead.agent_id)
-            if (proc := pm.manager.processes.pop(dead.agent_id, None)) is not None:
-                prune_stop_requests.append((dead.agent_id, proc))
-            pm.manager.agents.pop(dead.agent_id, None)
         active_agents = [b for b in pm.manager.agents.values() if b.state in active_states]
         deficit = pm.manager.desired_agents - len(active_agents)
 

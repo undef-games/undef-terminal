@@ -100,6 +100,18 @@ class StatusUpdatePayload(BaseModel):
     recent_actions: list[dict[str, Any]] | None = None
 
 
+def _build_pending_command_response(agent: Any, ack_seq: int) -> dict[str, Any] | None:
+    """Build the manager_command dict if a pending command exists; otherwise return None."""
+    seq = int(agent.pending_command_seq or 0)
+    if not agent.pending_command_type or seq <= 0 or seq == ack_seq:
+        return None
+    return {
+        "seq": seq,
+        "type": str(agent.pending_command_type or ""),
+        "payload": dict(agent.pending_command_payload or {}),
+    }
+
+
 @router.post("/agent/{agent_id}/status")
 async def update_status(
     request: Request,  # noqa: ARG001
@@ -132,14 +144,7 @@ async def update_status(
     await manager.broadcast_status()
 
     response: dict[str, Any] = {"ok": True, "paused": agent.paused or manager.swarm_paused}
-    if (
-        agent.pending_command_type
-        and int(agent.pending_command_seq or 0) > 0
-        and int(agent.pending_command_seq or 0) != ack_seq
-    ):
-        response["manager_command"] = {
-            "seq": int(agent.pending_command_seq or 0),
-            "type": str(agent.pending_command_type or ""),
-            "payload": dict(agent.pending_command_payload or {}),
-        }
+    cmd = _build_pending_command_response(agent, ack_seq)
+    if cmd is not None:
+        response["manager_command"] = cmd
     return response

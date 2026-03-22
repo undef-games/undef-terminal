@@ -47,54 +47,55 @@ class LineBuffer:
     # Public API
     # ------------------------------------------------------------------
 
+    def _handle_enter_char(self, data: str, i: int) -> int:
+        """Process CR/LF at data[i]. Returns updated index."""
+        if data[i] == "\r" and i + 1 < len(data) and data[i + 1] == "\n":
+            i += 1
+        self._echo.append("\r\n")
+        self._completed.append("".join(self._buf))
+        self._buf.clear()
+        return i + 1
+
+    def _handle_printable(self, ch: str) -> None:
+        """Append printable character or tab to buffer if within limit."""
+        if len(self._buf) < self._max_line:
+            self._buf.append(ch)
+            self._echo.append(ch)
+
+    def _process_char(self, data: str, i: int) -> int:
+        """Process character at data[i], return new index."""
+        ch = data[i]
+        if ch in ("\r", "\n"):
+            return self._handle_enter_char(data, i)
+        if ch in ("\x7f", "\x08"):  # DEL or BS — backspace
+            if self._buf:
+                self._buf.pop()
+                self._echo.append("\x08 \x08")
+            return i + 1
+        if ch == _CTRL_C:
+            self._buf.clear()
+            self._echo.append("^C\r\n")
+            self._completed.append(_CTRL_C)
+            return i + 1
+        if ch == _CTRL_D:
+            # Treat like Enter with empty line — lets caller handle EOF.
+            self._echo.append("\r\n")
+            self._completed.append("".join(self._buf) if self._buf else _CTRL_D)
+            self._buf.clear()
+            return i + 1
+        if ch == "\x1b":
+            # VT escape sequence — swallow entirely (arrow keys, F-keys, etc.).
+            return LineBuffer._consume_escape(data, i)
+        if ch >= " " or ch == "\t":
+            # Printable character (or tab — shown as-is).
+            self._handle_printable(ch)
+        return i + 1
+
     def feed(self, data: str) -> None:
         """Process *data* (raw keystroke bytes) and update internal state."""
         i = 0
         while i < len(data):
-            ch = data[i]
-
-            if ch in ("\r", "\n"):
-                # Skip LF immediately following CR (handles \r\n sequences).
-                if ch == "\r" and i + 1 < len(data) and data[i + 1] == "\n":
-                    i += 1
-                self._echo.append("\r\n")
-                self._completed.append("".join(self._buf))
-                self._buf.clear()
-                i += 1
-
-            elif ch in ("\x7f", "\x08"):  # DEL or BS — backspace
-                if self._buf:
-                    self._buf.pop()
-                    self._echo.append("\x08 \x08")
-                i += 1
-
-            elif ch == _CTRL_C:
-                self._buf.clear()
-                self._echo.append("^C\r\n")
-                self._completed.append(_CTRL_C)
-                i += 1
-
-            elif ch == _CTRL_D:
-                # Treat like Enter with empty line — lets caller handle EOF.
-                self._echo.append("\r\n")
-                self._completed.append("".join(self._buf) if self._buf else _CTRL_D)
-                self._buf.clear()
-                i += 1
-
-            elif ch == "\x1b":
-                # VT escape sequence — swallow entirely (arrow keys, F-keys, etc.).
-                i = LineBuffer._consume_escape(data, i)
-
-            elif ch >= " " or ch == "\t":
-                # Printable character (or tab — shown as-is).
-                if len(self._buf) < self._max_line:
-                    self._buf.append(ch)
-                    self._echo.append(ch)
-                i += 1
-
-            else:
-                # Other control bytes — ignore silently.
-                i += 1
+            i = self._process_char(data, i)
 
     def take_echo(self) -> str:
         """Return accumulated echo string and clear the internal buffer."""

@@ -15,6 +15,43 @@ class KVExtractor:
     """Extract structured key-value data from screen text."""
 
     @staticmethod
+    def _extract_single_field(screen: str, config: Any) -> tuple[str, Any] | None:
+        """Extract one field from the screen using its config dict.
+
+        Args:
+            screen: Screen text to extract from
+            config: Single field config dict with 'field', 'type', and 'regex' keys
+
+        Returns:
+            ``(field_name, converted_value)`` on success, ``None`` if no match or skip.
+        """
+        field_name = config.get("field")
+        field_type = config.get("type", "string")
+        pattern = config.get("regex")
+
+        if not field_name or not pattern:
+            return None
+
+        # Try to extract using regex
+        match = re.search(pattern, screen, re.MULTILINE | re.IGNORECASE)
+        if not match:
+            return None
+
+        # Get captured group (first group or whole match)
+        try:
+            value_str = match.group(1) if match.lastindex else match.group(0)
+        except IndexError:
+            value_str = match.group(0)
+
+        # Convert to target type
+        try:
+            converted_value = KVExtractor._convert_type(value_str, field_type)
+        except (ValueError, TypeError):
+            return None
+
+        return field_name, converted_value
+
+    @staticmethod
     def extract(
         screen: str,
         kv_config: dict[str, Any] | list[dict[str, Any]] | None,
@@ -46,31 +83,10 @@ class KVExtractor:
         extracted: dict[str, Any] = {}
 
         for config in configs:
-            field_name = config.get("field")
-            field_type = config.get("type", "string")
-            pattern = config.get("regex")
-
-            if not field_name or not pattern:
-                continue
-
-            # Try to extract using regex
-            match = re.search(pattern, screen, re.MULTILINE | re.IGNORECASE)
-            if not match:
-                continue
-
-            # Get captured group (first group or whole match)
-            try:
-                value_str = match.group(1) if match.lastindex else match.group(0)
-            except IndexError:
-                value_str = match.group(0)
-
-            # Convert to target type
-            try:
-                converted_value = KVExtractor._convert_type(value_str, field_type)
+            result = KVExtractor._extract_single_field(screen, config)
+            if result is not None:
+                field_name, converted_value = result
                 extracted[field_name] = converted_value
-            except (ValueError, TypeError):
-                # Conversion failed, skip this field
-                continue
 
         if not extracted:
             return None

@@ -139,6 +139,22 @@ def _normalize_crlf(raw: bytes) -> bytes:
 # ---------------------------------------------------------------------------
 
 
+def _skip_subneg_sequence(data: bytes, i: int, n: int) -> int:
+    """Scan forward from *i* to find the end of an IAC SB … IAC SE sequence.
+
+    *i* should point to the first byte **after** the IAC SB opener (i.e. the
+    start of the subnegotiation payload).
+
+    Returns the position immediately after the closing IAC SE pair, or *n* if
+    the sequence is truncated.
+    """
+    while i < n:
+        if data[i] == _IAC and i + 1 < n and data[i + 1] == _SE:
+            return i + 2
+        i += 1
+    return n
+
+
 def _strip_iac(data: bytes) -> bytes:
     """Remove IAC telnet negotiation sequences from inbound client data."""
     out = bytearray()
@@ -158,12 +174,7 @@ def _strip_iac(data: bytes) -> bytes:
             i += 2
             continue
         if cmd == _SB:
-            i += 2
-            while i < n:
-                if data[i] == _IAC and i + 1 < n and data[i + 1] == _SE:
-                    i += 2
-                    break
-                i += 1
+            i = _skip_subneg_sequence(data, i + 2, n)
             continue
         if cmd in (_IP, _BREAK):
             out.append(0x03)  # Ctrl-C
@@ -171,9 +182,6 @@ def _strip_iac(data: bytes) -> bytes:
             continue
         if cmd == _EOF:
             out.append(0x04)  # Ctrl-D
-            i += 2
-            continue
-        if cmd == _AO:
             i += 2
             continue
         if cmd in (_WILL, _WONT, _DO, _DONT):
