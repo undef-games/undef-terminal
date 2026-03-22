@@ -22,8 +22,8 @@ Architecture
     │  _repl.py        LineBuffer — raw keystroke → line editor   │
     │  _sandbox.py     Sandbox   — restricted Python eval/exec    │
     │  _commands.py    CommandDispatcher — command routing        │
-    │  _output.py      ANSI helpers, term() frame builder         │
-    │  _connector.py   UshellConnector — SessionConnector impl    │
+    │  _output.py      ANSI helpers (shim → undef.shell._output)  │
+    │  _connector.py   UshellConnector (shim → undef.shell.terminal) │
     └──────────────────────────────────────────────────────────────┘
                ↑                            ↑
     FastAPI / HostedSessionRuntime     CF Durable Object adapter

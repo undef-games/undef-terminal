@@ -13,7 +13,7 @@ Architecture
           ↓
     DO.webSocketMessage() → push_worker_input(data)
           ↓
-    _ushell.handle_input(data)   ← UshellConnector (undef.terminal.shell)
+    _ushell.handle_input(data)   ← UshellConnector (undef.shell.terminal)
           ↓
     list[term frames]
           ↓
@@ -52,8 +52,8 @@ def _load_connector(session_id: str, env: Any, storage: Any = None) -> Any:
     """Import and instantiate UshellConnector, wiring CF env bindings."""
     global _IMPORT_ERROR
     try:
-        from undef.terminal.shell._commands import CommandDispatcher  # type: ignore[import-not-found] # noqa: F401
-        from undef.terminal.shell._connector import UshellConnector  # type: ignore[import-not-found]
+        from undef.shell._commands import CommandDispatcher  # type: ignore[import-not-found] # noqa: F401
+        from undef.shell.terminal._connector import UshellConnector  # type: ignore[import-not-found]
     except ImportError as exc:
         _IMPORT_ERROR = str(exc)
         logger.warning("ushell: could not import UshellConnector: %s", exc)
