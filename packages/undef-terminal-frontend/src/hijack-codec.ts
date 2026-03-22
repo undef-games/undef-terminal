@@ -17,6 +17,7 @@ export interface HijackConfig {
   heartbeatInterval?: number;
   mobileKeys?: boolean;
   role?: string;
+  onResize?: (cols: number, rows: number) => void;
 }
 
 /** Resolved config after defaults are merged in. */
@@ -30,6 +31,7 @@ export interface ResolvedConfig {
   heartbeatInterval: number;
   mobileKeys: boolean;
   role: string | undefined;
+  onResize: ((cols: number, rows: number) => void) | undefined;
 }
 
 export type HijackAction = "acquire" | "heartbeat" | "release" | "step";
@@ -48,6 +50,8 @@ export type StreamFrame = StreamDataFrame | StreamControlFrame;
 
 /** Minimal interface for xterm.js Terminal (loaded via CDN). */
 export interface XTerminal {
+  readonly cols: number;
+  readonly rows: number;
   write(data: string): void;
   reset(): void;
   dispose(): void;

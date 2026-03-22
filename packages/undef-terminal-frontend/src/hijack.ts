@@ -93,6 +93,7 @@ export class UndefHijack {
       heartbeatInterval: config.heartbeatInterval ?? 5000,
       mobileKeys: config.mobileKeys ?? true,
       role: config.role,
+      onResize: config.onResize,
     };
     this._uid = ++_hijackInstanceCount;
     this._workerId = config.workerId ?? "default";
@@ -303,11 +304,17 @@ export class UndefHijack {
       requestAnimationFrame(() => {
         try {
           this._fitAddon?.fit();
+          if (this._term && this._term.cols > 0 && this._term.rows > 0) {
+            this._config.onResize?.(this._term.cols, this._term.rows);
+          }
         } catch (_) {}
       });
       this._ro = new ResizeObserver(() => {
         try {
           this._fitAddon?.fit();
+          if (this._term && this._term.cols > 0 && this._term.rows > 0) {
+            this._config.onResize?.(this._term.cols, this._term.rows);
+          }
         } catch (_) {}
       });
       this._ro.observe(termDiv);
