@@ -13,7 +13,7 @@ Architecture
           ↓
     DO.webSocketMessage() → push_worker_input(data)
           ↓
-    _ushell.handle_input(data)   ← UshellConnector (undef.terminal.shell)
+    _ushell.handle_input(data)   ← UshellConnector (undef.shell.terminal)
           ↓
     list[term frames]
           ↓
