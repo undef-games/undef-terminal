@@ -1,3 +1,5 @@
+from undef.terminal.detection.input_type import auto_detect_input_type
+
 from undef.terminal.detection.buffer import BufferManager, ScreenBuffer
 from undef.terminal.detection.detector import PromptDetector
 from undef.terminal.detection.engine import DetectionEngine
@@ -24,6 +26,7 @@ __all__ = [
     "ScreenBuffer",
     "ScreenSaver",
     "ScreenSnapshot",
+    "auto_detect_input_type",
     "extract_kv",
     "load_ruleset",
 ]
