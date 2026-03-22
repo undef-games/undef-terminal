@@ -153,6 +153,7 @@ class _SessionRuntimeIoMixin:
         elif frame_type == "snapshot":
             screen = payload.get("screen")
             text_payload = str(screen) if screen is not None else ""
+            self.last_snapshot = payload  # type: ignore[attr-defined]
         elif frame_type == "worker_connected":
             text_payload = "\r\n[worker connected]\r\n"
         elif frame_type == "worker_disconnected":
