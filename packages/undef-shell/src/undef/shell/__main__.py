@@ -16,10 +16,10 @@ from undef.shell._output import BANNER, PROMPT
 async def _cli() -> None:
     dispatcher = CommandDispatcher({})
     sys.stdout.write(BANNER.replace("\r\n", "\n"))
+    sys.stdout.write(PROMPT.replace("\r\n", "\n"))
+    sys.stdout.flush()
     while True:
         try:
-            sys.stdout.write(PROMPT)
-            sys.stdout.flush()
             line = sys.stdin.readline()
             if not line:
                 break
