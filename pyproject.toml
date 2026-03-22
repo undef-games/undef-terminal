@@ -7,11 +7,13 @@
 members = [
     "packages/undef-terminal",
     "packages/undef-terminal-cloudflare",
+    "packages/undef-shell",
 ]
 
 [tool.uv.sources]
 undef-terminal = { workspace = true }
 undef-terminal-cloudflare = { workspace = true }
+undef-shell = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -88,7 +90,7 @@ follow_imports = "normal"
 ignore_missing_imports = false
 namespace_packages = true
 explicit_package_bases = true
-mypy_path = ["packages/undef-terminal/src"]
+mypy_path = ["packages/undef-terminal/src", "packages/undef-shell/src"]
 
 [[tool.mypy.overrides]]
 module = ["undef.telemetry", "undef.telemetry.*", "structlog", "structlog.*"]
@@ -110,11 +112,12 @@ exclude_dirs = [
     "packages/undef-terminal/tests",
     "packages/undef-terminal-cloudflare/python_modules",
     "packages/undef-terminal-cloudflare/node_modules",
+    "packages/undef-shell/tests",
 ]
 
 [tool.vulture]
 min_confidence = 80
-paths = ["packages/undef-terminal/src", "packages/undef-terminal/tests"]
+paths = ["packages/undef-terminal/src", "packages/undef-terminal/tests", "packages/undef-shell/src"]
 
 [tool.xenon]
 max_absolute = "C"
