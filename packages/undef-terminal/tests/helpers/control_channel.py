@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-"""Test helpers for the inline control stream protocol."""
+"""Test helpers for the inline control channel protocol."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from undef.terminal.client.control_ws import LogicalFrameDecoder, encode_logical
 
 
 def encode_frame(payload: Mapping[str, Any]) -> str:
-    """Encode one logical WS frame using the inline control stream."""
+    """Encode one logical WS frame using the inline control channel."""
     return encode_logical_frame(payload)
 
 

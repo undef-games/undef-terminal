@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 
-/** Types and codec for the inline control stream framing used by UndefHijack. */
+/** Types and codec for the inline control channel framing used by UndefHijack. */
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -95,7 +95,7 @@ export function encodeWsFrame(payload: Record<string, unknown>): string {
 
 // ── Control stream decoder ────────────────────────────────────────────────────
 
-export class ControlStreamDecoder {
+export class ControlChannelDecoder {
   private _buffer = "";
   private readonly _maxControlBytes: number;
 
@@ -130,7 +130,7 @@ export class ControlStreamDecoder {
         continue;
       }
       if (marker !== _STX) {
-        throw new Error("invalid control stream prefix");
+        throw new Error("invalid control channel prefix");
       }
       if (text) {
         frames.push({ type: "data", data: text });
@@ -141,10 +141,10 @@ export class ControlStreamDecoder {
       }
       const header = this._buffer.slice(cursor + 2, cursor + 10);
       if (!_CONTROL_LEN_RE.test(header)) {
-        throw new Error("invalid control stream length");
+        throw new Error("invalid control channel length");
       }
       if (this._buffer[cursor + 10] !== ":") {
-        throw new Error("invalid control stream separator");
+        throw new Error("invalid control channel separator");
       }
       const payloadLength = Number.parseInt(header, 16);
       if (!Number.isFinite(payloadLength) || payloadLength > this._maxControlBytes) {

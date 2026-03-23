@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from tests.hijack.control_stream_helpers import decode_control_payloads
+from tests.hijack.control_channel_helpers import decode_control_payloads
 from undef.terminal.hijack.hub import TermHub
 from undef.terminal.hijack.models import HijackSession, WorkerTermState
 

@@ -27,7 +27,7 @@ import uuid
 import pytest
 import websockets
 
-from undef.terminal.control_stream import encode_control
+from undef.terminal.control_channel import encode_control
 
 _WS_TIMEOUT_S = 15.0
 _HTTP_UA = "undef-terminal-e2e-test/1.0"
@@ -103,7 +103,7 @@ def _http_post(base: str, path: str, body: dict) -> tuple[int, dict]:
 
 
 def _decode_control_frames(raw: str) -> list[dict]:
-    """Extract JSON control frames from a control-stream-encoded WS message."""
+    """Extract JSON control frames from a control-channel-encoded WS message."""
     dle, stx = "\x10", "\x02"
     frames: list[dict] = []
     i = 0
@@ -122,7 +122,7 @@ def _decode_control_frames(raw: str) -> list[dict]:
 
 
 async def _recv_ws(ws, timeout: float = _WS_TIMEOUT_S) -> dict:
-    """Receive one JSON frame, decoding control stream framing if present."""
+    """Receive one JSON frame, decoding control channel framing if present."""
     raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
     try:
         return json.loads(raw)

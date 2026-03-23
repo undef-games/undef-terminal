@@ -20,11 +20,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from undef_terminal_cloudflare.do.session_runtime import SessionRuntime
 
-from undef.terminal.control_stream import ControlChunk, ControlStreamDecoder
+from undef.terminal.control_channel import ControlChannelDecoder, ControlChunk
 
 
 def _decode_control(raw: str) -> dict:
-    decoder = ControlStreamDecoder()
+    decoder = ControlChannelDecoder()
     events = decoder.feed(raw)
     events.extend(decoder.finish())
     ctrl = [e.control for e in events if isinstance(e, ControlChunk)]

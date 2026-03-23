@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from undef.terminal.control_stream import encode_control
+from undef.terminal.control_channel import encode_control
 from undef.terminal.hijack.hub import InMemoryResumeStore, TermHub
 from undef.terminal.hijack.models import WorkerTermState
 from undef.terminal.hijack.routes.browser_handlers import (

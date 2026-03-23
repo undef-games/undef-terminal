@@ -34,7 +34,7 @@ except Exception:
     from state.registry import update_kv_session  # type: ignore[import-not-found]
     from state.store import SqliteStateStore  # type: ignore[import-not-found]
 
-from undef.terminal.control_stream import encode_control
+from undef.terminal.control_channel import encode_control
 
 logger = logging.getLogger(__name__)
 

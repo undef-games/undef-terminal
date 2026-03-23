@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from tests.hijack.control_stream_helpers import decode_control_payload
+from tests.hijack.control_channel_helpers import decode_control_payload
 from undef.terminal.hijack.hub import BrowserRoleResolutionError, TermHub
 from undef.terminal.hijack.models import WorkerTermState
 

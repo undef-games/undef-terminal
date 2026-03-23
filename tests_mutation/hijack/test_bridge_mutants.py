@@ -24,7 +24,7 @@ import json
 from typing import Any
 from unittest.mock import MagicMock
 
-from undef.terminal.control_stream import encode_control
+from undef.terminal.control_channel import encode_control
 from undef.terminal.hijack.bridge import TermBridge, _to_ws_url
 
 # ---------------------------------------------------------------------------

@@ -6,11 +6,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from undef.terminal.control_stream import ControlChunk, ControlStreamDecoder
+from undef.terminal.control_channel import ControlChannelDecoder, ControlChunk
 
 
 def decode_control_payload(payload: str) -> dict[str, Any]:
-    decoder = ControlStreamDecoder()
+    decoder = ControlChannelDecoder()
     events = decoder.feed(payload)
     events.extend(decoder.finish())
     controls = [event.control for event in events if isinstance(event, ControlChunk)]

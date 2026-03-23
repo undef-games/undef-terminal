@@ -1,0 +1,49 @@
+version = 1
+revision = 3
+requires-python = ">=3.11"
+
+[[package]]
+name = "structlog"
+version = "25.5.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ef/52/9ba0f43b686e7f3ddfeaa78ac3af750292662284b3661e91ad5494f21dbc/structlog-25.5.0.tar.gz", hash = "sha256:098522a3bebed9153d4570c6d0288abf80a031dfdb2048d59a49e9dc2190fc98", size = 1460830, upload-time = "2025-10-27T08:28:23.028Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a8/45/a132b9074aa18e799b891b91ad72133c98d8042c70f6240e4c5f9dabee2f/structlog-25.5.0-py3-none-any.whl", hash = "sha256:a8453e9b9e636ec59bd9e79bbd4a72f025981b3ba0f5837aebf48f02f37a7f9f", size = 72510, upload-time = "2025-10-27T08:28:21.535Z" },
+]
+
+[[package]]
+name = "undef-shell"
+source = { editable = "." }
+
+[package.optional-dependencies]
+terminal = [
+    { name = "undef-terminal" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "undef-terminal", marker = "extra == 'terminal'", specifier = ">=0.3.0" }]
+provides-extras = ["terminal"]
+
+[[package]]
+name = "undef-telemetry"
+version = "0.3.17"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "structlog" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c3/37/af1cd5f507f583f78bc951e14782d77bce07d37edbfcb87892edb52eb8b2/undef_telemetry-0.3.17.tar.gz", hash = "sha256:e659b109332773e6290ddba8b4cadf0ebddb86c041866332b86f073f51e2282d", size = 39226, upload-time = "2026-03-16T22:37:02.455Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b1/5a/2b48b99829436e5de9a99ce3424f1cca2e154f2e0fdf55b6ce53131e4db5/undef_telemetry-0.3.17-py3-none-any.whl", hash = "sha256:0cc36fc38848f761dc8bd6655ebf9d3f039757667081ec6a962a486ad75c0999", size = 50425, upload-time = "2026-03-16T22:37:03.589Z" },
+]
+
+[[package]]
+name = "undef-terminal"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "undef-telemetry" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ed/52/372dd2e9471a8f9028ad3d875048cd6bbc76eef59874f11b62fed80dd53b/undef_terminal-0.3.0.tar.gz", hash = "sha256:84d0750e6a49b2e372c6fe13585fba8c14320da3819a03e1b6048d398ecdb11b", size = 232829, upload-time = "2026-03-16T01:30:03.986Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7f/c6/2da80931f695157dc1a6d8403ea1c703ed4651df29bfc1d524f318dadee7/undef_terminal-0.3.0-py3-none-any.whl", hash = "sha256:ec4c4a3a9fd8104ce96abbbbc3e2523219b76bb3da9c6c7f063ef85c7c848afb", size = 248393, upload-time = "2026-03-16T01:30:05.579Z" },
+]

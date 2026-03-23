@@ -18,7 +18,7 @@
 
 import {
   _RECONNECT_ANIM_FRAMES,
-  ControlStreamDecoder,
+  ControlChannelDecoder,
   encodeWsFrame,
   type FitAddonInstance,
   type HijackConfig,
@@ -49,7 +49,7 @@ export class UndefHijack {
   private readonly _config: ResolvedConfig;
   private readonly _uid: number;
   private readonly _workerId: string;
-  private readonly _wsDecoder: ControlStreamDecoder;
+  private readonly _wsDecoder: ControlChannelDecoder;
 
   private _ws: WebSocket | null = null;
   private _term: XTerminal | null = null;
@@ -97,7 +97,7 @@ export class UndefHijack {
     };
     this._uid = ++_hijackInstanceCount;
     this._workerId = config.workerId ?? "default";
-    this._wsDecoder = new ControlStreamDecoder();
+    this._wsDecoder = new ControlChannelDecoder();
 
     _injectHijackCSS();
     this._buildDOM();

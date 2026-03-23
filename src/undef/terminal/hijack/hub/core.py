@@ -24,7 +24,7 @@ try:
 except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required for TermHub: pip install 'undef-terminal[websocket]'") from _e
 
-from undef.terminal.control_stream import encode_control, encode_data
+from undef.terminal.control_channel import encode_control, encode_data
 from undef.terminal.hijack.frames import HijackStateFrame, make_hijack_state_frame, make_worker_disconnected_frame
 from undef.terminal.hijack.hub.connections import _ConnectionMixin
 from undef.terminal.hijack.hub.ownership import _HijackOwnershipMixin

@@ -299,7 +299,7 @@ class WorkerController:
     async def _connect(self) -> None:
         import websockets
 
-        from undef.terminal.control_stream import ControlChunk, ControlStreamDecoder, DataChunk, encode_control
+        from undef.terminal.control_channel import ControlChannelDecoder, ControlChunk, DataChunk, encode_control
 
         ws_url = self._base_url.replace("http://", "ws://") + f"/ws/worker/{self._worker_id}/term"
         try:
@@ -318,7 +318,7 @@ class WorkerController:
                     "ts": time.time(),
                 }
                 await ws.send(encode_control(snapshot_msg))
-                decoder = ControlStreamDecoder()
+                decoder = ControlChannelDecoder()
                 while not self._stop.is_set():
                     try:
                         raw = await asyncio.wait_for(ws.recv(), timeout=0.1)

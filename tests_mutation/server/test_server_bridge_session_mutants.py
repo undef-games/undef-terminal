@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from undef.terminal.control_stream import encode_control
+from undef.terminal.control_channel import encode_control
 from undef.terminal.server.models import AuthConfig, RecordingConfig, SessionDefinition
 from undef.terminal.server.registry import SessionRegistry
 from undef.terminal.server.runtime import HostedSessionRuntime

@@ -14,7 +14,7 @@ import pytest
 import websockets
 import websockets.server
 
-from undef.terminal.control_stream import ControlChunk, ControlStreamDecoder, encode_control
+from undef.terminal.control_channel import ControlChannelDecoder, ControlChunk, encode_control
 from undef.terminal.gateway import (
     TelnetWsGateway,
     _normalize_crlf,
@@ -30,7 +30,7 @@ from undef.terminal.gateway import (
 
 
 def _decode_control(raw: str) -> dict[str, Any]:
-    decoder = ControlStreamDecoder()
+    decoder = ControlChannelDecoder()
     events = decoder.feed(raw)
     events.extend(decoder.finish())
     assert len(events) == 1

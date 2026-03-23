@@ -17,7 +17,7 @@ import httpx
 import pytest
 import websockets
 
-from undef.terminal.control_stream import ControlChunk, ControlStreamDecoder, DataChunk, encode_data
+from undef.terminal.control_channel import ControlChannelDecoder, ControlChunk, DataChunk, encode_data
 from undef.terminal.server import create_server_app, default_server_config
 
 
@@ -25,7 +25,7 @@ def _ws_url(base_url: str, path: str) -> str:
     return base_url.replace("http://", "ws://") + path
 
 
-_WS_DECODERS: WeakKeyDictionary[Any, ControlStreamDecoder] = WeakKeyDictionary()
+_WS_DECODERS: WeakKeyDictionary[Any, ControlChannelDecoder] = WeakKeyDictionary()
 _WS_PENDING: WeakKeyDictionary[Any, list[dict[str, Any]]] = WeakKeyDictionary()
 
 
@@ -40,7 +40,7 @@ async def _drain_until(ws: Any, type_: str, timeout: float = 5.0) -> dict[str, A
                     return msg
                 continue
             raw = await asyncio.wait_for(ws.recv(), timeout=0.3)
-            decoder = _WS_DECODERS.setdefault(ws, ControlStreamDecoder())
+            decoder = _WS_DECODERS.setdefault(ws, ControlChannelDecoder())
             for event in decoder.feed(raw):
                 if isinstance(event, ControlChunk):
                     pending.append(event.control)

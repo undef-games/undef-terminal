@@ -13,9 +13,9 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from undef.telemetry import get_logger
 
-from undef.terminal.control_stream import (
-    ControlStreamDecoder,
-    ControlStreamProtocolError,
+from undef.terminal.control_channel import (
+    ControlChannelDecoder,
+    ControlChannelProtocolError,
     DataChunk,
     encode_control,
     encode_data,
@@ -243,15 +243,15 @@ class HostedSessionRuntime:
         self,
         ws: Any,
         connector: Any,
-        decoder: ControlStreamDecoder,
+        decoder: ControlChannelDecoder,
         raw_text: str,
     ) -> None:
         """Decode inbound data, dispatch events, and send responses."""
         await self._log_wire_recv(raw_text)
         try:
             events = decoder.feed(raw_text)
-        except ControlStreamProtocolError as exc:
-            raise RuntimeError(f"invalid control stream: {exc}") from exc
+        except ControlChannelProtocolError as exc:
+            raise RuntimeError(f"invalid control channel: {exc}") from exc
         responses: list[dict[str, Any]] = []
         for event in events:
             if isinstance(event, DataChunk):
@@ -266,7 +266,7 @@ class HostedSessionRuntime:
         connector = self._connector
         if connector is None:
             raise RuntimeError("connector unavailable")
-        decoder = ControlStreamDecoder(max_control_payload_bytes=1_048_576)
+        decoder = ControlChannelDecoder(max_control_payload_bytes=1_048_576)
         self._state = "running"
         self._connected = True
         await self._enqueue_messages(await connector.set_mode(self.definition.input_mode))
