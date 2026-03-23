@@ -7,13 +7,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
-from undef_terminal_cloudflare.api.http_routes._hijack import route_hijack
-from undef_terminal_cloudflare.api.http_routes._session import route_session
-from undef_terminal_cloudflare.api.http_routes._shared import (
+from ._hijack import route_hijack
+from ._session import route_session
+from ._shared import (
     _SESSION_ROUTE_RE,
     _session_status_item,
 )
-from undef_terminal_cloudflare.cf_types import json_response
+
+try:
+    from undef_terminal_cloudflare.cf_types import json_response
+except ImportError:  # pragma: no cover
+    from cf_types import json_response  # type: ignore[import-not-found]  # CF flat path  # pragma: no cover
 
 if TYPE_CHECKING:
     from undef_terminal_cloudflare.contracts import RuntimeProtocol

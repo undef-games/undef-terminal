@@ -1,4 +1,5 @@
 [console_scripts]
 uterm = undef.terminal.cli:main
+uterm-manager = undef.terminal.manager.cli:main
 uterm-mcp = undef.terminal.mcp.cli:main
 uterm-server = undef.terminal.server.cli:main

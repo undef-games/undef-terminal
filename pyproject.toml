@@ -117,7 +117,7 @@ invalid-argument-type = "ignore"
 unused-type-ignore-comment = "ignore"
 
 [tool.codespell]
-skip = ".git,*.pyc,__pycache__,.venv,node_modules,uv.lock,*.mmd,packages/undef-terminal/src/undef/terminal/frontend/assets/*.js,mutants"
+skip = ".git,*.pyc,__pycache__,.venv,node_modules,uv.lock,*.mmd,packages/undef-terminal/src/undef/terminal/frontend/assets/*.js,packages/undef-terminal-cloudflare/python_modules/undef/terminal/frontend/assets/*.js,mutants"
 ignore-words-list = "ore,opps,wont,strat,nd,rade,ans"
 
 [tool.bandit]

@@ -2,7 +2,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-
 """Connection lifecycle mixin for TermHub.
 
 Extracted from ``core.py`` to keep file sizes under 500 LOC.
@@ -21,6 +20,9 @@ from typing import TYPE_CHECKING, Any
 from undef.telemetry import get_logger
 
 from undef.terminal.hijack.models import WorkerTermState
+
+if TYPE_CHECKING:
+    from undef.terminal.hijack.hub.resume import ResumeTokenStore
 from undef.terminal.hijack.ratelimit import TokenBucket
 
 logger = get_logger(__name__)
@@ -62,6 +64,9 @@ class _ConnectionMixin:
     _rest_send_bucket: TokenBucket
     _rest_acquire_per_client: dict[str, TokenBucket]
     _rest_send_per_client: dict[str, TokenBucket]
+    _resume_store: ResumeTokenStore | None
+    _resume_ttl_s: float
+    _ws_to_resume_token: dict[Any, str]
 
     # Methods provided by TermHub / _HijackOwnershipMixin used in this mixin.
     is_hijacked: Callable[..., bool]
@@ -184,8 +189,13 @@ class _ConnectionMixin:
         """Register *ws* as a browser for *worker_id* and return initial state.
 
         Returns a dict with keys: ``is_hijacked``, ``hijacked_by_me``,
-        ``worker_online``, ``input_mode``, ``initial_snapshot``.
+        ``worker_online``, ``input_mode``, ``initial_snapshot``,
+        and optionally ``resume_token``.
         """
+        resume_token: str | None = None
+        if self._resume_store is not None:
+            resume_token = self._resume_store.create(worker_id, role, self._resume_ttl_s)
+            self._ws_to_resume_token[ws] = resume_token
         async with self._lock:
             st = self._workers.setdefault(worker_id, WorkerTermState())
             st.browsers[ws] = role
@@ -195,7 +205,46 @@ class _ConnectionMixin:
                 "worker_online": st.worker_ws is not None,
                 "input_mode": st.input_mode,
                 "initial_snapshot": st.last_snapshot,
+                "resume_token": resume_token,
             }
+
+    @staticmethod
+    def _scan_events_for_resume(st: Any) -> bool:
+        """Scan event history to determine if a resume is still needed on browser disconnect.
+
+        Returns ``True`` if a resume control frame should be sent (no prior expiry
+        or release event was found in the history that would have already sent one).
+        Scans backwards; stops at the first hijack lifecycle event encountered.
+        """
+        for evt in reversed(st.events):
+            t = str(evt.get("type", ""))
+            if t in {"hijack_owner_expired", "hijack_lease_expired"}:
+                return False
+            if t in {"hijack_acquired", "hijack_released"}:
+                break
+        return True
+
+    def _update_lock_state(self, st: Any, ws: Any, owned_hijack: bool) -> tuple[bool, bool, bool]:
+        """Apply disconnect state mutations to *st* and return outcome flags.
+
+        Returns ``(was_owner, rest_still_active, resume_without_owner)``.
+        Must be called while holding ``self._lock``.
+        """
+        was_owner = self.is_dashboard_hijack_active(st) and st.hijack_owner is ws
+        rest_still_active = False
+        resume_without_owner = False
+        st.browsers.pop(ws, None)
+        if was_owner:
+            st.hijack_owner = None
+            st.hijack_owner_expires_at = None
+            rest_still_active = self.has_valid_rest_lease(st)
+        elif owned_hijack and st.worker_ws is not None and not self.is_hijacked(st):  # pragma: no branch
+            # Scan backwards for the most recent hijack-related event to determine
+            # whether cleanup already sent a resume (lease/owner expired) or whether
+            # a resume is still needed.  Checking only the last event is fragile
+            # because a subsequent snapshot event can overwrite the expiry marker.
+            resume_without_owner = self._scan_events_for_resume(st)
+        return was_owner, rest_still_active, resume_without_owner
 
     async def cleanup_browser_disconnect(self, worker_id: str, ws: WebSocket, owned_hijack: bool) -> dict[str, Any]:
         """Handle a browser WS disconnect atomically.
@@ -206,29 +255,20 @@ class _ConnectionMixin:
         browser_count = -1
         async with self._lock:
             st = self._workers.get(worker_id)
-            was_owner = st is not None and self.is_dashboard_hijack_active(st) and st.hijack_owner is ws
+            was_owner = False
             rest_still_active = False
             resume_without_owner = False
             if st is not None:  # pragma: no branch
-                st.browsers.pop(ws, None)
+                was_owner, rest_still_active, resume_without_owner = self._update_lock_state(st, ws, owned_hijack)
                 browser_count = len(st.browsers)
-                if was_owner:
-                    st.hijack_owner = None
-                    st.hijack_owner_expires_at = None
-                    rest_still_active = self.has_valid_rest_lease(st)
-                elif owned_hijack and st.worker_ws is not None and not self.is_hijacked(st):  # pragma: no branch
-                    # Scan backwards for the most recent hijack-related event to determine
-                    # whether cleanup already sent a resume (lease/owner expired) or whether
-                    # a resume is still needed.  Checking only the last event is fragile
-                    # because a subsequent snapshot event can overwrite the expiry marker.
-                    resume_without_owner = True
-                    for evt in reversed(st.events):
-                        t = str(evt.get("type", ""))
-                        if t in {"hijack_owner_expired", "hijack_lease_expired"}:
-                            resume_without_owner = False
-                            break
-                        if t in {"hijack_acquired", "hijack_released"}:
-                            break
+        # Mark resume token with hijack ownership (if any) so a reconnecting
+        # browser can reclaim the lease.  Do NOT revoke — the token must survive
+        # until the browser reconnects or TTL expires.
+        if self._resume_store is not None:
+            token = self._ws_to_resume_token.pop(ws, None)
+            if token and (was_owner or owned_hijack):
+                self._resume_store.mark_hijack_owner(token, True)
+
         # Fire empty-browser callback outside the lock when the last browser left.
         on_empty = getattr(self, "on_worker_empty", None)
         if browser_count == 0 and on_empty is not None:
@@ -240,6 +280,27 @@ class _ConnectionMixin:
             "rest_still_active": rest_still_active,
             "resume_without_owner": resume_without_owner,
         }
+
+    async def register_browser_state_snapshot(self, worker_id: str, ws: WebSocket) -> dict[str, Any]:
+        """Return current browser state without re-registering.
+
+        Used after a resume to get updated hello fields.
+        """
+        async with self._lock:
+            st = self._workers.get(worker_id)
+            if st is None:
+                return {
+                    "is_hijacked": False,
+                    "hijacked_by_me": False,
+                    "worker_online": False,
+                    "input_mode": "hijack",
+                }
+            return {
+                "is_hijacked": self.is_hijacked(st),
+                "hijacked_by_me": self.is_dashboard_hijack_active(st) and st.hijack_owner is ws,
+                "worker_online": st.worker_ws is not None,
+                "input_mode": st.input_mode,
+            }
 
     async def resolve_role_for_browser(self, ws: WebSocket, worker_id: str) -> str:
         """Public wrapper around ``_resolve_role_for_browser``."""

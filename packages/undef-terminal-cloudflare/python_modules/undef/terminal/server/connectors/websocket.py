@@ -2,7 +2,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-
 """WebSocket-backed connector for the hosted server app."""
 
 from __future__ import annotations
@@ -173,3 +172,8 @@ class WebSocketSessionConnector(SessionConnector):
             self._paused = False
         self._banner = f"Input mode set to {'Shared input' if mode == 'open' else 'Exclusive hijack'}."
         return [self._hello(), self._snapshot()]
+
+
+from undef.terminal.server.connectors.registry import register_connector  # noqa: E402
+
+register_connector("websocket", WebSocketSessionConnector)

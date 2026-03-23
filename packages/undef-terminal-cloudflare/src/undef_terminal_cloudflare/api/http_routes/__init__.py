@@ -3,6 +3,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 
-from undef_terminal_cloudflare.api.http_routes._dispatch import route_http
+try:
+    from undef_terminal_cloudflare.api.http_routes._dispatch import route_http
+except Exception:  # pragma: no cover
+    from api.http_routes._dispatch import (
+        route_http,  # type: ignore[import-not-found]  # CF flat path  # pragma: no cover
+    )
 
 __all__ = ["route_http"]

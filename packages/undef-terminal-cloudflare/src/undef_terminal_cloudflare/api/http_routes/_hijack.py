@@ -8,7 +8,7 @@ import contextlib
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
 
-from undef_terminal_cloudflare.api.http_routes._shared import (
+from ._shared import (
     _MAX_INPUT_CHARS,
     _MAX_REGEX_LEN,
     _MAX_TIMEOUT_MS,
@@ -22,7 +22,11 @@ from undef_terminal_cloudflare.api.http_routes._shared import (
     build_hijack_snapshot_response,
     compile_expect_regex,
 )
-from undef_terminal_cloudflare.cf_types import json_response
+
+try:
+    from undef_terminal_cloudflare.cf_types import json_response
+except ImportError:  # pragma: no cover
+    from cf_types import json_response  # type: ignore[import-not-found]  # CF flat path  # pragma: no cover
 
 if TYPE_CHECKING:
     import re

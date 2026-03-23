@@ -9,13 +9,17 @@ import time
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
 
-from undef_terminal_cloudflare.api.http_routes._shared import (
+from ._shared import (
     _extract_prompt_id,
     _safe_int,
     _session_status_item,
     _wait_for_analysis,
 )
-from undef_terminal_cloudflare.cf_types import json_response
+
+try:
+    from undef_terminal_cloudflare.cf_types import json_response
+except ImportError:  # pragma: no cover
+    from cf_types import json_response  # type: ignore[import-not-found]  # CF flat path  # pragma: no cover
 
 if TYPE_CHECKING:
     import re

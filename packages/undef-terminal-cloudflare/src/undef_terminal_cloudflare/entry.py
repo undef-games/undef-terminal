@@ -68,11 +68,13 @@ except Exception:
         from do.session_runtime import SessionRuntime  # type: ignore[import-not-found]
         from state.registry import delete_kv_session, list_kv_sessions  # type: ignore[import-not-found]
         from ui.assets import read_asset_text, serve_asset  # type: ignore[import-not-found]
-    except Exception:  # pragma: no cover — Pyodide validation phase only
+    except Exception as _exc2:  # pragma: no cover — Pyodide validation phase only
         # Last resort for Pyodide validation phase — stubs for non-handler imports.
         # WorkerEntrypoint/Response/DurableObject are imported directly from workers
         # above, so handler registration always succeeds.
-        _import_error = f"paths={sys.path[:5]}"
+        import traceback as _tb
+
+        _import_error = _tb.format_exc()
         JwtValidationError = Exception  # type: ignore[assignment]
 
         def decode_jwt(*_a: object, **_k: object) -> None:  # type: ignore[assignment]
@@ -358,6 +360,10 @@ async def _as_future(value: Response) -> Response:
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
         if not hasattr(self, "_config"):
+            if _import_error:  # pragma: no cover
+                import logging as _l  # pragma: no cover
+
+                _l.getLogger(__name__).error("IMPORT_FALLBACK:\n%s", _import_error)  # pragma: no cover
             self._config = CloudflareConfig.from_env(self.env)
         return await _route_request(request, self.env, self._config)
 
