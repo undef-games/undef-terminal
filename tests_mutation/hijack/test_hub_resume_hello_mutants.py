@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -13,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from undef.terminal.control_stream import encode_control
 from undef.terminal.hijack.hub import InMemoryResumeStore, TermHub
 from undef.terminal.hijack.models import WorkerTermState
 
@@ -60,9 +62,9 @@ def _make_app_client(
 
 
 def _read_initial(ws: Any) -> tuple[dict, dict]:
-    hello = ws.receive_json()
+    hello = json.loads(ws.receive_text()[11:])
     assert hello["type"] == "hello"
-    hs = ws.receive_json()
+    hs = json.loads(ws.receive_text()[11:])
     assert hs["type"] == "hijack_state"
     return hello, hs
 
@@ -83,8 +85,8 @@ class TestHandleResumeHelloFields:
             token = hello["resume_token"]
         with client.websocket_connect("/ws/browser/w1/term") as ws:
             _read_initial(ws)
-            ws.send_json({"type": "resume", "token": token})
-            return ws.receive_json()
+            ws.send_text(encode_control({"type": "resume", "token": token}))
+            return json.loads(ws.receive_text()[11:])
 
     def test_hello_has_worker_id_key(self) -> None:
         """mutmut_77,78: 'worker_id' key must be present (not 'XXworker_idXX' or 'WORKER_ID')."""
@@ -219,10 +221,10 @@ class TestHandleResumeHelloFields:
             token = hello["resume_token"]
         with client.websocket_connect("/ws/browser/w1/term") as ws:
             _read_initial(ws)
-            ws.send_json({"type": "resume", "token": token})
-            resumed = ws.receive_json()
+            ws.send_text(encode_control({"type": "resume", "token": token}))
+            resumed = json.loads(ws.receive_text()[11:])
             assert resumed["type"] == "hello"
-            hijack_state = ws.receive_json()
+            hijack_state = json.loads(ws.receive_text()[11:])
             assert hijack_state["type"] == "hijack_state"
 
 
@@ -245,13 +247,19 @@ class TestHandleResumeHijackExpiry:
 
         store.mark_hijack_owner(token, True)
 
+        # Register a fake worker_ws so send_worker (used during hijack reclaim) succeeds
+        fake_worker_ws = _make_ws()
+        if "w1" not in hub._workers:
+            hub._workers["w1"] = WorkerTermState()
+        hub._workers["w1"].worker_ws = fake_worker_ws
+
         with client.websocket_connect("/ws/browser/w1/term") as ws:
             _read_initial(ws)
-            ws.send_json({"type": "resume", "token": token})
-            resumed = ws.receive_json()
+            ws.send_text(encode_control({"type": "resume", "token": token}))
+            resumed = json.loads(ws.receive_text()[11:])
             assert resumed["hijacked_by_me"] is True
             # hijack_state message should show we are the owner
-            hs = ws.receive_json()
+            hs = json.loads(ws.receive_text()[11:])
             assert hs["type"] == "hijack_state"
             assert hs["owner"] == "me"
 
@@ -274,8 +282,8 @@ class TestHandleResumeHijackExpiry:
 
         with client.websocket_connect("/ws/browser/w1/term") as ws:
             _read_initial(ws)
-            ws.send_json({"type": "resume", "token": token})
-            ws.receive_json()  # resumed hello
+            ws.send_text(encode_control({"type": "resume", "token": token}))
+            json.loads(ws.receive_text()[11:])  # resumed hello
 
             # Access _workers directly (safe in sync test context)
             st = hub._workers.get("w1")

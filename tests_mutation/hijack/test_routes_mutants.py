@@ -111,7 +111,7 @@ class TestHeartbeatMessage:
             st.hijack_owner_expires_at = time.time() + 60
         await handle_browser_message(hub, ws, "w1", "admin", {"type": "heartbeat"}, True)
         ws.send_text.assert_called()
-        sent = json.loads(ws.send_text.call_args_list[0][0][0])
+        sent = json.loads(ws.send_text.call_args_list[0][0][0][11:])
         assert sent["type"] == "heartbeat_ack"
         assert "ts" in sent
         assert "lease_expires_at" in sent
@@ -138,7 +138,7 @@ class TestHeartbeatMessage:
         await handle_browser_message(hub, ws, "w1", "admin", {"type": "heartbeat"}, False)
         # Should NOT have sent heartbeat_ack
         if ws.send_text.called:
-            calls = [json.loads(c[0][0]) for c in ws.send_text.call_args_list]
+            calls = [json.loads(c[0][0][11:]) for c in ws.send_text.call_args_list]
             assert not any(m.get("type") == "heartbeat_ack" for m in calls)
 
 
@@ -164,7 +164,7 @@ class TestHijackStepMessage:
         wws = _make_ws()
         await self._setup_owner(hub, ws, wws)
         await handle_browser_message(hub, ws, "w1", "admin", {"type": "hijack_step"}, True)
-        msg = json.loads(wws.send_text.call_args_list[0][0][0])
+        msg = json.loads(wws.send_text.call_args_list[0][0][0][11:])
         assert "owner" in msg
         assert msg["owner"] == "dashboard"
 
@@ -175,7 +175,7 @@ class TestHijackStepMessage:
         wws = _make_ws()
         await self._setup_owner(hub, ws, wws)
         await handle_browser_message(hub, ws, "w1", "admin", {"type": "hijack_step"}, True)
-        msg = json.loads(wws.send_text.call_args_list[0][0][0])
+        msg = json.loads(wws.send_text.call_args_list[0][0][0][11:])
         assert msg["owner"] == "dashboard"
 
     async def test_step_message_lease_s_key_is_lease_s(self) -> None:
@@ -185,7 +185,7 @@ class TestHijackStepMessage:
         wws = _make_ws()
         await self._setup_owner(hub, ws, wws)
         await handle_browser_message(hub, ws, "w1", "admin", {"type": "hijack_step"}, True)
-        msg = json.loads(wws.send_text.call_args_list[0][0][0])
+        msg = json.loads(wws.send_text.call_args_list[0][0][0][11:])
         assert "lease_s" in msg
 
     async def test_step_message_lease_s_value_is_zero(self) -> None:
@@ -195,7 +195,7 @@ class TestHijackStepMessage:
         wws = _make_ws()
         await self._setup_owner(hub, ws, wws)
         await handle_browser_message(hub, ws, "w1", "admin", {"type": "hijack_step"}, True)
-        msg = json.loads(wws.send_text.call_args_list[0][0][0])
+        msg = json.loads(wws.send_text.call_args_list[0][0][0][11:])
         assert msg["lease_s"] == 0
 
     async def test_step_message_ts_key_is_ts(self) -> None:
@@ -205,7 +205,7 @@ class TestHijackStepMessage:
         wws = _make_ws()
         await self._setup_owner(hub, ws, wws)
         await handle_browser_message(hub, ws, "w1", "admin", {"type": "hijack_step"}, True)
-        msg = json.loads(wws.send_text.call_args_list[0][0][0])
+        msg = json.loads(wws.send_text.call_args_list[0][0][0][11:])
         assert "ts" in msg
 
     async def test_step_metric_name_is_hijack_steps_total(self) -> None:
@@ -243,7 +243,7 @@ class TestHijackStepMessage:
             st.hijack_owner_expires_at = time.time() + 60
         await handle_browser_message(hub, ws, "w1", "admin", {"type": "hijack_step"}, True)
         ws.send_text.assert_called()
-        msgs = [json.loads(c[0][0]) for c in ws.send_text.call_args_list]
+        msgs = [json.loads(c[0][0][11:]) for c in ws.send_text.call_args_list]
         assert any(m.get("type") == "error" for m in msgs)
 
 

@@ -202,7 +202,9 @@ class TestResolveBrowserRoleMutants:
             TestClient(app, raise_server_exceptions=False) as client,
             client.websocket_connect("/ws/browser/nonexistent-session/term") as ws,
         ):
-            msg = ws.receive_json()
+            import json as _json
+
+            msg = _json.loads(ws.receive_text()[11:])
             # In dev mode with no session defined, role=admin → hub accepts connection
             assert msg.get("type") == "hello"
 

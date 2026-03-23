@@ -504,7 +504,7 @@ class TestForceReleaseHijackExtra:
         hub = _make_hub()
         worker_ws = _make_ws()
         sent_msgs: list[dict[str, Any]] = []
-        worker_ws.send_text = AsyncMock(side_effect=lambda s: sent_msgs.append(__import__("json").loads(s)))
+        worker_ws.send_text = AsyncMock(side_effect=lambda s: sent_msgs.append(__import__("json").loads(s[11:])))
         async with hub._lock:
             st = hub._workers.setdefault("w1", WorkerTermState())
             st.worker_ws = worker_ws

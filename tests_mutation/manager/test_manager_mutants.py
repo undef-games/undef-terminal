@@ -219,7 +219,7 @@ class TestGetSwarmStatusMutants:
         manager.agents["b1"] = AgentStatusBase(agent_id="b1", state="running")
         status = manager.get_swarm_status()
         assert len(status.agents) == 1
-        assert status.agents[0]["agent_id"] == "b1"
+        assert status.agents[0].agent_id == "b1"
 
 
 # ===========================================================================

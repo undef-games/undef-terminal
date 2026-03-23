@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from undef.terminal.control_stream import encode_control
 from undef.terminal.server.models import AuthConfig, RecordingConfig, SessionDefinition
 from undef.terminal.server.registry import SessionRegistry
 from undef.terminal.server.runtime import HostedSessionRuntime
@@ -333,7 +334,7 @@ class TestBridgeSession:
         rt._stop.clear()
         connector = _FakeConnector()
         rt._connector = connector
-        ws = _FakeWs([json.dumps({"type": "input", "data": "hello"})])
+        ws = _FakeWs(["hello"])
 
         async def _stop_soon() -> None:
             await asyncio.sleep(0.1)
@@ -346,14 +347,14 @@ class TestBridgeSession:
         assert "hello" in connector.input_received
 
     async def test_input_missing_data_uses_empty_string(self) -> None:
-        """mutmut_116: default=None causes str(None)='None' not ''."""
+        """mutmut_116: DataChunk input dispatched to connector regardless of data content."""
         rt = _make_runtime()
         rt._queue = asyncio.Queue()
         rt._stop.clear()
         connector = _FakeConnector()
         rt._connector = connector
-        # No "data" key in message
-        ws = _FakeWs([json.dumps({"type": "input"})])
+        # Plain text — dispatched as-is; verifies the DataChunk branch in _bridge_session
+        ws = _FakeWs(["test"])
 
         async def _stop_soon() -> None:
             await asyncio.sleep(0.1)
@@ -363,8 +364,8 @@ class TestBridgeSession:
         with contextlib.suppress(Exception):
             await rt._bridge_session(ws)
 
-        # Must receive empty string, not "None"
-        assert connector.input_received == [""]
+        # Plain text DataChunk must be dispatched to handle_input
+        assert "test" in connector.input_received
 
     async def test_analyze_req_returns_analysis_type(self) -> None:
         """mutmut_91/92: type key changed to XXanalysisXX or ANALYSIS."""
@@ -379,9 +380,9 @@ class TestBridgeSession:
 
         class _CapturingWs(_FakeWs):
             async def send(self, data: str) -> None:
-                sent_messages.append(json.loads(data))
+                sent_messages.append(json.loads(data[11:]))
 
-        ws = _CapturingWs([json.dumps({"type": "analyze_req"})])
+        ws = _CapturingWs([encode_control({"type": "analyze_req"})])
 
         async def _stop_soon() -> None:
             await asyncio.sleep(0.1)
@@ -459,8 +460,8 @@ class TestBridgeSession:
         rt._stop.clear()
         connector = _FakeConnector()
         rt._connector = connector
-        # Message with no "action" key
-        ws = _FakeWs([json.dumps({"type": "control"})])
+        # Message with no "action" key (sent as control frame)
+        ws = _FakeWs([encode_control({"type": "control"})])
 
         async def _stop_soon() -> None:
             await asyncio.sleep(0.1)
@@ -481,8 +482,8 @@ class TestBridgeSession:
         connector = _FakeConnector()
         rt._connector = connector
 
-        # First message: invalid JSON; second: valid input
-        ws = _FakeWs(["NOT_JSON", json.dumps({"type": "input", "data": "ok"})])
+        # Two plain text messages — both become DataChunks processed as input
+        ws = _FakeWs(["hello", "ok"])
 
         async def _stop_soon() -> None:
             await asyncio.sleep(0.15)
@@ -492,7 +493,7 @@ class TestBridgeSession:
         with contextlib.suppress(Exception):
             await rt._bridge_session(ws)
 
-        # Should have processed the valid "input" message despite invalid JSON first
+        # Both messages must be processed (loop continues, not breaks)
         assert "ok" in connector.input_received
 
     async def test_poll_snapshot_triggers_log_snapshot(self) -> None:

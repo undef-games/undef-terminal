@@ -24,6 +24,7 @@ import json
 from typing import Any
 from unittest.mock import MagicMock
 
+from undef.terminal.control_stream import encode_control
 from undef.terminal.hijack.bridge import TermBridge, _to_ws_url
 
 # ---------------------------------------------------------------------------
@@ -292,7 +293,7 @@ class TestSendSnapshotPayload:
         ws = MockWS()
         await bridge._send_snapshot(ws)
         assert len(ws.sent) == 1
-        return json.loads(ws.sent[0])
+        return json.loads(ws.sent[0][11:])
 
     async def test_type_field_is_snapshot(self) -> None:
         """Many mutants change 'type' key — must be 'snapshot'."""
@@ -431,7 +432,7 @@ class TestSendSnapshotFallbackChain:
         bridge._latest_snapshot = None  # will fall through to {}
         ws = MockWS()
         await bridge._send_snapshot(ws)
-        payload = json.loads(ws.sent[0])
+        payload = json.loads(ws.sent[0][11:])
         assert payload["cols"] == 80
         assert payload["rows"] == 25
         assert payload["screen"] == ""
@@ -450,11 +451,11 @@ class TestRecvLoopMessageRouting:
         bot = MockBot(session)
         bridge = TermBridge(bot, "w1", "http://localhost")
         bridge._running = True
-        ws = MockWS([json.dumps({"type": "snapshot_req"})])
+        ws = MockWS([encode_control({"type": "snapshot_req"})])
         await bridge._recv_loop(ws)
         # _send_snapshot was called → ws.sent has snapshot response
         assert len(ws.sent) >= 1
-        payload = json.loads(ws.sent[0])
+        payload = json.loads(ws.sent[0][11:])
         assert payload["type"] == "snapshot"
 
     async def test_control_pause_calls_set_hijacked(self) -> None:
@@ -462,7 +463,7 @@ class TestRecvLoopMessageRouting:
         bot = MockBot()
         bridge = TermBridge(bot, "w1", "http://localhost")
         bridge._running = True
-        ws = MockWS([json.dumps({"type": "control", "action": "pause"})])
+        ws = MockWS([encode_control({"type": "control", "action": "pause"})])
         await bridge._recv_loop(ws)
         assert True in bot.hijacked_calls
 
@@ -471,7 +472,7 @@ class TestRecvLoopMessageRouting:
         bot = MockBot()
         bridge = TermBridge(bot, "w1", "http://localhost")
         bridge._running = True
-        ws = MockWS([json.dumps({"type": "control", "action": "resume"})])
+        ws = MockWS([encode_control({"type": "control", "action": "resume"})])
         await bridge._recv_loop(ws)
         # set_hijacked(False) called
         assert False in bot.hijacked_calls
@@ -481,7 +482,7 @@ class TestRecvLoopMessageRouting:
         bot = MockBot()
         bridge = TermBridge(bot, "w1", "http://localhost")
         bridge._running = True
-        ws = MockWS([json.dumps({"type": "control", "action": "step"})])
+        ws = MockWS([encode_control({"type": "control", "action": "step"})])
         await bridge._recv_loop(ws)
         assert bot.step_calls == 1
 
@@ -491,7 +492,7 @@ class TestRecvLoopMessageRouting:
         bot = MockBot(session)
         bridge = TermBridge(bot, "w1", "http://localhost")
         bridge._running = True
-        ws = MockWS([json.dumps({"type": "input", "data": "hello\r"})])
+        ws = MockWS(["hello\r"])
         await bridge._recv_loop(ws)
         assert session.sent == ["hello\r"]
 
@@ -501,7 +502,7 @@ class TestRecvLoopMessageRouting:
         bot = MockBot(session)
         bridge = TermBridge(bot, "w1", "http://localhost")
         bridge._running = True
-        ws = MockWS([json.dumps({"type": "resize", "cols": 132, "rows": 50})])
+        ws = MockWS([encode_control({"type": "resize", "cols": 132, "rows": 50})])
         await bridge._recv_loop(ws)
         assert (132, 50) in session.sizes
 
@@ -529,7 +530,7 @@ class TestSendLoopMessageStructure:
         bridge._running = True
         ws = MockWS()
 
-        bridge._send_q.put_nowait({"type": "term", "data": "hello"})
+        bridge._send_q.put_nowait({"type": "status", "hijacked": False})
 
         async def stop_after_send():
             while ws.sent == []:
@@ -542,8 +543,8 @@ class TestSendLoopMessageStructure:
         await asyncio.wait_for(task, timeout=1.0)
 
         assert len(ws.sent) >= 1
-        payload = json.loads(ws.sent[0])
-        assert payload["type"] == "term"
+        payload = json.loads(ws.sent[0][11:])
+        assert payload["type"] == "status"
 
     async def test_send_loop_calls_task_done(self) -> None:
         """mutmut_10/14/19/20/21/26/28/29/30: task_done must always be called."""
@@ -777,7 +778,7 @@ class TestRecvLoopResizeDefaults:
         bot = MockBot(session)
         bridge = TermBridge(bot, "w1", "http://localhost")
         bridge._running = True
-        ws = MockWS([json.dumps({"type": "resize", "rows": 25})])  # cols missing
+        ws = MockWS([encode_control({"type": "resize", "rows": 25})])  # cols missing
         await bridge._recv_loop(ws)
         # cols defaults to 80 (not 81)
         assert (80, 25) in session.sizes
@@ -788,7 +789,7 @@ class TestRecvLoopResizeDefaults:
         bot = MockBot(session)
         bridge = TermBridge(bot, "w1", "http://localhost")
         bridge._running = True
-        ws = MockWS([json.dumps({"type": "resize", "cols": 80})])  # rows missing
+        ws = MockWS([encode_control({"type": "resize", "cols": 80})])  # rows missing
         await bridge._recv_loop(ws)
         # rows defaults to 25 (not None)
         assert (80, 25) in session.sizes
@@ -812,8 +813,8 @@ class TestRecvLoopResizeDefaults:
         bot = MockBot(session)
         bridge = TermBridge(bot, "w1", "http://localhost")
         bridge._running = True
-        # input message with explicitly empty data
-        ws = MockWS([json.dumps({"type": "input", "data": ""})])
+        # plain text empty string — DataChunk with empty data → _send_keys NOT called
+        ws = MockWS([""])
         await bridge._recv_loop(ws)
         # Empty data → _send_keys NOT called
         assert session.sent == []
@@ -827,10 +828,10 @@ class TestRecvLoopResizeDefaults:
         bot = MockBot(session)
         bridge = TermBridge(bot, "w1", "http://localhost")
         bridge._running = True
-        # input message without data key — default '' means not sent
-        ws = MockWS([json.dumps({"type": "input"})])
+        # plain text empty string — default '' means _send_keys not called
+        ws = MockWS([""])
         await bridge._recv_loop(ws)
-        # No data key → default '' → not sent
+        # Empty data → default '' → not sent
         assert session.sent == []
 
 

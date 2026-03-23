@@ -180,7 +180,7 @@ class TestBroadcast:
 
         assert b1.send_text.call_count == 1
         assert b2.send_text.call_count == 1
-        msg = json.loads(b1.send_text.call_args[0][0])
+        msg = json.loads(b1.send_text.call_args[0][0][11:])
         assert msg["type"] == "ping"
 
 
