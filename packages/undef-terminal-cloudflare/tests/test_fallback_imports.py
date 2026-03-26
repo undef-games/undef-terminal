@@ -116,6 +116,11 @@ def test_entry_module_level_fallback() -> None:
     do_sr = ModuleType("do.session_runtime")
     do_sr.SessionRuntime = real_sr_mod.SessionRuntime  # type: ignore[attr-defined]
 
+    workers_stub = ModuleType("workers")
+    workers_stub.DurableObject = object  # type: ignore[attr-defined]
+    workers_stub.WorkerEntrypoint = WorkerEntrypoint  # type: ignore[attr-defined]
+    workers_stub.Response = Response  # type: ignore[attr-defined]
+
     inject = {
         "auth": ModuleType("auth"),
         "auth.jwt": auth_jwt,
@@ -127,6 +132,7 @@ def test_entry_module_level_fallback() -> None:
         "state.registry": real_reg,
         "ui": ModuleType("ui"),
         "ui.assets": real_assets,
+        "workers": workers_stub,
     }
 
     mod = _fresh_import(
@@ -145,9 +151,17 @@ def test_entry_module_level_fallback() -> None:
 
 async def test_entry_inline_jwt_fallback() -> None:
     """entry.py inline JWT import falls back to bare auth.jwt in CF runtime."""
-    from types import SimpleNamespace
+    from types import ModuleType, SimpleNamespace
 
-    from undef_terminal_cloudflare.entry import Default
+    # entry.py may need a fresh import after test_entry_module_level_fallback
+    # clears it from sys.modules.  Mock the CF-only `workers` module so the
+    # Python-3.12-syntax _workers.py is never parsed on Python ≤ 3.11.
+    _workers_stub = ModuleType("workers")
+    _workers_stub.DurableObject = object  # type: ignore[attr-defined]
+    _workers_stub.WorkerEntrypoint = object  # type: ignore[attr-defined]
+    _workers_stub.Response = None  # type: ignore[attr-defined]
+    with _patched_sys_modules([], {"workers": _workers_stub}):
+        from undef_terminal_cloudflare.entry import Default
 
     class _FakeJwtError(Exception):
         pass

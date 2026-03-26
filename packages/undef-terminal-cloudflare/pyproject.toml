@@ -23,7 +23,7 @@ classifiers = [
 ]
 dependencies = [
   "pyjwt>=2.9",
-  "undef-terminal>=0.3.0",
+  "undef-terminal>=0.4.0",
 ]
 
 [project.optional-dependencies]

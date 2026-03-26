@@ -13,7 +13,7 @@ try:
         encode_control,
         encode_data,
     )
-except (ImportError, ModuleNotFoundError):
+except (ImportError, ModuleNotFoundError):  # pragma: no cover
     # Fallback for Cloudflare Durable Objects validation phase
     ControlChunk = Any  # type: ignore[assignment]
     ControlChannelDecoder = Any  # type: ignore[assignment]
@@ -305,7 +305,7 @@ def parse_stream(
     for event in events:
         if isinstance(event, ControlChunk):
             frames.append(_normalize_frame(event.control, limits=active_limits))
-        elif isinstance(event, DataChunk):
+        else:  # DataChunk
             frames.append(
                 _normalize_frame(
                     {"type": data_frame_type, "data": event.data, "ts": time.time()},

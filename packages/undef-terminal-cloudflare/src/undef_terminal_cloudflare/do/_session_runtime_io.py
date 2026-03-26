@@ -25,7 +25,7 @@ try:
     from undef_terminal_cloudflare.do.persistence import persist_lease as _persist_lease
     from undef_terminal_cloudflare.state.registry import KV_REFRESH_S, update_kv_session
     from undef_terminal_cloudflare.state.store import LeaseRecord
-except Exception:
+except Exception:  # pragma: no cover
     from bridge.hijack import HijackSession  # type: ignore[import-not-found]  # noqa: TC002
     from cf_types import CFWebSocket  # type: ignore[import-not-found]  # noqa: TC002
     from do.persistence import clear_lease as _clear_lease  # type: ignore[import-not-found]

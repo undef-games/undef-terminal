@@ -96,17 +96,6 @@ mypy_path = ["packages/undef-terminal/src", "packages/undef-shell/src"]
 module = ["undef.telemetry", "undef.telemetry.*", "structlog", "structlog.*"]
 ignore_missing_imports = true
 
-[[tool.mypy.overrides]]
-# undef.terminal.shell shims re-export from undef.shell.*; ty needs type: ignore
-# here but mypy resolves the import via mypy_path — suppress the unused-ignore warning.
-module = [
-    "undef.terminal.shell._commands",
-    "undef.terminal.shell._connector",
-    "undef.terminal.shell._output",
-    "undef.terminal.shell._repl",
-    "undef.terminal.shell._sandbox",
-]
-warn_unused_ignores = false
 
 [tool.ty.environment]
 python-version = "3.11"
@@ -141,7 +130,7 @@ max_modules = "B"
 max_average = "A"
 
 [tool.mutmut]
-paths_to_mutate = ["src/undef/shell/terminal/_connector.py", "src/undef/terminal/server/connectors/__init__.py"]
+paths_to_mutate = ["packages/undef-shell/src/undef/shell/terminal/_connector.py", "packages/undef-terminal/src/undef/terminal/server/connectors/__init__.py", "packages/undef-terminal/src/undef/terminal/server/connectors/registry.py"]
 tests_dir = [
     "packages/undef-terminal/tests/shell/test_shell_connector.py",
     "packages/undef-terminal/tests/server/test_app_ushell.py",
@@ -153,7 +142,6 @@ also_copy = [
     "packages/undef-terminal-cloudflare/src",
     "packages/undef-terminal/tests",
     "packages/undef-shell/tests",
-    "src/undef",
     "conftest.py",
 ]
 pytest_add_cli_args = ["--timeout=30", "-p", "no:randomly", "-p", "no:hypothesis"]
