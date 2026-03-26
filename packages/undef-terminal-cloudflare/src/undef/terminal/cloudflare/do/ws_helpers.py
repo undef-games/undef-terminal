@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 from undef.terminal.control_channel import encode_control, encode_data
 
 if TYPE_CHECKING:
-    from undef_terminal_cloudflare.cf_types import CFWebSocket
+    from undef.terminal.cloudflare.cf_types import CFWebSocket
 
 logger = logging.getLogger(__name__)
 

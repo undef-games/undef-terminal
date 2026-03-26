@@ -64,7 +64,7 @@ def _load_connector(session_id: str, env: Any, storage: Any = None) -> Any:
     if storage is not None:
         ctx["storage"] = storage
     try:
-        from undef_terminal_cloudflare.state.registry import list_kv_sessions
+        from undef.terminal.cloudflare.state.registry import list_kv_sessions
 
         async def _list_sessions() -> list[dict[str, Any]]:
             return await list_kv_sessions(env)

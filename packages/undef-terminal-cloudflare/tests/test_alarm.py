@@ -7,8 +7,8 @@ import time
 from types import SimpleNamespace
 
 import pytest
-from undef_terminal_cloudflare.bridge.hijack import HijackSession
-from undef_terminal_cloudflare.do.session_runtime import SessionRuntime
+from undef.terminal.cloudflare.bridge.hijack import HijackSession
+from undef.terminal.cloudflare.do.session_runtime import SessionRuntime
 
 
 def _make_runtime() -> SessionRuntime:

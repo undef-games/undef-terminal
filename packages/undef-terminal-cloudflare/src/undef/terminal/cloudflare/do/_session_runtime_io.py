@@ -19,12 +19,12 @@ import time
 from typing import Any
 
 try:
-    from undef_terminal_cloudflare.bridge.hijack import HijackSession
-    from undef_terminal_cloudflare.cf_types import CFWebSocket
-    from undef_terminal_cloudflare.do.persistence import clear_lease as _clear_lease
-    from undef_terminal_cloudflare.do.persistence import persist_lease as _persist_lease
-    from undef_terminal_cloudflare.state.registry import KV_REFRESH_S, update_kv_session
-    from undef_terminal_cloudflare.state.store import LeaseRecord
+    from undef.terminal.cloudflare.bridge.hijack import HijackSession
+    from undef.terminal.cloudflare.cf_types import CFWebSocket
+    from undef.terminal.cloudflare.do.persistence import clear_lease as _clear_lease
+    from undef.terminal.cloudflare.do.persistence import persist_lease as _persist_lease
+    from undef.terminal.cloudflare.state.registry import KV_REFRESH_S, update_kv_session
+    from undef.terminal.cloudflare.state.store import LeaseRecord
 except Exception:  # pragma: no cover
     from bridge.hijack import HijackSession  # type: ignore[import-not-found]  # noqa: TC002
     from cf_types import CFWebSocket  # type: ignore[import-not-found]  # noqa: TC002

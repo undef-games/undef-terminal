@@ -24,12 +24,12 @@ except ImportError:
 # for Cloudflare runtime.  Pyodide loads modules from /session/metadata/ and
 # needs explicit path configuration.
 _current_file = Path(__file__).resolve()
-_current_dir = str(_current_file.parent)  # .../undef_terminal_cloudflare/
-_parent_dir = str(_current_file.parent.parent)  # contains undef_terminal_cloudflare/ as package
+_current_dir = str(_current_file.parent)  # .../undef.terminal.cloudflare/
+_parent_dir = str(_current_file.parent.parent)  # contains undef.terminal.cloudflare/ as package
 _python_modules_dir = str(_current_file.parent.parent.parent / "python_modules")
 
 # In CF runtime, wrangler may flatten src/ so that entry.py is at /session/
-# and the package is at /session/undef_terminal_cloudflare/.  Add /session/
+# and the package is at /session/undef.terminal.cloudflare/.  Add /session/
 # (the grandparent) as well as the typical /session/metadata/ parent.
 _import_error: str | None = None
 
@@ -38,20 +38,20 @@ for _path in [_parent_dir, _current_dir, _python_modules_dir]:
         sys.path.insert(0, _path)
 
 try:
-    from undef_terminal_cloudflare.auth.jwt import (
+    from undef.terminal.cloudflare.auth.jwt import (
         JwtValidationError,
         decode_jwt,
         extract_bearer_or_cookie,
     )
-    from undef_terminal_cloudflare.cf_types import (  # type: ignore[assignment,no-redef]
+    from undef.terminal.cloudflare.cf_types import (  # type: ignore[assignment,no-redef]
         Response,
         WorkerEntrypoint,
         json_response,
     )
-    from undef_terminal_cloudflare.config import CloudflareConfig
-    from undef_terminal_cloudflare.do.session_runtime import SessionRuntime
-    from undef_terminal_cloudflare.state.registry import delete_kv_session, list_kv_sessions
-    from undef_terminal_cloudflare.ui.assets import read_asset_text, serve_asset
+    from undef.terminal.cloudflare.config import CloudflareConfig
+    from undef.terminal.cloudflare.do.session_runtime import SessionRuntime
+    from undef.terminal.cloudflare.state.registry import delete_kv_session, list_kv_sessions
+    from undef.terminal.cloudflare.ui.assets import read_asset_text, serve_asset
 except Exception:
     try:
         from auth.jwt import (  # type: ignore[import-not-found]

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from undef_terminal_cloudflare.contracts import MessageLimits, ProtocolError, frame_json, parse_frame, parse_stream
+from undef.terminal.cloudflare.contracts import MessageLimits, ProtocolError, frame_json, parse_frame, parse_stream
 
 
 def test_parse_input_frame_ok() -> None:

@@ -7,6 +7,12 @@
 
 from __future__ import annotations
 
+import pkgutil
+
+# Allow other installed packages to contribute sub-packages under undef.terminal
+# (e.g. undef-terminal-cloudflare contributes undef.terminal.cloudflare).
+__path__ = pkgutil.extend_path(__path__, __name__)
+
 from importlib.metadata import PackageNotFoundError, version
 
 try:

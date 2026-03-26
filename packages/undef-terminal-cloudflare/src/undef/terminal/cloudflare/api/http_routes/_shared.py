@@ -43,7 +43,7 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover
 
 
 if TYPE_CHECKING:
-    from undef_terminal_cloudflare.contracts import RuntimeProtocol
+    from undef.terminal.cloudflare.contracts import RuntimeProtocol
 
 # Matches /hijack/{hijack_id}/ in any path segment position.
 _HIJACK_ID_RE = re.compile(r"/hijack/([0-9a-fA-F\-]{1,64})/")

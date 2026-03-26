@@ -30,7 +30,7 @@ except ImportError:
     pass
 
 if TYPE_CHECKING:
-    from undef_terminal_cloudflare.config import JwtConfig
+    from undef.terminal.cloudflare.config import JwtConfig
 else:
     JwtConfig = Any
 

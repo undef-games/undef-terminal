@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 
 import pytest
-from undef_terminal_cloudflare.auth.jwt import (
+from undef.terminal.cloudflare.auth.jwt import (
     JwtValidationError,
     _apply_role_map,
     _b64url_decode,
@@ -25,7 +25,7 @@ from undef_terminal_cloudflare.auth.jwt import (
     _validate_claims,
     decode_jwt,
 )
-from undef_terminal_cloudflare.config import JwtConfig
+from undef.terminal.cloudflare.config import JwtConfig
 
 # ---------------------------------------------------------------------------
 # _b64url_decode (lines 50-53)

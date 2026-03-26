@@ -28,7 +28,7 @@ except (ImportError, ModuleNotFoundError):  # pragma: no cover
 
 
 if TYPE_CHECKING:
-    from undef_terminal_cloudflare.cf_types import CFWebSocket
+    from undef.terminal.cloudflare.cf_types import CFWebSocket
 
 # ---------------------------------------------------------------------------
 # REST API response contracts

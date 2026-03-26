@@ -6,11 +6,11 @@ from types import SimpleNamespace
 
 import jwt
 import pytest
-from undef_terminal_cloudflare.api.http_routes import route_http
-from undef_terminal_cloudflare.auth.jwt import JwtValidationError, decode_jwt
-from undef_terminal_cloudflare.bridge.hijack import HijackCoordinator
-from undef_terminal_cloudflare.config import CloudflareConfig, JwtConfig
-from undef_terminal_cloudflare.do.session_runtime import SessionRuntime
+from undef.terminal.cloudflare.api.http_routes import route_http
+from undef.terminal.cloudflare.auth.jwt import JwtValidationError, decode_jwt
+from undef.terminal.cloudflare.bridge.hijack import HijackCoordinator
+from undef.terminal.cloudflare.config import CloudflareConfig, JwtConfig
+from undef.terminal.cloudflare.do.session_runtime import SessionRuntime
 
 
 class _Req:
@@ -274,7 +274,7 @@ def test_jwt_mode_accepts_worker_bearer_token() -> None:
 @pytest.mark.asyncio
 async def test_page_routes_require_jwt_in_jwt_mode() -> None:
     """In JWT mode, /app must return 401 when no token is provided."""
-    from undef_terminal_cloudflare.entry import Default
+    from undef.terminal.cloudflare.entry import Default
 
     env = SimpleNamespace(
         AUTH_MODE="jwt",
@@ -297,7 +297,7 @@ async def test_page_routes_require_jwt_in_jwt_mode() -> None:
 @pytest.mark.asyncio
 async def test_page_routes_accessible_in_dev_mode() -> None:
     """In dev mode, /app must return 200 (no auth required)."""
-    from undef_terminal_cloudflare.entry import Default
+    from undef.terminal.cloudflare.entry import Default
 
     env = SimpleNamespace(
         AUTH_MODE="dev",
@@ -316,7 +316,7 @@ async def test_page_routes_accessible_in_dev_mode() -> None:
 @pytest.mark.asyncio
 async def test_page_routes_invalid_jwt_returns_401() -> None:
     """In JWT mode, /app with an invalid token returns 401 with 'invalid token'."""
-    from undef_terminal_cloudflare.entry import Default
+    from undef.terminal.cloudflare.entry import Default
 
     env = SimpleNamespace(
         AUTH_MODE="jwt",
@@ -344,7 +344,7 @@ async def test_page_routes_invalid_jwt_returns_401() -> None:
 @pytest.mark.asyncio
 async def test_page_routes_valid_jwt_returns_non_401() -> None:
     """In JWT mode, /app with a valid token must NOT return 401."""
-    from undef_terminal_cloudflare.entry import Default
+    from undef.terminal.cloudflare.entry import Default
 
     signing_key = "test-secret-key-32-bytes-minimum!"
     now = int(time.time())
@@ -373,7 +373,7 @@ async def test_page_routes_valid_jwt_returns_non_401() -> None:
 @pytest.mark.asyncio
 async def test_root_page_requires_jwt_in_jwt_mode() -> None:
     """In JWT mode, / must return 401 when no token is provided."""
-    from undef_terminal_cloudflare.entry import Default
+    from undef.terminal.cloudflare.entry import Default
 
     env = SimpleNamespace(
         AUTH_MODE="jwt",
@@ -394,7 +394,7 @@ async def test_root_page_requires_jwt_in_jwt_mode() -> None:
 @pytest.mark.asyncio
 async def test_assets_accessible_without_jwt() -> None:
     """Static assets (/assets/*.js) must be accessible even in JWT mode."""
-    from undef_terminal_cloudflare.entry import Default
+    from undef.terminal.cloudflare.entry import Default
 
     env = SimpleNamespace(
         AUTH_MODE="jwt",

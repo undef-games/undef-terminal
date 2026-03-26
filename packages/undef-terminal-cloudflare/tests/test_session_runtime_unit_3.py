@@ -12,9 +12,9 @@ import time
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from undef_terminal_cloudflare.bridge.hijack import HijackSession
-from undef_terminal_cloudflare.do.session_runtime import SessionRuntime
-from undef_terminal_cloudflare.state.store import LeaseRecord
+from undef.terminal.cloudflare.bridge.hijack import HijackSession
+from undef.terminal.cloudflare.do.session_runtime import SessionRuntime
+from undef.terminal.cloudflare.state.store import LeaseRecord
 
 from undef.terminal.control_channel import ControlChannelDecoder, ControlChunk, DataChunk
 

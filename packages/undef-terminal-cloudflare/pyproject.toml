@@ -45,13 +45,14 @@ Homepage = "https://github.com/undef-games/undef-terminal"
 Repository = "https://github.com/undef-games/undef-terminal"
 
 [project.scripts]
-uterm-cf = "undef_terminal_cloudflare.cli:main"
+uterm-cf = "undef.terminal.cloudflare.cli:main"
 
 [tool.setuptools.dynamic]
 version = {file = "VERSION"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+namespaces = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -62,14 +63,14 @@ markers = [
     "playwright: Playwright browser UI tests",
 ]
 addopts = [
-    "--cov=undef_terminal_cloudflare",
+    "--cov=undef.terminal.cloudflare",
     "--cov-branch",
     "--cov-report=term-missing",
     "--cov-fail-under=100",
 ]
 
 [tool.coverage.run]
-source = ["undef_terminal_cloudflare"]
+source = ["undef.terminal.cloudflare"]
 branch = true
 
 [tool.coverage.report]

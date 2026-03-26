@@ -8,18 +8,18 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 try:
-    from undef_terminal_cloudflare.api.http_routes import route_http
-    from undef_terminal_cloudflare.api.ws_routes import handle_socket_message
-    from undef_terminal_cloudflare.auth.jwt import JwtValidationError, decode_jwt, extract_bearer_or_cookie
-    from undef_terminal_cloudflare.auth.jwt import resolve_role as _resolve_jwt_role
-    from undef_terminal_cloudflare.bridge.hijack import HijackCoordinator, HijackSession
-    from undef_terminal_cloudflare.cf_types import CFWebSocket, DurableObject, Response
-    from undef_terminal_cloudflare.config import CloudflareConfig
-    from undef_terminal_cloudflare.do._session_runtime_io import _SessionRuntimeIoMixin
-    from undef_terminal_cloudflare.do.ushell import init_ushell, on_browser_connected
-    from undef_terminal_cloudflare.do.ws_helpers import _WsHelperMixin
-    from undef_terminal_cloudflare.state.registry import update_kv_session
-    from undef_terminal_cloudflare.state.store import SqliteStateStore
+    from undef.terminal.cloudflare.api.http_routes import route_http
+    from undef.terminal.cloudflare.api.ws_routes import handle_socket_message
+    from undef.terminal.cloudflare.auth.jwt import JwtValidationError, decode_jwt, extract_bearer_or_cookie
+    from undef.terminal.cloudflare.auth.jwt import resolve_role as _resolve_jwt_role
+    from undef.terminal.cloudflare.bridge.hijack import HijackCoordinator, HijackSession
+    from undef.terminal.cloudflare.cf_types import CFWebSocket, DurableObject, Response
+    from undef.terminal.cloudflare.config import CloudflareConfig
+    from undef.terminal.cloudflare.do._session_runtime_io import _SessionRuntimeIoMixin
+    from undef.terminal.cloudflare.do.ushell import init_ushell, on_browser_connected
+    from undef.terminal.cloudflare.do.ws_helpers import _WsHelperMixin
+    from undef.terminal.cloudflare.state.registry import update_kv_session
+    from undef.terminal.cloudflare.state.store import SqliteStateStore
 except Exception:
     from api.http_routes import route_http  # type: ignore[import-not-found]
     from api.ws_routes import handle_socket_message  # type: ignore[import-not-found]

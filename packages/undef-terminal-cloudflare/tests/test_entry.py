@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from undef_terminal_cloudflare.entry import _extract_worker_id
+from undef.terminal.cloudflare.entry import _extract_worker_id
 
 
 def test_extract_worker_id_for_ws_route() -> None:

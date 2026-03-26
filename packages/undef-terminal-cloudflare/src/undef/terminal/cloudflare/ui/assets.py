@@ -4,7 +4,7 @@ import importlib.resources
 from pathlib import Path
 
 try:
-    from undef_terminal_cloudflare.cf_types import Response
+    from undef.terminal.cloudflare.cf_types import Response
 except Exception:
     from cf_types import Response  # type: ignore[import-not-found]
 
@@ -24,7 +24,7 @@ def read_asset_text(path: str) -> str | None:
     if ".." in rel.split("/"):
         return None
     try:
-        local_root = importlib.resources.files("undef_terminal_cloudflare.ui") / "static"
+        local_root = importlib.resources.files("undef.terminal.cloudflare.ui") / "static"
         local_target = local_root / rel
         if local_target.is_file():
             return local_target.read_text(encoding="utf-8")
@@ -53,7 +53,7 @@ def serve_asset(path: str) -> Response:
 
     # 1. Try importlib.resources (works when package is properly installed in CPython).
     try:
-        local_root = importlib.resources.files("undef_terminal_cloudflare.ui") / "static"
+        local_root = importlib.resources.files("undef.terminal.cloudflare.ui") / "static"
         local_target = local_root / rel
         if local_target.is_file():
             suffix = Path(local_target.name).suffix.lower()

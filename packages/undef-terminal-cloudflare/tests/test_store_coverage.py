@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from undef_terminal_cloudflare.state.store import SqliteStateStore
+from undef.terminal.cloudflare.state.store import SqliteStateStore
 
 # ---------------------------------------------------------------------------
 # Helpers

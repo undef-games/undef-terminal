@@ -12,8 +12,8 @@ import time
 import uuid
 from types import SimpleNamespace
 
-from undef_terminal_cloudflare.api.http_routes import route_http
-from undef_terminal_cloudflare.bridge.hijack import HijackCoordinator, HijackSession
+from undef.terminal.cloudflare.api.http_routes import route_http
+from undef.terminal.cloudflare.bridge.hijack import HijackCoordinator, HijackSession
 
 
 class _Req:

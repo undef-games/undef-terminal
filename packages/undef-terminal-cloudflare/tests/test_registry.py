@@ -6,7 +6,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from undef_terminal_cloudflare.state.registry import list_kv_sessions, update_kv_session
+from undef.terminal.cloudflare.state.registry import list_kv_sessions, update_kv_session
 
 
 def _make_kv() -> SimpleNamespace:

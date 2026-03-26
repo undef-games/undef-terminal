@@ -9,7 +9,8 @@ from pathlib import Path
 
 
 def _package_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    # cli.py lives at src/undef/terminal/cloudflare/cli.py; go up 4 levels to package root
+    return Path(__file__).resolve().parents[4]
 
 
 def _run(cmd: list[str], cwd: Path) -> int:
@@ -24,7 +25,7 @@ def _require_pywrangler() -> None:
 
 def cmd_build(_args: argparse.Namespace) -> int:
     pkg_root = _package_root()
-    required = [pkg_root / "wrangler.toml", pkg_root / "src" / "undef_terminal_cloudflare" / "entry.py"]
+    required = [pkg_root / "wrangler.toml", pkg_root / "src" / "undef" / "terminal" / "cloudflare" / "entry.py"]
     missing = [path for path in required if not path.exists()]
     if missing:
         for path in missing:

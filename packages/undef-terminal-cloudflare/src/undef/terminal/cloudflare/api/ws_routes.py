@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _ROLE_RANK = {"viewer": 0, "operator": 1, "admin": 2}
 
 try:
-    from undef_terminal_cloudflare.contracts import MessageLimits, ProtocolError, RuntimeProtocol, parse_stream
+    from undef.terminal.cloudflare.contracts import MessageLimits, ProtocolError, RuntimeProtocol, parse_stream
 except Exception:  # pragma: no cover
     from contracts import (  # type: ignore[import-not-found]  # pragma: no cover
         MessageLimits,

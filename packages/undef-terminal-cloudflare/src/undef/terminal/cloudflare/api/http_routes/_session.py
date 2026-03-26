@@ -17,14 +17,14 @@ from ._shared import (
 )
 
 try:
-    from undef_terminal_cloudflare.cf_types import json_response
+    from undef.terminal.cloudflare.cf_types import json_response
 except ImportError:  # pragma: no cover
     from cf_types import json_response  # type: ignore[import-not-found]  # CF flat path  # pragma: no cover
 
 if TYPE_CHECKING:
     import re
 
-    from undef_terminal_cloudflare.contracts import RuntimeProtocol
+    from undef.terminal.cloudflare.contracts import RuntimeProtocol
 
 
 async def route_session(
