@@ -1,12 +1,13 @@
 # undef-terminal: Handoff
 
-## Current State (2026-03-22)
+## Current State (2026-03-25)
 
-- **Main package (`undef-terminal`)**: 4039 tests passing. 100% branch coverage. Pre-commit hooks active.
-- **CF package (`undef-terminal-cloudflare`)**: 584 unit tests + 14 real_cf E2E tests — all pass.
-  100% coverage on entry.py, jwt.py, session_runtime.py, registry.py. Deployed to
-  `https://undef-terminal-cloudflare.neurotic.workers.dev` with JWT auth via Cloudflare Access.
+- **Main package (`undef-terminal`)**: 4043 tests passing. 100% branch coverage. Pre-commit hooks active.
+- **CF package (`undef-terminal-cloudflare`)**: 599 unit tests + 14 real_cf E2E tests — all pass.
+  100% coverage across all files. Deployed to `https://undef-terminal-cloudflare.neurotic.workers.dev`.
+- **Shell package (`undef-shell`)**: 160 tests passing. 100% coverage.
 - **Frontend**: TypeScript tests pass (vitest). Biome lint+format clean. TypeScript typecheck clean.
+- **Release gate**: All three packages at 100% coverage. Pre-commit clean. Ready for v0.4.0 tag.
 
 ## What Was Done
 
