@@ -123,6 +123,7 @@ paths = ["packages/undef-terminal/src", "packages/undef-terminal/tests", "packag
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+addopts = "--import-mode=importlib"
 
 [tool.xenon]
 max_absolute = "C"
@@ -130,16 +131,17 @@ max_modules = "B"
 max_average = "A"
 
 [tool.mutmut]
-paths_to_mutate = ["packages/undef-shell/src/undef/shell/terminal/_connector.py", "packages/undef-terminal/src/undef/terminal/server/connectors/__init__.py", "packages/undef-terminal/src/undef/terminal/server/connectors/registry.py"]
+paths_to_mutate = ["src/undef/shell/terminal/_connector.py", "src/undef/terminal/server/connectors/__init__.py", "src/undef/terminal/server/connectors/registry.py"]
 tests_dir = [
     "packages/undef-terminal/tests/shell/test_shell_connector.py",
     "packages/undef-terminal/tests/server/test_app_ushell.py",
     "packages/undef-terminal/tests/server/test_connectors_websocket.py",
+    "packages/undef-terminal/tests/server/test_connectors.py",
 ]
 also_copy = [
+    "src",
     "packages/undef-shell/src",
     "packages/undef-terminal/src",
-    "packages/undef-terminal-cloudflare/src",
     "packages/undef-terminal/tests",
     "packages/undef-shell/tests",
     "conftest.py",

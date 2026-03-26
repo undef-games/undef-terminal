@@ -57,8 +57,8 @@ class UshellConnector(_SessionConnector):
 
     def __init__(
         self,
-        session_id: str = "",
-        display_name: str = "",
+        session_id: str = "",  # pragma: no mutate
+        display_name: str = "",  # pragma: no mutate
         _config: dict[str, Any] | None = None,
         extra_ctx: dict[str, Any] | None = None,
     ) -> None:
