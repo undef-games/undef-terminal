@@ -33,6 +33,7 @@ from undef.terminal.server.policy import SessionPolicyResolver
 from undef.terminal.server.registry import SessionRegistry
 from undef.terminal.server.routes.api import create_api_router
 from undef.terminal.server.routes.pages import create_page_router
+from undef.terminal.server.webhooks import WebhookManager
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -189,6 +190,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
         resume_store=InMemoryResumeStore(),
         on_resume=_on_resume,
     )
+    webhook_manager = WebhookManager()
     registry = SessionRegistry(
         config.sessions,
         hub=hub,
@@ -220,6 +222,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
             boot_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await boot_task
+            await webhook_manager.shutdown()
             await registry.shutdown()
 
     app = FastAPI(title=config.server.title, lifespan=_lifespan)
@@ -229,6 +232,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
     app.state.uterm_hub = hub
     app.state.uterm_registry = registry
     app.state.uterm_metrics = metrics
+    app.state.uterm_webhooks = webhook_manager
 
     @app.middleware("http")
     async def _request_logging_middleware(request: Request, call_next: RequestResponseEndpoint) -> Response:

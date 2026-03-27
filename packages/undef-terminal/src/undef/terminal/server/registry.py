@@ -34,7 +34,7 @@ _MUTABLE_SESSION_FIELDS = frozenset(
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import AsyncGenerator, Iterable
     from pathlib import Path
 
     from undef.terminal.hijack.hub import TermHub
@@ -316,6 +316,41 @@ class SessionRegistry:
             dropped = sub.dropped
 
         return {"events": collected, "dropped_count": dropped, "timed_out": timed_out}
+
+    async def stream_session_events(
+        self,
+        session_id: str,
+        *,
+        event_types: list[str] | None = None,
+        pattern: str | None = None,
+        heartbeat_s: float = 15.0,
+    ) -> AsyncGenerator[str, None]:
+        """Async generator of SSE-formatted strings for *session_id*.
+
+        Yields ``data: {json}\\n\\n`` per event, a heartbeat line every
+        *heartbeat_s* seconds of idle time, and a final
+        ``data: {"type":"worker_disconnected"}\\n\\n`` then stops on worker
+        disconnect.  Returns immediately (empty generator) when EventBus is
+        not configured on the hub.
+
+        For ``snapshot`` events the *data* dict contains ``screen`` so that
+        pattern filters in the EventBus work correctly.
+        """
+        event_bus = getattr(self._hub, "event_bus", None)
+        if event_bus is None:
+            return
+
+        async with event_bus.watch(session_id, event_types=event_types, pattern=pattern) as sub:
+            while True:
+                try:
+                    item = await asyncio.wait_for(sub.queue.get(), timeout=heartbeat_s)
+                except TimeoutError:
+                    yield 'data: {"type":"heartbeat"}\n\n'
+                    continue
+                if item is None:  # worker-disconnected sentinel
+                    yield 'data: {"type":"worker_disconnected"}\n\n'
+                    return
+                yield f"data: {json.dumps(item)}\n\n"
 
     async def recording_meta(self, session_id: str) -> dict[str, Any]:
         async with self._lock:

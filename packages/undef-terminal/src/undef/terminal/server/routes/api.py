@@ -14,6 +14,8 @@ from fastapi.responses import FileResponse, PlainTextResponse
 
 from undef.terminal.server.models import model_dump
 from undef.terminal.server.registry import SessionValidationError
+from undef.terminal.server.routes.sse import create_sse_router
+from undef.terminal.server.routes.webhooks import create_webhook_router
 
 # Validated session_id path parameter — rejects path-unsafe characters.
 _SessionId = Annotated[str, Path(pattern=r"^[\w\-]+$")]
@@ -49,6 +51,8 @@ async def _session_definition(request: Request, session_id: str) -> SessionDefin
 
 def create_api_router() -> APIRouter:
     router = APIRouter(prefix="/api")
+    router.include_router(create_sse_router())
+    router.include_router(create_webhook_router())
 
     @router.get("/health")
     async def health(request: Request, response: Response) -> dict[str, object]:
