@@ -40,6 +40,14 @@ class _Runtime:
     def __init__(self, store: SqliteStateStore, worker_id: str = "w1") -> None:
         self.store = store
         self.worker_id = worker_id
+        self.meta: dict = {
+            "display_name": self.worker_id,
+            "connector_type": "unknown",
+            "created_at": 0.0,
+            "tags": [],
+            "visibility": "public",
+            "owner": None,
+        }
         self.worker_ws = None
         self.input_mode = "open"
         self.hijack = _HijackStub()
@@ -402,6 +410,84 @@ async def test_dispatch_recording_entries_via_route_http() -> None:
     assert status == 200
     assert isinstance(body, list)
     assert len(body) == 2
+
+
+# ---------------------------------------------------------------------------
+# Status item: recording_enabled / recording_available
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Store: session metadata persistence
+# ---------------------------------------------------------------------------
+
+
+def test_save_and_load_session_meta_roundtrip() -> None:
+    store = _make_store(0)
+    meta = {
+        "display_name": "My Session",
+        "connector_type": "ssh",
+        "created_at": 1234567890.0,
+        "tags": ["prod", "web"],
+        "visibility": "private",
+        "owner": "alice",
+    }
+    store.save_session_meta("w1", meta)
+    loaded = store.load_session_meta("w1")
+    assert loaded is not None
+    assert loaded["display_name"] == "My Session"
+    assert loaded["connector_type"] == "ssh"
+    assert loaded["created_at"] == 1234567890.0
+    assert loaded["tags"] == ["prod", "web"]
+    assert loaded["visibility"] == "private"
+    assert loaded["owner"] == "alice"
+
+
+def test_load_session_meta_returns_none_when_missing() -> None:
+    store = _make_store(0)
+    assert store.load_session_meta("nonexistent") is None
+
+
+def test_save_session_meta_upsert() -> None:
+    store = _make_store(0)
+    store.save_session_meta("w1", {"display_name": "v1", "connector_type": "telnet"})
+    store.save_session_meta("w1", {"display_name": "v2", "connector_type": "ssh"})
+    loaded = store.load_session_meta("w1")
+    assert loaded is not None
+    assert loaded["display_name"] == "v2"
+    assert loaded["connector_type"] == "ssh"
+
+
+def test_save_session_meta_defaults() -> None:
+    """Missing keys in meta dict get sensible defaults."""
+    store = _make_store(0)
+    store.save_session_meta("w1", {})
+    loaded = store.load_session_meta("w1")
+    assert loaded is not None
+    assert loaded["display_name"] == "w1"  # falls back to worker_id
+    assert loaded["connector_type"] == "unknown"
+    assert loaded["tags"] == []
+    assert loaded["visibility"] == "public"
+
+
+def test_status_item_uses_meta() -> None:
+    """Status item reflects metadata from runtime.meta."""
+    runtime = _Runtime(_make_store(0))
+    runtime.meta = {
+        "display_name": "Custom Name",
+        "connector_type": "ssh",
+        "created_at": 1234567890.0,
+        "tags": ["test"],
+        "visibility": "private",
+        "owner": "bob",
+    }
+    item = _session_status_item(runtime)
+    assert item["display_name"] == "Custom Name"
+    assert item["created_at"] == 1234567890.0
+    assert item["connector_type"] == "ssh"
+    assert item["tags"] == ["test"]
+    assert item["visibility"] == "private"
+    assert item["owner"] == "bob"
 
 
 # ---------------------------------------------------------------------------

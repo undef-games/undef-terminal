@@ -33,6 +33,14 @@ class _Runtime:
     def __init__(self, store: SqliteStateStore, worker_id: str = "w1") -> None:
         self.store = store
         self.worker_id = worker_id
+        self.meta: dict = {
+            "display_name": self.worker_id,
+            "connector_type": "unknown",
+            "created_at": 0.0,
+            "tags": [],
+            "visibility": "public",
+            "owner": None,
+        }
 
 
 def _req(url: str, *, headers: dict[str, str] | None = None) -> SimpleNamespace:

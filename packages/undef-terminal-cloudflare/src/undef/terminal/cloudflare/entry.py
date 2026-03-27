@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import sys
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -266,15 +267,18 @@ async def _handle_connect(request: object, env: object) -> Response:
     session_id = f"{prefix}-{uuid.uuid4().hex[:12]}"
     display_name = str(body.get("display_name") or session_id)
     input_mode = str(body.get("input_mode", "open"))
+    tags = list(body.get("tags") or [])
+    created_at = time.time()
     entry = {
         "session_id": session_id,
         "display_name": display_name,
+        "created_at": created_at,
         "connector_type": connector_type,
         "lifecycle_state": "waiting",
         "input_mode": input_mode,
         "connected": False,
         "auto_start": False,
-        "tags": [],
+        "tags": tags,
         "recording_enabled": True,
         "recording_available": False,
         "owner": None,

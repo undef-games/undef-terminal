@@ -45,15 +45,13 @@ class SessionStatusItem(TypedDict):
 
     Mirrors ``undef-terminal`` ``SessionRuntimeStatus``/``SessionStatus`` (TS).
     CF-only fields: ``hijacked``.
-    CF fields with synthetic defaults: ``display_name`` (= worker_id),
-    ``connector_type`` ("unknown"), ``lifecycle_state`` ("running"/"idle"),
-    ``auto_start`` (False), ``tags`` ([]), ``recording_enabled`` (True),
-    ``recording_available`` (False), ``owner`` (None), ``visibility`` ("public"),
-    ``last_error`` (None).
+    Metadata fields (display_name, connector_type, created_at, tags, visibility,
+    owner) are loaded from KV on first contact and persisted to DO SQLite.
     """
 
     session_id: str
     display_name: str
+    created_at: float
     connector_type: str
     lifecycle_state: str
     input_mode: str
@@ -370,6 +368,7 @@ class RuntimeProtocol(Protocol):
     worker_ws: CFWebSocket | None
     worker_id: str
     input_mode: str
+    meta: dict[str, Any]
     hijack: Any  # HijackCoordinator
     config: Any  # CloudflareConfig
     store: Any  # SqliteStateStore

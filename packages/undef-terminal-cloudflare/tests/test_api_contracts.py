@@ -57,6 +57,14 @@ class _Req:
 class _Runtime:
     def __init__(self, worker_ws: object | None = None) -> None:
         self.worker_id = "test-worker"
+        self.meta: dict = {
+            "display_name": self.worker_id,
+            "connector_type": "unknown",
+            "created_at": 0.0,
+            "tags": [],
+            "visibility": "public",
+            "owner": None,
+        }
         self.worker_ws = worker_ws
         self.hijack = HijackCoordinator()
         self._role = "admin"

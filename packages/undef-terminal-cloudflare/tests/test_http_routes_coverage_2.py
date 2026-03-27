@@ -37,6 +37,14 @@ class _Runtime:
         worker_id: str = "w",
     ) -> None:
         self.worker_id = worker_id
+        self.meta: dict = {
+            "display_name": self.worker_id,
+            "connector_type": "unknown",
+            "created_at": 0.0,
+            "tags": [],
+            "visibility": "public",
+            "owner": None,
+        }
         self.worker_ws = worker_ws
         self.hijack = HijackCoordinator()
         self._role = role
@@ -365,6 +373,14 @@ async def test_cf_hijack_events_has_more_true_when_exactly_limit() -> None:
     class _RuntimeWith5:
         # Reuse _Runtime but override store and hijack
         worker_id = "w"
+        meta: dict = {
+            "display_name": "w",
+            "connector_type": "unknown",
+            "created_at": 0.0,
+            "tags": [],
+            "visibility": "public",
+            "owner": None,
+        }
         worker_ws = object()
         hijack = coord
         last_snapshot = None
@@ -441,6 +457,14 @@ async def test_cf_hijack_events_has_more_false_when_fewer() -> None:
 
     class _Runtime2:  # type: ignore[misc]
         worker_id = "w"
+        meta: dict = {
+            "display_name": "w",
+            "connector_type": "unknown",
+            "created_at": 0.0,
+            "tags": [],
+            "visibility": "public",
+            "owner": None,
+        }
         worker_ws = object()
         hijack = coord
         last_snapshot = None

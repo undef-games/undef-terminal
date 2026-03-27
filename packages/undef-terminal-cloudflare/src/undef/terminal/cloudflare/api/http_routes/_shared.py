@@ -127,19 +127,21 @@ async def _wait_for_analysis(runtime: RuntimeProtocol, *, timeout_ms: int = 5_00
 def _session_status_item(runtime: RuntimeProtocol) -> dict[str, object]:
     """Build a SessionStatus-compatible dict from the current DO state."""
     connected = runtime.worker_ws is not None
+    meta = runtime.meta
     return {
         "session_id": runtime.worker_id,
-        "display_name": runtime.worker_id,
-        "connector_type": "unknown",
+        "display_name": meta.get("display_name") or runtime.worker_id,
+        "created_at": meta.get("created_at") or 0.0,
+        "connector_type": meta.get("connector_type") or "unknown",
         "lifecycle_state": "running" if connected else "idle",
         "input_mode": runtime.input_mode,
         "connected": connected,
         "auto_start": False,
-        "tags": [],
+        "tags": meta.get("tags") or [],
         "recording_enabled": True,
         "recording_available": runtime.store.current_event_seq(runtime.worker_id) > 0,
-        "owner": None,
-        "visibility": "public",
+        "owner": meta.get("owner"),
+        "visibility": meta.get("visibility") or "public",
         "last_error": None,
         "hijacked": runtime.hijack.session is not None,
     }

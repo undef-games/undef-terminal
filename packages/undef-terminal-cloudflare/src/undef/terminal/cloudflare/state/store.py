@@ -42,58 +42,74 @@ class SqliteStateStore:
                 raise first_exc from None
 
     def migrate(self) -> None:
-        self._run(
-            """
-            CREATE TABLE IF NOT EXISTS session_state (
-                worker_id TEXT PRIMARY KEY,
-                hijack_id TEXT,
-                owner TEXT,
-                lease_expires_at REAL,
-                last_snapshot_json TEXT,
-                event_seq INTEGER NOT NULL DEFAULT 0,
-                updated_at REAL NOT NULL
-            )
-            """
-        )
-        self._run(
-            """
-            CREATE TABLE IF NOT EXISTS session_events (
-                worker_id TEXT NOT NULL,
-                seq INTEGER NOT NULL,
-                ts REAL NOT NULL,
-                event_type TEXT NOT NULL,
-                payload_json TEXT NOT NULL,
-                PRIMARY KEY (worker_id, seq)
-            )
-            """
-        )
-        # Add input_mode column if it does not exist yet (idempotent migration).
+        for ddl in (
+            """CREATE TABLE IF NOT EXISTS session_state (
+                worker_id TEXT PRIMARY KEY, hijack_id TEXT, owner TEXT,
+                lease_expires_at REAL, last_snapshot_json TEXT,
+                event_seq INTEGER NOT NULL DEFAULT 0, updated_at REAL NOT NULL)""",
+            """CREATE TABLE IF NOT EXISTS session_events (
+                worker_id TEXT NOT NULL, seq INTEGER NOT NULL, ts REAL NOT NULL,
+                event_type TEXT NOT NULL, payload_json TEXT NOT NULL,
+                PRIMARY KEY (worker_id, seq))""",
+            """CREATE TABLE IF NOT EXISTS resume_tokens (
+                token TEXT PRIMARY KEY, worker_id TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'viewer', was_hijack_owner INTEGER NOT NULL DEFAULT 0,
+                created_at REAL NOT NULL, expires_at REAL NOT NULL)""",
+            """CREATE TABLE IF NOT EXISTS webhooks (
+                webhook_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, url TEXT NOT NULL,
+                event_types_json TEXT, pattern TEXT, secret TEXT)""",
+            """CREATE TABLE IF NOT EXISTS session_meta (
+                worker_id TEXT PRIMARY KEY, display_name TEXT NOT NULL DEFAULT '',
+                connector_type TEXT NOT NULL DEFAULT 'unknown', created_at REAL NOT NULL DEFAULT 0,
+                tags_json TEXT NOT NULL DEFAULT '[]', visibility TEXT NOT NULL DEFAULT 'public',
+                owner TEXT)""",
+        ):
+            self._run(ddl)
         with contextlib.suppress(Exception):
             self._run("ALTER TABLE session_state ADD COLUMN input_mode TEXT NOT NULL DEFAULT 'hijack'")
+
+    # ------------------------------------------------------------------
+    # Session metadata (display_name, connector_type, created_at, etc.)
+    # ------------------------------------------------------------------
+
+    def save_session_meta(self, worker_id: str, meta: dict[str, Any]) -> None:
+        """Persist session metadata to SQLite (UPSERT)."""
         self._run(
-            """
-            CREATE TABLE IF NOT EXISTS resume_tokens (
-                token TEXT PRIMARY KEY,
-                worker_id TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'viewer',
-                was_hijack_owner INTEGER NOT NULL DEFAULT 0,
-                created_at REAL NOT NULL,
-                expires_at REAL NOT NULL
-            )
-            """
+            "INSERT INTO session_meta(worker_id,display_name,connector_type,created_at,tags_json,visibility,owner) "
+            "VALUES(?,?,?,?,?,?,?) ON CONFLICT(worker_id) DO UPDATE SET display_name=excluded.display_name,"
+            "connector_type=excluded.connector_type,created_at=excluded.created_at,"
+            "tags_json=excluded.tags_json,visibility=excluded.visibility,owner=excluded.owner",
+            worker_id,
+            str(meta.get("display_name") or worker_id),
+            str(meta.get("connector_type") or "unknown"),
+            float(meta.get("created_at") or time.time()),
+            json.dumps(meta.get("tags") or [], ensure_ascii=True),
+            str(meta.get("visibility") or "public"),
+            meta.get("owner"),
         )
-        self._run(
-            """
-            CREATE TABLE IF NOT EXISTS webhooks (
-                webhook_id TEXT PRIMARY KEY,
-                session_id TEXT NOT NULL,
-                url TEXT NOT NULL,
-                event_types_json TEXT,
-                pattern TEXT,
-                secret TEXT
+
+    def load_session_meta(self, worker_id: str) -> dict[str, Any] | None:
+        """Load persisted session metadata, or ``None`` if never saved."""
+        rows = self._rows(
+            self._run(
+                "SELECT display_name,connector_type,created_at,tags_json,visibility,owner "
+                "FROM session_meta WHERE worker_id=?",
+                worker_id,
             )
-            """
         )
+        if not rows:
+            return None
+        r, rv = rows[0], self._row_value
+        return {
+            "display_name": str(rv(r, "display_name", 0) or worker_id),
+            "connector_type": str(rv(r, "connector_type", 1) or "unknown"),
+            "created_at": float(rv(r, "created_at", 2) or 0),
+            "tags": json.loads(str(rv(r, "tags_json", 3) or "[]")),
+            "visibility": str(rv(r, "visibility", 4) or "public"),
+            "owner": rv(r, "owner", 5),
+        }
+
+    # ---- Session state (hijack lease, snapshot, events) ----
 
     def load_session(self, worker_id: str) -> dict[str, Any] | None:
         rows = self._rows(
