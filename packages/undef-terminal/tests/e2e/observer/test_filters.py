@@ -139,11 +139,12 @@ async def test_pattern_filter_passes_matching_screen(live_server: Any) -> None:
     """EventBus watch with pattern=\\$ only delivers snapshots whose screen matches."""
     hub, base_url = live_server
 
-    assert hub._event_bus is not None
+    event_bus = hub.event_bus
+    assert event_bus is not None
 
     async with (
         connect_async_ws(ws_url(base_url, "/ws/worker/flt1/term")) as worker,
-        hub._event_bus.watch("flt1", event_types=["snapshot"], pattern=r"\$ ") as sub,
+        event_bus.watch("flt1", event_types=["snapshot"], pattern=r"\$ ") as sub,
     ):
         await worker.recv()  # snapshot_req
 
@@ -154,8 +155,8 @@ async def test_pattern_filter_passes_matching_screen(live_server: Any) -> None:
         # Queue must still be empty — non-matching event was dropped by pattern filter
         assert sub.queue.empty(), "pattern filter let a non-matching event through"
 
-        # Now publish a matching event directly so the screen field is present
-        hub._event_bus._enqueue(  # type: ignore[attr-defined]
+        # Inject a matching event directly via the private _enqueue to verify delivery
+        event_bus._enqueue(  # type: ignore[attr-defined]
             "flt1",
             {"type": "snapshot", "worker_id": "flt1", "data": {"screen": "root@host:~$ ", "screen_hash": "p1"}},
         )

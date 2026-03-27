@@ -44,10 +44,11 @@ async def test_two_sessions_eventbus_isolated(two_session_server: Any) -> None:
         await w2.recv()  # snapshot_req for s2
 
         # Subscribe to each session independently
-        assert hub._event_bus is not None
+        event_bus = hub.event_bus
+        assert event_bus is not None
         async with (
-            hub._event_bus.watch("s1") as sub1,
-            hub._event_bus.watch("s2") as sub2,
+            event_bus.watch("s1") as sub1,
+            event_bus.watch("s2") as sub2,
         ):
             # s1 worker fires; s2 worker stays silent
             await w1.send(json.dumps(snapshot_msg("$ s1 event", "s1")))
