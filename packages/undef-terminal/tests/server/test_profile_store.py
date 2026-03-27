@@ -170,3 +170,24 @@ async def test_concurrent_creates_are_consistent(store: FileProfileStore) -> Non
     await asyncio.gather(*[store.create_profile(p) for p in profiles])
     all_profiles = await store.list_profiles()
     assert len(all_profiles) == 10
+
+
+# ── Corrupt store ──────────────────────────────────────────────────────────
+
+
+async def test_read_corrupt_json_raises_runtime_error(store: FileProfileStore, tmp_path: Path) -> None:
+    """_read_sync raises RuntimeError when the profiles file contains corrupt JSON."""
+    profiles_dir = tmp_path / "profiles"
+    profiles_dir.mkdir(parents=True, exist_ok=True)
+    (profiles_dir / "profiles.json").write_text("not valid json", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="Profiles store is corrupt"):
+        await store.list_profiles()
+
+
+async def test_update_skips_non_matching_profiles_and_returns_none(store: FileProfileStore) -> None:
+    """update_profile iterates past non-matching profiles and returns None when not found."""
+    # Create a profile so the for loop has entries to iterate over
+    await store.create_profile(_make_profile(profile_id="profile-existing"))
+    # Try to update a different ID — loop iterates profile-existing (no match) → returns None
+    result = await store.update_profile("profile-nonexistent", {"name": "x"})
+    assert result is None
