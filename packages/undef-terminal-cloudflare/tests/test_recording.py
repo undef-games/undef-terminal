@@ -288,6 +288,127 @@ async def test_dispatch_recording_post_falls_through() -> None:
     assert status in (404, 405)
 
 
+# ---------------------------------------------------------------------------
+# Store: edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_list_recording_event_filter_no_matches() -> None:
+    store = _make_store(5)
+    entries = store.list_recording_entries("w1", event="nonexistent_type")
+    assert entries == []
+
+
+def test_list_recording_offset_beyond_end() -> None:
+    store = _make_store(3)
+    entries = store.list_recording_entries("w1", offset=100, limit=10)
+    assert entries == []
+
+
+def test_list_recording_limit_zero_clamped_to_one() -> None:
+    store = _make_store(5)
+    entries = store.list_recording_entries("w1", limit=0)
+    assert len(entries) == 1  # clamped to min 1
+
+
+def test_list_recording_tail_event_filter_with_limit() -> None:
+    """Tail mode + event filter + limit: returns last N matching events."""
+    store = _make_store(10)  # 5 snapshots (even), 5 terms (odd)
+    entries = store.list_recording_entries("w1", limit=2, event="snapshot")
+    assert len(entries) == 2
+    assert all(e["event"] == "snapshot" for e in entries)
+    # Last two snapshots: i=6 and i=8
+    assert entries[0]["data"]["i"] == 6
+    assert entries[1]["data"]["i"] == 8
+
+
+def test_list_recording_entry_format_has_screen() -> None:
+    """Snapshot entries must have data.screen — replay frontend depends on this."""
+    store = _make_store(1)  # event 0 is a snapshot
+    entries = store.list_recording_entries("w1")
+    assert len(entries) == 1
+    assert entries[0]["event"] == "snapshot"
+    assert "screen" in entries[0]["data"]
+    assert entries[0]["data"]["screen"] == "screen-0"
+
+
+def test_list_recording_ts_is_float() -> None:
+    store = _make_store(1)
+    entries = store.list_recording_entries("w1")
+    assert isinstance(entries[0]["ts"], float)
+
+
+def test_list_recording_different_worker_isolated() -> None:
+    """Events from one worker don't appear in another worker's recording."""
+    store = _make_store(3, worker_id="w1")
+    store.append_event("w2", "snapshot", {"screen": "other"})
+    entries_w1 = store.list_recording_entries("w1")
+    entries_w2 = store.list_recording_entries("w2")
+    assert len(entries_w1) == 3
+    assert len(entries_w2) == 1
+
+
+# ---------------------------------------------------------------------------
+# Route: additional coverage
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_route_recording_entries_wrong_session() -> None:
+    """Entries endpoint returns 404 for wrong session_id."""
+    runtime = _Runtime(_make_store(5))
+    url = "http://localhost/api/sessions/wrong-id/recording/entries"
+    resp = await route_recording(runtime, None, url, _match("wrong-id", "entries"))
+    status, _body = _parse_response(resp)
+    assert status == 404
+
+
+@pytest.mark.asyncio
+async def test_route_recording_entries_tail_order() -> None:
+    """Route-level: tail mode returns entries in ascending order."""
+    runtime = _Runtime(_make_store(5))
+    url = "http://localhost/api/sessions/w1/recording/entries?limit=3"
+    resp = await route_recording(runtime, None, url, _match("w1", "entries"))
+    status, body = _parse_response(resp)
+    assert status == 200
+    assert len(body) == 3
+    # Ascending: i=2, i=3, i=4 (last 3)
+    assert body[0]["data"]["i"] < body[1]["data"]["i"] < body[2]["data"]["i"]
+
+
+@pytest.mark.asyncio
+async def test_route_recording_entries_snapshot_has_screen() -> None:
+    """Replay frontend compatibility: snapshot entries have data.screen."""
+    runtime = _Runtime(_make_store(2))
+    url = "http://localhost/api/sessions/w1/recording/entries?event=snapshot"
+    resp = await route_recording(runtime, None, url, _match("w1", "entries"))
+    status, body = _parse_response(resp)
+    assert status == 200
+    assert len(body) >= 1
+    assert "screen" in body[0]["data"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_recording_entries_via_route_http() -> None:
+    """GET /recording/entries dispatched correctly through route_http."""
+    runtime = _Runtime(_make_store(5))
+    req = SimpleNamespace(
+        url="http://localhost/api/sessions/w1/recording/entries?limit=2",
+        method="GET",
+        headers={},
+    )
+    resp = await route_http(runtime, req)
+    status, body = _parse_response(resp)
+    assert status == 200
+    assert isinstance(body, list)
+    assert len(body) == 2
+
+
+# ---------------------------------------------------------------------------
+# Status item: recording_enabled / recording_available
+# ---------------------------------------------------------------------------
+
+
 def test_status_item_recording_no_events() -> None:
     runtime = _Runtime(_make_store(0))
     item = _session_status_item(runtime)
