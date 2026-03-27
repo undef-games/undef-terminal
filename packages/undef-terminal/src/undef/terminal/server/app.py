@@ -30,9 +30,11 @@ from undef.terminal.server.auth import (
 )
 from undef.terminal.server.authorization import AuthorizationService
 from undef.terminal.server.policy import SessionPolicyResolver
+from undef.terminal.server.profiles import FileProfileStore
 from undef.terminal.server.registry import SessionRegistry
 from undef.terminal.server.routes.api import create_api_router
 from undef.terminal.server.routes.pages import create_page_router
+from undef.terminal.server.routes.profiles import create_profiles_router
 from undef.terminal.server.webhooks import WebhookManager
 
 if TYPE_CHECKING:
@@ -199,6 +201,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
         worker_bearer_token=config.auth.worker_bearer_token,
         max_sessions=config.server.max_sessions,
     )
+    profile_store = FileProfileStore(config.profiles.directory)
 
     @asynccontextmanager
     async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -233,6 +236,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
     app.state.uterm_registry = registry
     app.state.uterm_metrics = metrics
     app.state.uterm_webhooks = webhook_manager
+    app.state.uterm_profile_store = profile_store
 
     @app.middleware("http")
     async def _request_logging_middleware(request: Request, call_next: RequestResponseEndpoint) -> Response:
@@ -269,6 +273,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
 
     app.include_router(hub.create_router(), dependencies=[Depends(_require_authenticated)])
     app.include_router(create_api_router(), dependencies=[Depends(_require_authenticated)])
+    app.include_router(create_profiles_router(), dependencies=[Depends(_require_authenticated)])
     app.include_router(create_page_router(), prefix=config.ui.app_path, dependencies=[Depends(_require_authenticated)])
 
     if config.server.allowed_origins:
