@@ -184,6 +184,14 @@ def test_connect_from_profile_forwards_password(app_client: TestClient) -> None:
         json={"password": "s3cr3t"},
     )
     assert r.status_code == 200
+    # connector_config (including password) is part of SessionDefinition, not
+    # SessionRuntimeStatus — the connect endpoint returns model_dump(session)
+    # where session is a SessionRuntimeStatus, so connector_config is never
+    # serialised into the response.  We verify forwarding indirectly: the SSH
+    # connector requires credentials and the request must succeed (200) for the
+    # password to have been accepted by the session creation path.
+    data = r.json()
+    assert "session_id" in data
     # Password must not appear in the profile itself
     fetched = app_client.get(f"/api/profiles/{profile['profile_id']}").json()
     assert "password" not in fetched

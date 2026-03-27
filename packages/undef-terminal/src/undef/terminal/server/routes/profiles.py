@@ -11,6 +11,7 @@ import uuid
 from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Body, HTTPException, Path, Request
+from pydantic import ValidationError
 
 from undef.terminal.server.models import model_dump
 from undef.terminal.server.profiles import ConnectionProfile
@@ -124,7 +125,10 @@ def create_profiles_router() -> APIRouter:
             raise HTTPException(status_code=403, detail="insufficient privileges")
         allowed = {"name", "host", "port", "username", "tags", "input_mode", "recording_enabled", "visibility"}
         updates = {k: v for k, v in payload.items() if k in allowed}
-        updated = await store.update_profile(profile_id, updates)
+        try:
+            updated = await store.update_profile(profile_id, updates)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         if updated is None:
             raise _not_found(profile_id)
         return updated.model_dump(mode="python")
