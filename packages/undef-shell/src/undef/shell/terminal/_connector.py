@@ -33,7 +33,7 @@ from typing import Any
 
 try:
     from undef.terminal.server.connectors.base import SessionConnector as _SessionConnector
-except ImportError:
+except ImportError:  # pragma: no cover
     _SessionConnector = object  # type: ignore[assignment,misc]
 
 from undef.shell._commands import CommandDispatcher
