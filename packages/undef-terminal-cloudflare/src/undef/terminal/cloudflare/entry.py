@@ -118,6 +118,8 @@ _WORKER_ROUTE_PATTERNS = (
     re.compile(
         r"^/api/sessions/(?P<worker_id>[a-zA-Z0-9_-]{1,64})(?:/(?:snapshot|events|mode|clear|analyze|restart))?$"
     ),
+    re.compile(r"^/api/sessions/(?P<worker_id>[a-zA-Z0-9_-]{1,64})/events/stream$"),
+    re.compile(r"^/api/sessions/(?P<worker_id>[a-zA-Z0-9_-]{1,64})/webhooks(?:/[a-zA-Z0-9_-]{1,64})?$"),
 )
 _STATIC_ASSET_PATH = re.compile(r"^/[a-zA-Z0-9._/-]+\.(?:html|css|js)$")
 _SESSION_ID_RE = re.compile(r"^/api/sessions/(?P<session_id>[a-zA-Z0-9_-]{1,64})$")
