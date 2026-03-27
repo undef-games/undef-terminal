@@ -18,6 +18,19 @@ from undef.terminal.server.models import ServerBaseModel
 if TYPE_CHECKING:
     from pathlib import Path
 
+_MUTABLE_FIELDS = frozenset(
+    {
+        "name",
+        "host",
+        "port",
+        "username",
+        "tags",
+        "input_mode",
+        "recording_enabled",
+        "visibility",
+    }
+)
+
 
 class ConnectionProfile(ServerBaseModel):
     """A saved connection target owned by a principal."""
@@ -33,6 +46,8 @@ class ConnectionProfile(ServerBaseModel):
     input_mode: Literal["open", "hijack"] = "open"
     recording_enabled: bool = False
     visibility: Literal["private", "shared"] = "private"
+    # Profile visibility: "private" = owner-only, "shared" = all authenticated users.
+    # Distinct from session Visibility which uses ("public", "operator", "private").
     created_at: float
     updated_at: float
 
@@ -56,8 +71,11 @@ class FileProfileStore:
         path = self._path()
         if not path.exists():
             return []
-        data: list[dict[str, Any]] = json.loads(path.read_text(encoding="utf-8"))
-        return [ConnectionProfile.model_validate(p) for p in data]
+        try:
+            data: list[dict[str, Any]] = json.loads(path.read_text(encoding="utf-8"))
+            return [ConnectionProfile.model_validate(p) for p in data]
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise RuntimeError(f"Profiles store is corrupt at {path}: {exc}") from exc
 
     def _write_sync(self, profiles: list[ConnectionProfile]) -> None:
         """Write all profiles to disk atomically. Caller must hold self._lock."""
@@ -94,12 +112,13 @@ class FileProfileStore:
 
     async def update_profile(self, profile_id: str, updates: dict[str, Any]) -> ConnectionProfile | None:
         """Apply *updates* to the profile and return the updated model, or None if not found."""
+        safe_updates = {k: v for k, v in updates.items() if k in _MUTABLE_FIELDS}
         async with self._lock:
             profiles = self._read_sync()
             for i, p in enumerate(profiles):
                 if p.profile_id == profile_id:
                     data = p.model_dump(mode="python")
-                    data.update(updates)
+                    data.update(safe_updates)
                     data["updated_at"] = time.time()
                     profiles[i] = ConnectionProfile.model_validate(data)
                     self._write_sync(profiles)
