@@ -182,6 +182,23 @@ class SessionAnalyzeResponse(TypedDict):
     worker_id: str
 
 
+class RecordingMetaResponse(TypedDict):
+    """Shape of GET /api/sessions/{id}/recording response."""
+
+    session_id: str
+    enabled: bool
+    entry_count: int
+    exists: bool
+
+
+class RecordingEntry(TypedDict):
+    """Single entry from GET /api/sessions/{id}/recording/entries."""
+
+    ts: float
+    event: str
+    data: dict[str, Any]
+
+
 FrameType = Literal[
     "snapshot_req",
     "snapshot",

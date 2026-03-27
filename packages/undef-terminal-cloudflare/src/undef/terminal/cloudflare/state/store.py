@@ -167,14 +167,7 @@ class SqliteStateStore:
 
     def min_event_seq(self, worker_id: str) -> int:
         rows = self._rows(
-            self._run(
-                """
-                SELECT COALESCE(MIN(seq), 0) AS seq
-                FROM session_events
-                WHERE worker_id = ?
-                """,
-                worker_id,
-            )
+            self._run("SELECT COALESCE(MIN(seq), 0) AS seq FROM session_events WHERE worker_id = ?", worker_id)
         )
         if not rows:
             return 0
@@ -202,8 +195,7 @@ class SqliteStateStore:
         )
 
     def append_event(self, worker_id: str, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
-        # CF DO SQLite does not support SAVEPOINT/BEGIN/ROLLBACK — the storage
-        # API auto-coalesces writes atomically.  Run statements directly.
+        # CF DO SQLite auto-coalesces writes atomically (no SAVEPOINT/ROLLBACK).
         current_seq = self.current_event_seq(worker_id)
         seq = current_seq + 1
         ts = time.time()
@@ -245,14 +237,7 @@ class SqliteStateStore:
 
     def current_event_seq(self, worker_id: str) -> int:
         rows = self._rows(
-            self._run(
-                """
-                SELECT COALESCE(MAX(seq), 0) AS seq
-                FROM session_events
-                WHERE worker_id = ?
-                """,
-                worker_id,
-            )
+            self._run("SELECT COALESCE(MAX(seq), 0) AS seq FROM session_events WHERE worker_id = ?", worker_id)
         )
         if not rows:
             return 0
@@ -284,6 +269,55 @@ class SqliteStateStore:
                 "ts": float(self._row_value(row, "ts", 1) or 0.0),
                 "type": str(self._row_value(row, "event_type", 2) or ""),
                 "data": json.loads(str(self._row_value(row, "payload_json", 3) or "{}")),
+            }
+            for row in rows
+        ]
+
+    # ------------------------------------------------------------------
+    # Recording
+    # ------------------------------------------------------------------
+
+    def count_events(self, worker_id: str) -> int:
+        """Return the total number of events stored for *worker_id*."""
+        rows = self._rows(self._run("SELECT COUNT(*) AS cnt FROM session_events WHERE worker_id = ?", worker_id))
+        # COUNT(*) always returns exactly one row.
+        return int(self._row_value(rows[0], "cnt", 0) or 0)
+
+    def list_recording_entries(
+        self,
+        worker_id: str,
+        *,
+        limit: int = 200,
+        offset: int | None = None,
+        event: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Query session events as ``{ts, event, data}``.  *offset=None* → tail."""
+        limit = max(1, min(limit, 500))
+        tail = offset is None
+
+        where = "WHERE worker_id = ?"
+        params: list[object] = [worker_id]
+        if event is not None:
+            where += " AND event_type = ?"
+            params.append(event)
+
+        order = "ORDER BY seq DESC" if tail else "ORDER BY seq ASC"
+        params.append(limit)
+        suffix = f"{order} LIMIT ?"
+        if not tail:
+            suffix += " OFFSET ?"
+            params.append(max(0, offset))  # type: ignore[arg-type]
+
+        sql = f"SELECT ts, event_type, payload_json FROM session_events {where} {suffix}"  # noqa: S608
+        rows = self._rows(self._run(sql, *params))
+        if tail:
+            rows = list(reversed(rows))
+
+        return [
+            {
+                "ts": float(self._row_value(row, "ts", 0) or 0.0),
+                "event": str(self._row_value(row, "event_type", 1) or ""),
+                "data": json.loads(str(self._row_value(row, "payload_json", 2) or "{}")),
             }
             for row in rows
         ]

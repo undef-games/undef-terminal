@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from ._hijack import route_hijack
+from ._recording import route_recording
 from ._session import route_session
 from ._shared import (
     _SESSION_ROUTE_RE,
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
 
 _SSE_ROUTE_RE = re.compile(r"^/api/sessions/([a-zA-Z0-9_-]{1,64})/events/stream$")
 _WEBHOOK_ROUTE_RE = re.compile(r"^/api/sessions/([a-zA-Z0-9_-]{1,64})/webhooks(?:/([a-zA-Z0-9_-]{1,64}))?$")
+_RECORDING_ROUTE_RE = re.compile(r"^/api/sessions/([a-zA-Z0-9_-]{1,64})/recording(?:/(entries))?$")
 
 
 async def route_http(runtime: RuntimeProtocol, request: object) -> object:
@@ -53,6 +55,10 @@ async def route_http(runtime: RuntimeProtocol, request: object) -> object:
     webhook_match = _WEBHOOK_ROUTE_RE.match(path)
     if webhook_match:
         return await route_webhooks(runtime, request, path, url, method, webhook_match.group(1), webhook_match.group(2))
+
+    recording_match = _RECORDING_ROUTE_RE.match(path)
+    if recording_match and method == "GET":
+        return await route_recording(runtime, request, url, recording_match)
 
     session_match = _SESSION_ROUTE_RE.match(path)
     if session_match:
