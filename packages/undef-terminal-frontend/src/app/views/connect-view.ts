@@ -65,6 +65,10 @@ async function handleSubmit(form: HTMLFormElement, errorEl: HTMLElement, submitB
     if (pass) payload.password = pass;
   }
   try {
+    // Connect first
+    const result = await quickConnect(payload as unknown as Parameters<typeof quickConnect>[0]);
+
+    // Save profile only after successful connect
     const saveCheckbox = form.querySelector<HTMLInputElement>("#connect-save-profile");
     if (saveCheckbox?.checked) {
       // Save profile without password — profiles never store credentials.
@@ -78,10 +82,9 @@ async function handleSubmit(form: HTMLFormElement, errorEl: HTMLElement, submitB
       if (payload.input_mode) profilePayload.input_mode = payload.input_mode;
       if (payload.tags) profilePayload.tags = payload.tags;
       await createProfile(profilePayload as Parameters<typeof createProfile>[0]).catch(() => {
-        // Non-fatal — connect proceeds even if save fails.
+        // Non-fatal — navigate proceeds even if save fails.
       });
     }
-    const result = await quickConnect(payload as unknown as Parameters<typeof quickConnect>[0]);
     window.location.href = result.url;
   } catch (err) {
     errorEl.textContent = err instanceof Error ? err.message : "Connection failed.";
