@@ -82,6 +82,18 @@ class SqliteStateStore:
             )
             """
         )
+        self._run(
+            """
+            CREATE TABLE IF NOT EXISTS webhooks (
+                webhook_id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                url TEXT NOT NULL,
+                event_types_json TEXT,
+                pattern TEXT,
+                secret TEXT
+            )
+            """
+        )
 
     def load_session(self, worker_id: str) -> dict[str, Any] | None:
         rows = self._rows(
@@ -275,6 +287,69 @@ class SqliteStateStore:
             }
             for row in rows
         ]
+
+    # ------------------------------------------------------------------
+    # Webhooks
+    # ------------------------------------------------------------------
+
+    def save_webhook(
+        self,
+        webhook_id: str,
+        session_id: str,
+        url: str,
+        *,
+        event_types: list[str] | None = None,
+        pattern: str | None = None,
+        secret: str | None = None,
+    ) -> None:
+        event_types_json = json.dumps(event_types) if event_types is not None else None
+        self._run(
+            """
+            INSERT INTO webhooks(webhook_id, session_id, url, event_types_json, pattern, secret)
+            VALUES(?, ?, ?, ?, ?, ?)
+            ON CONFLICT(webhook_id) DO UPDATE SET
+                url = excluded.url,
+                event_types_json = excluded.event_types_json,
+                pattern = excluded.pattern,
+                secret = excluded.secret
+            """,
+            webhook_id,
+            session_id,
+            url,
+            event_types_json,
+            pattern,
+            secret,
+        )
+
+    def load_webhooks(self, session_id: str) -> list[dict[str, Any]]:
+        rows = self._rows(
+            self._run(
+                """
+                SELECT webhook_id, session_id, url, event_types_json, pattern, secret
+                FROM webhooks
+                WHERE session_id = ?
+                """,
+                session_id,
+            )
+        )
+        return [
+            {
+                "webhook_id": str(self._row_value(row, "webhook_id", 0) or ""),
+                "session_id": str(self._row_value(row, "session_id", 1) or ""),
+                "url": str(self._row_value(row, "url", 2) or ""),
+                "event_types": json.loads(str(self._row_value(row, "event_types_json", 3) or "null")),
+                "pattern": self._row_value(row, "pattern", 4),
+                "secret": self._row_value(row, "secret", 5),
+            }
+            for row in rows
+        ]
+
+    def delete_webhook(self, webhook_id: str) -> bool:
+        rows_before = self._rows(self._run("SELECT webhook_id FROM webhooks WHERE webhook_id = ?", webhook_id))
+        if not rows_before:
+            return False
+        self._run("DELETE FROM webhooks WHERE webhook_id = ?", webhook_id)
+        return True
 
     # ------------------------------------------------------------------
     # Resume tokens

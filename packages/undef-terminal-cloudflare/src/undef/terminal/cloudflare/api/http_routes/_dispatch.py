@@ -4,6 +4,7 @@
 #
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -16,11 +17,18 @@ from ._shared import (
 
 try:
     from undef.terminal.cloudflare.cf_types import json_response
+    from undef.terminal.cloudflare.do._sse import route_sse
+    from undef.terminal.cloudflare.do._webhooks import route_webhooks
 except ImportError:  # pragma: no cover
     from cf_types import json_response  # type: ignore[import-not-found]  # CF flat path  # pragma: no cover
+    from do._sse import route_sse  # type: ignore[import-not-found]  # CF flat path  # pragma: no cover
+    from do._webhooks import route_webhooks  # type: ignore[import-not-found]  # CF flat path  # pragma: no cover
 
 if TYPE_CHECKING:
     from undef.terminal.cloudflare.contracts import RuntimeProtocol
+
+_SSE_ROUTE_RE = re.compile(r"^/api/sessions/([a-zA-Z0-9_-]{1,64})/events/stream$")
+_WEBHOOK_ROUTE_RE = re.compile(r"^/api/sessions/([a-zA-Z0-9_-]{1,64})/webhooks(?:/([a-zA-Z0-9_-]{1,64}))?$")
 
 
 async def route_http(runtime: RuntimeProtocol, request: object) -> object:
@@ -37,6 +45,14 @@ async def route_http(runtime: RuntimeProtocol, request: object) -> object:
     hijack_result = await route_hijack(runtime, request, path, url, method)
     if hijack_result is not None:
         return hijack_result
+
+    sse_match = _SSE_ROUTE_RE.match(path)
+    if sse_match and method == "GET":
+        return await route_sse(runtime, request, url, sse_match.group(1))
+
+    webhook_match = _WEBHOOK_ROUTE_RE.match(path)
+    if webhook_match:
+        return await route_webhooks(runtime, request, path, url, method, webhook_match.group(1), webhook_match.group(2))
 
     session_match = _SESSION_ROUTE_RE.match(path)
     if session_match:

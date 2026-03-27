@@ -42,7 +42,8 @@ import pytest
 import uvicorn
 import websockets
 
-from undef.terminal.control_stream import ControlChunk, ControlStreamDecoder, DataChunk
+from undef.terminal.control_channel import ControlChannelDecoder as ControlStreamDecoder
+from undef.terminal.control_channel import ControlChunk, DataChunk
 from undef.terminal.server.app import create_server_app
 from undef.terminal.server.config import config_from_mapping
 from undef.terminal.transports.telnet_server import start_telnet_server
