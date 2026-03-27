@@ -47,7 +47,7 @@ class SessionStatusItem(TypedDict):
     CF-only fields: ``hijacked``.
     CF fields with synthetic defaults: ``display_name`` (= worker_id),
     ``connector_type`` ("unknown"), ``lifecycle_state`` ("running"/"idle"),
-    ``auto_start`` (False), ``tags`` ([]), ``recording_enabled`` (False),
+    ``auto_start`` (False), ``tags`` ([]), ``recording_enabled`` (True),
     ``recording_available`` (False), ``owner`` (None), ``visibility`` ("public"),
     ``last_error`` (None).
     """

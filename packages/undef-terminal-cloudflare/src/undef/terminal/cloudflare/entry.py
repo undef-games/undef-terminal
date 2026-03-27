@@ -275,7 +275,7 @@ async def _handle_connect(request: object, env: object) -> Response:
         "connected": False,
         "auto_start": False,
         "tags": [],
-        "recording_enabled": False,
+        "recording_enabled": True,
         "recording_available": False,
         "owner": None,
         "visibility": "public",
