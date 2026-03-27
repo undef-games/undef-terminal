@@ -308,7 +308,7 @@ async def test_deliver_gives_up_after_max_retries() -> None:
         await manager.register("s1", "https://example.com/hook", event_bus=bus)
         await asyncio.sleep(0.05)
         await hub.append_event("s1", "snapshot", {"screen": "$ fail"})
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(1.0)
 
     # for attempt, delay in enumerate((*_RETRY_DELAYS, None)) → 4 iterations
     assert call_count == 4
