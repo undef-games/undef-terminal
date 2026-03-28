@@ -64,6 +64,7 @@ async def handle_tunnels(request: object, env: object) -> object:
         "worker_token": worker_token,
         "share_token": share_token,
         "control_token": control_token,
+        "issued_ip": str(getattr(request, "headers", {}).get("CF-Connecting-IP") or ""),
     }
     kv = getattr(env, "SESSION_REGISTRY", None)
     if kv is not None:

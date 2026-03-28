@@ -286,16 +286,21 @@ class SessionRuntime(_SessionRuntimeIoMixin, _WsHelperMixin, DurableObject):
             else:
                 token = extract_bearer_or_cookie(request)
                 valid_worker_token = False
+                auth_type = "none"
                 if token and secrets.compare_digest(token, self.config.worker_bearer_token):
                     valid_worker_token = True
+                    auth_type = "global_bearer"
                 if token and self._tunnel_worker_token and secrets.compare_digest(token, self._tunnel_worker_token):
                     valid_worker_token = True
+                    auth_type = "tunnel_session"
                 if not valid_worker_token:
+                    logger.info("tunnel_token_validated worker_id=%s valid=false", self.worker_id)
                     return Response(
                         json.dumps({"error": "worker authentication required"}),
                         status=403,
                         headers={"content-type": "application/json"},
                     )
+                logger.info("tunnel_token_validated worker_id=%s auth_type=%s", self.worker_id, auth_type)
                 _principal, auth_error = None, None
         else:
             _principal, auth_error = await self._resolve_principal(request)
