@@ -98,6 +98,39 @@
 
 - **Session state unification**: `TermHub` (in-memory, hosted server) and `state/registry.py` (KV-backed, CF) are separate session state stores with divergent models. A future task should unify these under a shared contract/protocol so session lifecycle, visibility, and metadata are consistent between the two deployment targets.
 
+### 2026-03-28: Tunnel Sharing System (tmate/ngrok-style)
+- **Tunnel protocol** (`tunnel/protocol.py`): binary multiplexed frames `[channel][flags][payload]` over WebSocket
+- **PTY capture** (`tunnel/pty_capture.py`): spawn PTY or attach to current TTY
+- **Tunnel client** (`tunnel/client.py`): async WS client with reconnect + backoff
+- **CLI** (`cli/share.py`): `uterm share --server URL [cmd]` shares local terminal
+- **FastAPI routes** (`tunnel/fastapi_routes.py`): `/tunnel/{id}` WS endpoint, bridges to TermHub
+- **CF routes** (`api/tunnel_routes.py`, `api/_tunnel_api.py`): binary frame handler in DO, `POST /api/tunnels`, share URL auth
+- **Share URLs**: `/app/session/{id}?token=...` (viewer), `/app/operator/{id}?token=...` (operator), `/s/{id}?token=...` (CF short URL)
+- **Frontend**: `setShareToken()` / `withShareToken()` propagates token to all API + WS calls
+- **Tests**: 161 tunnel + 28 CF tunnel + 54 API + 469 frontend = all passing
+
+### 2026-03-28: Tunnel Token Hardening
+- **TTL**: default 1 hour, configurable per-server and per-tunnel via `TunnelConfig`
+- **Revocation**: `DELETE /api/tunnels/{id}/tokens`
+- **Rotation**: `POST /api/tunnels/{id}/tokens/rotate`
+- **Timing attack fix**: CF `resolve_share_context()` uses `secrets.compare_digest()` (was `==`)
+- **Enumeration fix**: share routes return 404 for both "not found" and "invalid token"
+- **Cookie transport**: `_resolve_tunnel_share_principal()` checks `uterm_tunnel_{id}` cookie alongside query param
+- **IP binding**: optional (`TunnelConfig.ip_binding`), stores `issued_ip` at creation
+- **Audit logging**: structured logs on all token create/validate/expire/revoke/rotate
+- **Shared types**: `TunnelTokenState` + `TunnelCreateResponse` TypedDicts in `tunnel/types.py`
+- **Config model**: `TunnelConfig` added to `ServerConfig` (token_ttl_s, token_transport, cookie_secure, cookie_samesite, ip_binding)
+
+## Known Issues
+
+- CF overall package coverage at 96.5% (pre-existing gaps in contracts.py, ws_routes.py)
+- 13 xenon blocks above B in pre-existing files (config.py at D)
+- `undef-shell` 0.1.0 not yet on PyPI
+- FastAPI tunnel tokens are in-memory only — server restart loses active share links (CF side has KV persistence)
+- Frontend share token propagation uses query params by default; cookie mode available but not default
+
 ## What's Next
 
-Ready to publish 0.4.0 when desired.
+- **Phase 2**: `uterm tunnel <port>` — TCP port forwarding through the tunnel primitive (channel multiplexing already supports it)
+- **Phase 3**: HTTP-aware tunneling with inspection UI (MITM features)
+- Ready to publish 0.4.0 when desired.
