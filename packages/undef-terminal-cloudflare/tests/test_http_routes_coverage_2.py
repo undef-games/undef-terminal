@@ -51,6 +51,7 @@ class _Runtime:
         self._browser_role = browser_role
         self.last_snapshot: dict | None = None
         self.last_analysis: str | None = None
+        self.lifecycle_state = "stopped"
         self.input_mode: str = "hijack"
         self.browser_hijack_owner: dict[str, str] = {}
 
@@ -385,6 +386,7 @@ async def test_cf_hijack_events_has_more_true_when_exactly_limit() -> None:
         hijack = coord
         last_snapshot = None
         last_analysis = None
+        lifecycle_state = "stopped"
         input_mode = "hijack"
         browser_hijack_owner: dict = {}
         _role = "admin"
@@ -469,6 +471,7 @@ async def test_cf_hijack_events_has_more_false_when_fewer() -> None:
         hijack = coord
         last_snapshot = None
         last_analysis = None
+        lifecycle_state = "stopped"
         input_mode = "hijack"
         browser_hijack_owner: dict = {}
 

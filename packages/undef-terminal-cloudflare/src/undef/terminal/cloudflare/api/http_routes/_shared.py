@@ -133,7 +133,7 @@ def _session_status_item(runtime: RuntimeProtocol) -> dict[str, object]:
         "display_name": meta.get("display_name") or runtime.worker_id,
         "created_at": meta.get("created_at") or 0.0,
         "connector_type": meta.get("connector_type") or "unknown",
-        "lifecycle_state": "running" if connected else "idle",
+        "lifecycle_state": runtime.lifecycle_state,
         "input_mode": runtime.input_mode,
         "connected": connected,
         "auto_start": False,

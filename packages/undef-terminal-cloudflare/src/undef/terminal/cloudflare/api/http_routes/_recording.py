@@ -9,12 +9,14 @@ so the replay frontend can consume it without changes.
 
 Routes
 ------
-``GET /api/sessions/{id}/recording``         — metadata (enabled, entry count)
-``GET /api/sessions/{id}/recording/entries``  — paginated entries as ``{ts, event, data}``
+``GET /api/sessions/{id}/recording``           — metadata (enabled, entry count)
+``GET /api/sessions/{id}/recording/entries``   — paginated entries as ``{ts, event, data}``
+``GET /api/sessions/{id}/recording/download``  — full JSONL stream
 """
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
 
@@ -53,6 +55,9 @@ async def route_recording(
     if sub == "entries":
         return _recording_entries(runtime, session_id, url)
 
+    if sub == "download":
+        return _recording_download(runtime, session_id)
+
     return json_response({"error": "not_found"}, status=404)
 
 
@@ -82,3 +87,23 @@ def _recording_entries(runtime: RuntimeProtocol, _session_id: str, url: str) -> 
         event=event,
     )
     return json_response(entries)
+
+
+def _recording_download(runtime: RuntimeProtocol, session_id: str) -> object:
+    """Stream all events as JSONL (one JSON object per line)."""
+    try:
+        from undef.terminal.cloudflare.cf_types import Response
+    except ImportError:  # pragma: no cover
+        from cf_types import Response  # type: ignore[import-not-found]
+
+    entries = runtime.store.list_recording_entries(runtime.worker_id, limit=500, offset=0)
+    lines = [json.dumps(e, ensure_ascii=True) for e in entries]
+    body = "\n".join(lines) + ("\n" if lines else "")
+    return Response(
+        body,
+        status=200,
+        headers={
+            "content-type": "application/x-ndjson",
+            "content-disposition": f'attachment; filename="{session_id}.jsonl"',
+        },
+    )

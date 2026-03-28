@@ -89,6 +89,7 @@ class _Runtime:
         self._role = "admin"
         self.last_snapshot: dict | None = None
         self.browser_hijack_owner: dict[str, str] = {}
+        self.lifecycle_state = "stopped"
         self.input_mode: str = "hijack"
 
     async def request_json(self, request: object) -> dict[str, object]:

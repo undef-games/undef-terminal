@@ -471,6 +471,7 @@ async def test_dispatch_sse_route() -> None:
         hijack = HijackCoordinator()
         last_snapshot: dict | None = None
         last_analysis: str | None = None
+        lifecycle_state = "stopped"
         input_mode = "hijack"
         browser_hijack_owner: dict = {}
 

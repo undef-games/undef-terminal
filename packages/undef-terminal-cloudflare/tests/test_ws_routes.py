@@ -29,6 +29,7 @@ class _Runtime:
             "visibility": "public",
             "owner": None,
         }
+        self.lifecycle_state = "stopped"
         self.input_mode = input_mode
         self.hijack = HijackCoordinator()
         self.last_snapshot: dict | None = None

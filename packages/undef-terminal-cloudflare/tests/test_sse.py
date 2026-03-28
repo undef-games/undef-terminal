@@ -33,6 +33,7 @@ class _Runtime:
     def __init__(self, store: SqliteStateStore, worker_id: str = "w1") -> None:
         self.store = store
         self.worker_id = worker_id
+        self.lifecycle_state = "stopped"
         self.meta: dict = {
             "display_name": self.worker_id,
             "connector_type": "unknown",

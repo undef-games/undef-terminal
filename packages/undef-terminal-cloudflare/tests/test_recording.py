@@ -49,6 +49,7 @@ class _Runtime:
             "owner": None,
         }
         self.worker_ws = None
+        self.lifecycle_state = "stopped"
         self.input_mode = "open"
         self.hijack = _HijackStub()
 
@@ -253,9 +254,30 @@ async def test_route_recording_entries_event_filter() -> None:
 @pytest.mark.asyncio
 async def test_route_recording_unknown_sub() -> None:
     runtime = _Runtime(_make_store(0))
-    resp = await route_recording(runtime, None, "", _match("w1", "download"))
-    status, body = _parse_response(resp)
+    resp = await route_recording(runtime, None, "", _match("w1", "something_else"))
+    status, _body = _parse_response(resp)
     assert status == 404
+
+
+@pytest.mark.asyncio
+async def test_route_recording_download() -> None:
+    """GET /recording/download returns JSONL with {ts, event, data} per line."""
+    runtime = _Runtime(_make_store(3))
+    resp = await route_recording(runtime, None, "", _match("w1", "download"))
+    assert getattr(resp, "status", 200) == 200
+    headers = getattr(resp, "headers", {}) or {}
+    assert "ndjson" in headers.get("content-type", "")
+    assert "w1.jsonl" in headers.get("content-disposition", "")
+    body = getattr(resp, "body", "")
+    lines = [line for line in body.strip().split("\n") if line]
+    assert len(lines) == 3
+    import json
+
+    for line in lines:
+        entry = json.loads(line)
+        assert "ts" in entry
+        assert "event" in entry
+        assert "data" in entry
 
 
 # ---------------------------------------------------------------------------

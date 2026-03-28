@@ -47,6 +47,7 @@ class _Runtime:
         self._role = role
         self.last_snapshot: dict | None = None
         self.last_analysis: str | None = None
+        self.lifecycle_state = "stopped"
         self.input_mode: str = "hijack"
 
     async def request_json(self, request: object) -> dict:

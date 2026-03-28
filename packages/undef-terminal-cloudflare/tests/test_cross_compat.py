@@ -42,6 +42,7 @@ class _CfRuntime:
         self.worker_id = "w1"
         self.meta: dict = dict(_DEFAULT_META)
         self.worker_ws = object()  # "connected"
+        self.lifecycle_state = "stopped"
         self.input_mode = "hijack"
         self.hijack = HijackCoordinator()
         self.last_snapshot: dict | None = None

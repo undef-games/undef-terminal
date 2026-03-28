@@ -368,6 +368,7 @@ class RuntimeProtocol(Protocol):
     worker_ws: CFWebSocket | None
     worker_id: str
     input_mode: str
+    lifecycle_state: str
     meta: dict[str, Any]
     hijack: Any  # HijackCoordinator
     config: Any  # CloudflareConfig

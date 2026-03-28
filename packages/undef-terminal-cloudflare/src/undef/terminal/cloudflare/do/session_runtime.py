@@ -60,6 +60,7 @@ class SessionRuntime(_SessionRuntimeIoMixin, _WsHelperMixin, DurableObject):
         self.last_snapshot: dict[str, Any] | None = None
         self.last_analysis: str | None = None
         self.input_mode: str = "hijack"
+        self.lifecycle_state: str = "stopped"
         self.meta: dict[str, Any] = {
             "display_name": self.worker_id,
             "connector_type": "unknown",
@@ -353,6 +354,7 @@ class SessionRuntime(_SessionRuntimeIoMixin, _WsHelperMixin, DurableObject):
         self._register_socket(ws, role)
         if role == "worker":
             self.worker_ws = ws
+            self.lifecycle_state = "running"
             await self.broadcast_worker_frame(
                 {"type": "worker_connected", "worker_id": self.worker_id, "ts": time.time()}
             )
@@ -419,6 +421,7 @@ class SessionRuntime(_SessionRuntimeIoMixin, _WsHelperMixin, DurableObject):
         wid = self._socket_worker_id(ws)
         self._remove_ws(ws)
         if role == "worker":
+            self.lifecycle_state = "stopped"
             await self.broadcast_worker_frame({"type": "worker_disconnected", "worker_id": wid, "ts": time.time()})
             await update_kv_session(self.env, wid, connected=False)
 
@@ -428,5 +431,6 @@ class SessionRuntime(_SessionRuntimeIoMixin, _WsHelperMixin, DurableObject):
         logger.warning("ws_error worker_id=%s role=%s error=%s", wid, role, error)
         self._remove_ws(ws)
         if role == "worker":
+            self.lifecycle_state = "error"
             await self.broadcast_worker_frame({"type": "worker_disconnected", "worker_id": wid, "ts": time.time()})
             await update_kv_session(self.env, wid, connected=False)

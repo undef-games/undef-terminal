@@ -54,6 +54,7 @@ class _Runtime:
         self._browser_role = browser_role
         self.last_snapshot: dict | None = None
         self.last_analysis: str | None = None
+        self.lifecycle_state = "stopped"
         self.input_mode: str = "hijack"
         self.browser_hijack_owner: dict[str, str] = {}
 

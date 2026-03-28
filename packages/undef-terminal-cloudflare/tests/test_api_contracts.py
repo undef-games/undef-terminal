@@ -72,6 +72,7 @@ class _Runtime:
         self._actions: list[tuple[str, str, int]] = []
         self.last_snapshot: dict | None = None
         self.browser_hijack_owner: dict[str, str] = {}
+        self.lifecycle_state = "running" if worker_ws is not None else "stopped"
         self.input_mode: str = "hijack"
 
     async def request_json(self, request: object) -> dict:
@@ -152,7 +153,7 @@ async def test_sessions_lifecycle_state_reflects_connection() -> None:
 
     assert connected_resp[0]["lifecycle_state"] == "running"
     assert connected_resp[0]["connected"] is True
-    assert disconnected_resp[0]["lifecycle_state"] == "idle"
+    assert disconnected_resp[0]["lifecycle_state"] == "stopped"
     assert disconnected_resp[0]["connected"] is False
 
 
