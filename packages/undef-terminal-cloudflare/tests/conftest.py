@@ -169,7 +169,9 @@ def wrangler_server():
     Otherwise, starts ``pywrangler dev`` locally with auto-restart on crash.
     """
     real_cf_url = os.environ.get("REAL_CF_URL", "").rstrip("/")
-    if real_cf_url:
+    # Only use real CF URL when REAL_CF is explicitly set — avoids accidentally
+    # routing local e2e tests to the real deployment when REAL_CF_URL lingers in env.
+    if real_cf_url and os.environ.get("REAL_CF"):
         yield real_cf_url
         return
 

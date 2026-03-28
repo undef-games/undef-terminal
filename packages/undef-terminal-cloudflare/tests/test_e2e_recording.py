@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -36,6 +37,21 @@ _WS_TIMEOUT_S = 0.5
 _WS_PROCESS_S = 1.0
 _HTTP_UA = "undef-terminal-e2e-recording/1.0"
 
+# CF Access service token for real_cf tests (bypasses Cloudflare Access login).
+# Set via env vars or fall back to empty (local pywrangler dev uses AUTH_MODE=dev).
+_CF_CLIENT_ID = os.environ.get("CF_ACCESS_CLIENT_ID", "")
+_CF_CLIENT_SECRET = os.environ.get("CF_ACCESS_CLIENT_SECRET", "")
+_WORKER_BEARER_TOKEN = os.environ.get("CF_WORKER_BEARER_TOKEN", "")
+
+
+def _cf_access_headers(url: str = "") -> dict[str, str]:
+    """Return CF Access service token headers when targeting real CF (https)."""
+    if url.startswith("http://"):
+        return {}  # local pywrangler — no CF Access needed
+    if _CF_CLIENT_ID and _CF_CLIENT_SECRET:
+        return {"CF-Access-Client-Id": _CF_CLIENT_ID, "CF-Access-Client-Secret": _CF_CLIENT_SECRET}
+    return {}
+
 
 def _base_ws(base_http: str) -> str:
     return base_http.replace("http://", "ws://").replace("https://", "wss://")
@@ -47,7 +63,7 @@ def _new_worker_id() -> str:
 
 def _http_get_json(base: str, path: str) -> tuple[int, object]:
     url = f"{base}{path}"
-    req = urllib.request.Request(url, headers={"User-Agent": _HTTP_UA})  # noqa: S310
+    req = urllib.request.Request(url, headers={"User-Agent": _HTTP_UA, **_cf_access_headers(url)})  # noqa: S310
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
             return resp.status, json.loads(resp.read())
@@ -57,6 +73,14 @@ def _http_get_json(base: str, path: str) -> tuple[int, object]:
         return exc.code, {}
 
 
+def _ws_connect(uri: str):
+    """Connect with CF Access headers when targeting real CF (wss://)."""
+    extra = _cf_access_headers(uri)
+    if _WORKER_BEARER_TOKEN and "/ws/worker/" in uri and uri.startswith("wss://"):
+        extra["Authorization"] = f"Bearer {_WORKER_BEARER_TOKEN}"
+    return websockets.connect(uri, additional_headers=extra) if extra else websockets.connect(uri)
+
+
 async def _connect_worker_send_snapshots(
     base_ws: str,
     worker_id: str,
@@ -64,7 +88,7 @@ async def _connect_worker_send_snapshots(
 ) -> None:
     """Connect worker WS, drain hello, send snapshot frames, disconnect."""
     uri = f"{base_ws}/ws/worker/{worker_id}/term"
-    async with websockets.connect(uri) as ws:
+    async with _ws_connect(uri) as ws:
         with contextlib.suppress(TimeoutError, Exception):
             await asyncio.wait_for(ws.recv(), timeout=_WS_TIMEOUT_S)
         for screen in screens:

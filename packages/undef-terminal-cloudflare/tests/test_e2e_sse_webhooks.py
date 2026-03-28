@@ -31,6 +31,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -45,10 +46,25 @@ _WS_TIMEOUT_S = 0.5  # short drain — worker WS gets no hello; just let it time
 _WS_PROCESS_S = 1.0  # time for pywrangler to process a WS frame and persist the event
 _HTTP_UA = "undef-terminal-e2e-test/1.0"
 
+# CF Access service token for real_cf tests (bypasses Cloudflare Access login).
+# Set via env vars or fall back to empty (local pywrangler dev uses AUTH_MODE=dev).
+_CF_CLIENT_ID = os.environ.get("CF_ACCESS_CLIENT_ID", "")
+_CF_CLIENT_SECRET = os.environ.get("CF_ACCESS_CLIENT_SECRET", "")
+_WORKER_BEARER_TOKEN = os.environ.get("CF_WORKER_BEARER_TOKEN", "")
+
 
 # ---------------------------------------------------------------------------
 # Helpers — reused from test_e2e_ws.py pattern
 # ---------------------------------------------------------------------------
+
+
+def _cf_access_headers(url: str = "") -> dict[str, str]:
+    """Return CF Access service token headers when targeting real CF (https)."""
+    if url.startswith("http://"):
+        return {}
+    if _CF_CLIENT_ID and _CF_CLIENT_SECRET:
+        return {"CF-Access-Client-Id": _CF_CLIENT_ID, "CF-Access-Client-Secret": _CF_CLIENT_SECRET}
+    return {}
 
 
 def _base_ws(base_http: str) -> str:
@@ -60,13 +76,17 @@ def _new_worker_id() -> str:
 
 
 def _ws_connect(uri: str):
-    return websockets.connect(uri)
+    """Connect with CF Access headers when targeting real CF (wss://)."""
+    extra = _cf_access_headers(uri)
+    if _WORKER_BEARER_TOKEN and "/ws/worker/" in uri and uri.startswith("wss://"):
+        extra["Authorization"] = f"Bearer {_WORKER_BEARER_TOKEN}"
+    return websockets.connect(uri, additional_headers=extra) if extra else websockets.connect(uri)
 
 
 def _http_get_raw(base: str, path: str) -> tuple[int, bytes, dict[str, str]]:
     """Return (status, body_bytes, headers) — does NOT parse JSON."""
     url = f"{base}{path}"
-    headers = {"User-Agent": _HTTP_UA}
+    headers = {"User-Agent": _HTTP_UA, **_cf_access_headers(url)}
     req = urllib.request.Request(url, headers=headers)  # noqa: S310
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
@@ -86,7 +106,7 @@ def _http_get_json(base: str, path: str) -> tuple[int, object]:
 def _http_post(base: str, path: str, body: dict) -> tuple[int, dict]:
     url = f"{base}{path}"
     data = json.dumps(body).encode()
-    headers = {"Content-Type": "application/json", "User-Agent": _HTTP_UA}
+    headers = {"Content-Type": "application/json", "User-Agent": _HTTP_UA, **_cf_access_headers(url)}
     req = urllib.request.Request(url, data=data, method="POST", headers=headers)  # noqa: S310
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
@@ -100,7 +120,7 @@ def _http_post(base: str, path: str, body: dict) -> tuple[int, dict]:
 
 def _http_delete(base: str, path: str) -> tuple[int, dict]:
     url = f"{base}{path}"
-    headers = {"User-Agent": _HTTP_UA}
+    headers = {"User-Agent": _HTTP_UA, **_cf_access_headers(url)}
     req = urllib.request.Request(url, method="DELETE", headers=headers)  # noqa: S310
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
