@@ -107,7 +107,8 @@ Connected. Press Ctrl+C to stop sharing.
 | `src/undef/terminal/tunnel/protocol.py` | Binary frame encode/decode |
 | `src/undef/terminal/tunnel/client.py` | Async WebSocket tunnel client |
 | `src/undef/terminal/tunnel/pty_capture.py` | PTY spawn + attach-to-TTY |
-| `src/undef/terminal/cli/share.py` | `undef share` CLI entry point |
+| `src/undef/terminal/tunnel/fastapi_routes.py` | FastAPI `/tunnel/{id}` WebSocket route |
+| `src/undef/terminal/cli/share.py` | `uterm share` CLI entry point |
 
 ## CF Side: Extended SessionRuntime
 
@@ -136,12 +137,10 @@ The existing `SessionRuntime` DO gains a **tunnel mode** alongside the existing 
 
 | File | Change |
 |------|--------|
-| `entry.py` | Add `/s/` route, `/tunnel/` WSS route |
-| `api/http_routes.py` | Add `POST /api/tunnels` endpoint |
-| `api/tunnel_routes.py` (new) | Tunnel WSS handler, binary frame demux |
-| `api/share_routes.py` (new) | `/s/` route handler, token validation |
-| `do/session_runtime.py` | Detect tunnel mode, bridge to existing browser multiplexing |
-| `state/store.py` | Add token fields to session metadata |
+| `entry.py` | Add `/s/` route, `/tunnel/` pattern, `/api/tunnels` route |
+| `api/_tunnel_api.py` (new) | `POST /api/tunnels` + `GET /s/{id}` handlers |
+| `api/tunnel_routes.py` (new) | Binary frame handler (`handle_tunnel_message`) |
+| `do/session_runtime.py` | Detect binary frames in `webSocketMessage`, route to tunnel handler; `/tunnel/` in worker ID extraction and socket role detection |
 
 ## Auth Model
 
@@ -213,12 +212,23 @@ Minimal changes to support share URLs:
 
 ## Verification
 
-1. **Unit tests:** Tunnel protocol encode/decode, PTY capture, token generation
-2. **Integration test:** Agent connects to local FastAPI server, browser views shared session
-3. **E2E test:** Agent connects to CF worker, browser views at `/s/` URL
-4. **Manual test flow:**
-   - Run `undef share bash` locally
-   - Open view URL in browser — see terminal output
-   - Open control URL — type commands, see them execute
-   - Test hijack: CF Access admin acquires exclusive control
-   - Disconnect agent — verify grace period, then session cleanup
+### Implemented Tests (Phase 1)
+
+| Test Suite | Count | What |
+|-----------|-------|------|
+| `tests/tunnel/test_protocol.py` | 31 | Frame encode/decode, roundtrip, error handling |
+| `tests/tunnel/test_protocol_stress.py` | 30 | Hypothesis fuzzing, 100k throughput, concurrent |
+| `tests/tunnel/test_client.py` | 27 | WebSocket client, reconnect, auth headers |
+| `tests/tunnel/test_pty_capture.py` | 21 | PTY spawn, TTY proxy, SIGWINCH, cleanup |
+| `tests/tunnel/test_pty_stress.py` | 12 | Rapid spawn/close, high-throughput, concurrent |
+| `tests/tunnel/test_share_cli.py` | 26 | CLI arg parsing, bridge loop, error cases |
+| `tests/tunnel/test_fastapi_routes.py` | 11 | FastAPI tunnel WS route, browser coexistence |
+| CF `tests/test_tunnel_routes.py` | 28 | DO binary frame handler, tunnel API, share routes |
+| **Total** | **186** | 100% statement coverage on tunnel package |
+
+### Manual Test Flow
+1. Run `uterm share bash --server https://your-worker.dev`
+2. Open view URL in browser — see terminal output
+3. Open control URL — type commands, see them execute
+4. Test hijack: CF Access admin acquires exclusive control
+5. Disconnect agent — verify cleanup

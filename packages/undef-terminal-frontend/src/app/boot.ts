@@ -4,6 +4,7 @@
 //
 
 import { routeApp } from "./router.js";
+import { setShareToken } from "../server-common.js";
 import type { AppBootstrap } from "./types.js";
 
 function readBootstrap(): AppBootstrap {
@@ -37,5 +38,6 @@ export async function bootApp(): Promise<void> {
     throw new Error("Missing #app-root");
   }
   const bootstrap = readBootstrap();
+  setShareToken(bootstrap.share_token ?? null);
   await routeApp(root, bootstrap);
 }

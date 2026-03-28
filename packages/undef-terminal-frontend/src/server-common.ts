@@ -44,6 +44,7 @@ export interface UndefHijackConfig {
   workerId: string;
   showAnalysis?: boolean;
   mobileKeys?: boolean;
+  authToken?: string;
 }
 
 export interface UndefHijackConstructor {
@@ -56,6 +57,22 @@ declare global {
   }
 }
 
+let _shareToken: string | null = null;
+
+export function setShareToken(token: string | null | undefined): void {
+  _shareToken = typeof token === "string" && token.length > 0 ? token : null;
+}
+
+export function getShareToken(): string | null {
+  return _shareToken;
+}
+
+export function withShareToken(path: string): string {
+  if (_shareToken === null) return path;
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}token=${encodeURIComponent(_shareToken)}`;
+}
+
 export async function apiJson<T>(path: string, method: HttpMethod = "GET", body: unknown = null): Promise<T> {
   const init: RequestInit = {
     method,
@@ -66,7 +83,7 @@ export async function apiJson<T>(path: string, method: HttpMethod = "GET", body:
   if (body !== null) {
     init.body = JSON.stringify(body);
   }
-  const response = await fetch(path, init);
+  const response = await fetch(withShareToken(path), init);
   if (!response.ok) {
     throw new Error(String(response.status));
   }

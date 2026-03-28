@@ -385,4 +385,59 @@ def create_api_router() -> APIRouter:
         url = f"{cfg.ui.app_path}/session/{session_id}"
         return {"session_id": session_id, "url": url, **model_dump(session)}
 
+    @router.post("/tunnels")
+    async def create_tunnel(request: Request, payload: Annotated[dict[str, Any], Body(...)]) -> dict[str, Any]:
+        """Create a tunnel session for ``uterm share``.
+
+        Returns tunnel_id, ws_endpoint, share_url, and control_url.
+        """
+        import secrets
+
+        tunnel_type = str(payload.get("tunnel_type", "terminal")).strip()
+        display_name = str(payload.get("display_name") or "tunnel").strip()
+        tunnel_id = f"tunnel-{uuid.uuid4().hex[:12]}"
+        worker_token = secrets.token_urlsafe(32)
+        share_token = secrets.token_urlsafe(32)
+        control_token = secrets.token_urlsafe(32)
+
+        cfg = request.app.state.uterm_config
+        registry = _registry(request)
+        base = cfg.server.public_base_url or str(request.base_url).rstrip("/")
+        ws_base = base.replace("http://", "ws://").replace("https://", "wss://")
+        tunnel_tokens = cast("dict[str, dict[str, str]]", request.app.state.uterm_tunnel_tokens)
+
+        try:
+            await registry.create_session(
+                {
+                    "session_id": tunnel_id,
+                    "display_name": display_name,
+                    "connector_type": "websocket",
+                    "connector_config": {"tunnel_type": tunnel_type},
+                    "input_mode": "open",
+                    "auto_start": False,
+                    "ephemeral": True,
+                    "visibility": "public",
+                    "recording_enabled": True,
+                }
+            )
+        except SessionValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        tunnel_tokens[tunnel_id] = {
+            "worker_token": worker_token,
+            "share_token": share_token,
+            "control_token": control_token,
+        }
+
+        return {
+            "tunnel_id": tunnel_id,
+            "display_name": display_name,
+            "tunnel_type": tunnel_type,
+            "ws_endpoint": f"{ws_base}/tunnel/{tunnel_id}",
+            "worker_token": worker_token,
+            "share_url": f"{base}{cfg.ui.app_path}/session/{tunnel_id}?token={share_token}",
+            "control_url": f"{base}{cfg.ui.app_path}/operator/{tunnel_id}?token={control_token}",
+        }
+
     return router

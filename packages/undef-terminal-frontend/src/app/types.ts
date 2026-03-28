@@ -87,6 +87,8 @@ export interface AppBootstrap {
   assets_path: string;
   session_id?: string;
   surface?: SessionSurface;
+  share_role?: "viewer" | "operator";
+  share_token?: string;
 }
 
 export interface ConnectionProfile {

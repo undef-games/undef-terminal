@@ -9,11 +9,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import importlib.resources
+import re
 import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
+from urllib.parse import parse_qs
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -50,6 +52,12 @@ logger = get_logger(__name__)
 # Delay between FastAPI startup completing and the auto-start session loop
 # beginning.  Gives the event loop time to finish route/middleware init.
 _AUTO_START_DELAY_S = 0.15
+_SHARE_SESSION_PATTERNS = (
+    re.compile(r"^/api/sessions/(?P<session_id>[\w\-]+)(?:/.*)?$"),
+    re.compile(r"^/app/(?:session|operator|replay)/(?P<session_id>[\w\-]+)$"),
+    re.compile(r"^/ws/browser/(?P<session_id>[\w\-]+)/term$"),
+    re.compile(r"^/worker/(?P<session_id>[\w\-]+)/hijack(?:/.*)?$"),
+)
 
 
 def _validate_frontend_assets() -> None:
@@ -121,11 +129,59 @@ def create_server_app(config: ServerConfig) -> FastAPI:
         "hijack_releases_total": 0,
         "hijack_steps_total": 0,
     }
+    tunnel_tokens: dict[str, dict[str, str]] = {}
 
     def _inc_metric(name: str, value: int = 1) -> None:
         metrics[name] = metrics.get(name, 0) + value
 
+    def _share_session_id_for(path: str) -> str | None:
+        for pattern in _SHARE_SESSION_PATTERNS:
+            match = pattern.match(path)
+            if match is not None:
+                return str(match.group("session_id"))
+        return None
+
+    def _resolve_tunnel_share_principal(connection: HTTPConnection) -> Principal | None:
+        path = str(connection.scope.get("path", ""))
+        session_id = _share_session_id_for(path)
+        if session_id is None:
+            return None
+        raw_qs = connection.scope.get("query_string", b"")
+        if isinstance(raw_qs, bytes):
+            query = raw_qs.decode("utf-8", errors="ignore")
+        else:
+            query = str(raw_qs)
+        provided = (parse_qs(query).get("token", [None]) or [None])[0]
+        if not provided:
+            return None
+        app = connection.scope.get("app")
+        token_map = getattr(getattr(app, "state", object()), "uterm_tunnel_tokens", {})
+        token_state = token_map.get(session_id) if isinstance(token_map, dict) else None
+        if token_state is None:
+            return None
+        if secrets.compare_digest(str(provided), str(token_state.get("control_token", ""))):
+            connection.state.uterm_share_token = str(provided)
+            connection.state.uterm_share_role = "operator"
+            return Principal(
+                subject_id=f"share:{session_id}:operator",
+                roles=frozenset({"admin"}),
+                scopes=frozenset({"*"}),
+            )
+        if secrets.compare_digest(str(provided), str(token_state.get("share_token", ""))):
+            connection.state.uterm_share_token = str(provided)
+            connection.state.uterm_share_role = "viewer"
+            return Principal(
+                subject_id=f"share:{session_id}:viewer",
+                roles=frozenset({"viewer"}),
+                scopes=frozenset({"session.read"}),
+            )
+        return None
+
     async def _require_authenticated(connection: HTTPConnection) -> None:
+        share_principal = _resolve_tunnel_share_principal(connection)
+        if share_principal is not None:
+            connection.state.uterm_principal = share_principal
+            return
         # Workers authenticate with a raw bearer token, not a JWT.  Check it
         # before JWT resolution so a valid worker token is never mis-rejected as
         # anonymous when auth.mode='jwt'.
@@ -237,6 +293,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
     app.state.uterm_metrics = metrics
     app.state.uterm_webhooks = webhook_manager
     app.state.uterm_profile_store = profile_store
+    app.state.uterm_tunnel_tokens = tunnel_tokens
 
     @app.middleware("http")
     async def _request_logging_middleware(request: Request, call_next: RequestResponseEndpoint) -> Response:
