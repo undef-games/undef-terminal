@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 
-import { widgetSurface } from "../api.js";
 import { getShareToken } from "../../server-common.js";
+import { widgetSurface } from "../api.js";
 import type { SessionSurface, WidgetMountState } from "../types.js";
 
 declare global {

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+from contextlib import suppress
 from unittest.mock import patch
 
 import pytest
@@ -123,10 +124,8 @@ class TestSpawnPty:
 
         sp = spawn_pty(["true"])
         time.sleep(0.1)
-        try:
+        with suppress(ChildProcessError):
             os.waitpid(sp.child_pid, os.WNOHANG)
-        except ChildProcessError:
-            pass
         sp.close()  # should not raise
         assert sp.closed
 
@@ -235,10 +234,8 @@ class TestTtyProxy:
                 assert not proxy.active
         finally:
             os.close(master)
-            try:
+            with suppress(OSError):
                 os.close(slave)
-            except OSError:
-                pass
 
 
 class TestSigwinchHandler:

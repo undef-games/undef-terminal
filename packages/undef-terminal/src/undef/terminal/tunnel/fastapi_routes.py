@@ -70,11 +70,10 @@ def register_tunnel_routes(hub: TermHub, router: APIRouter) -> None:
             valid = True
         if session_token and secrets.compare_digest(provided, session_token):
             valid = True
-        if worker_token is not None or session_token:
-            if not valid:
-                await websocket.accept()
-                await websocket.close(code=1008, reason="authentication required")
-                return
+        if (worker_token is not None or session_token) and not valid:
+            await websocket.accept()
+            await websocket.close(code=1008, reason="authentication required")
+            return
 
         await websocket.accept()
         prev_was_hijacked = await hub.register_worker(worker_id, websocket)
@@ -136,7 +135,7 @@ def register_tunnel_routes(hub: TermHub, router: APIRouter) -> None:
 
 async def _handle_control(
     hub: TermHub,
-    websocket: WebSocket,
+    _websocket: WebSocket,
     worker_id: str,
     payload: bytes,
 ) -> None:

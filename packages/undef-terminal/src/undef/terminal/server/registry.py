@@ -270,10 +270,11 @@ class SessionRegistry:
             if session is None:
                 return None
             runtime = self._runtime_for(session)
-            runtime._connected = connected  # type: ignore[attr-defined]
-            runtime._state = "running" if connected else "stopped"  # type: ignore[attr-defined]
+            runtime_any = cast("Any", runtime)
+            runtime_any._connected = connected
+            runtime_any._state = "running" if connected else "stopped"
             if connected:
-                runtime._last_error = None  # type: ignore[attr-defined]
+                runtime_any._last_error = None
         return runtime.status()
 
     async def analyze_session(self, session_id: str) -> str:

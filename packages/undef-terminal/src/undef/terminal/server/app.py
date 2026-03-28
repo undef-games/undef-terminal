@@ -147,10 +147,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
         if session_id is None:
             return None
         raw_qs = connection.scope.get("query_string", b"")
-        if isinstance(raw_qs, bytes):
-            query = raw_qs.decode("utf-8", errors="ignore")
-        else:
-            query = str(raw_qs)
+        query = raw_qs.decode("utf-8", errors="ignore") if isinstance(raw_qs, bytes) else str(raw_qs)
         provided = (parse_qs(query).get("token", [None]) or [None])[0]
         if not provided:
             return None

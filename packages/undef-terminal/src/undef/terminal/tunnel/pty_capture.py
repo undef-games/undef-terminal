@@ -15,7 +15,10 @@ import struct
 import sys
 import termios
 import tty
+import typing
+from contextlib import suppress
 from dataclasses import dataclass, field
+from typing import cast
 
 
 def _get_term_size(fd: int) -> tuple[int, int]:
@@ -51,7 +54,7 @@ class SpawnedPty:
     async def read(self, size: int = 4096) -> bytes:
         """Read up to *size* bytes from the PTY master."""
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, os.read, self.master_fd, size)
+        return await loop.run_in_executor(None, lambda: os.read(self.master_fd, size))
 
     async def write(self, data: bytes) -> None:
         """Write *data* to the PTY master."""
@@ -73,14 +76,10 @@ class SpawnedPty:
         if self._closed:
             return
         self._closed = True
-        try:
+        with suppress(OSError):
             os.close(self.master_fd)
-        except OSError:
-            pass
-        try:
+        with suppress(ChildProcessError):
             os.waitpid(self.child_pid, os.WNOHANG)
-        except ChildProcessError:
-            pass
 
 
 def spawn_pty(cmd: list[str] | None = None) -> SpawnedPty:
@@ -93,7 +92,7 @@ def spawn_pty(cmd: list[str] | None = None) -> SpawnedPty:
 
     child_pid, master_fd = pty.fork()
     if child_pid == 0:  # pragma: no cover — runs in forked child
-        os.execvp(cmd[0], cmd)
+        os.execvp(cmd[0], cmd)  # noqa: S606
         sys.exit(1)
 
     return SpawnedPty(master_fd=master_fd, child_pid=child_pid)
@@ -104,7 +103,7 @@ class TtyProxy:
     """Raw-mode proxy on the local TTY (stdin/stdout)."""
 
     _fd: int | None = field(default=None, repr=False)
-    _old_attrs: list | None = field(default=None, repr=False)
+    _old_attrs: list[object] | None = field(default=None, repr=False)
     _active: bool = field(default=False, repr=False)
 
     @property
@@ -124,8 +123,12 @@ class TtyProxy:
 
     async def read(self, size: int = 4096) -> bytes:
         """Read from stdin."""
+        fd = self._fd
+        if fd is None:
+            msg = "stdin is not active"
+            raise OSError(msg)
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, os.read, self._fd, size)
+        return await loop.run_in_executor(None, lambda: os.read(fd, size))
 
     async def write_local(self, data: bytes) -> None:
         """Write to stdout."""
@@ -144,16 +147,19 @@ class TtyProxy:
             return
         self._active = False
         if self._fd is not None and self._old_attrs is not None:
-            try:
-                termios.tcsetattr(self._fd, termios.TCSAFLUSH, self._old_attrs)
-            except (OSError, termios.error):
-                pass
+            with suppress(OSError, termios.error):
+                termios.tcsetattr(self._fd, termios.TCSAFLUSH, cast("list[int | list[bytes]]", self._old_attrs))
 
 
-def install_sigwinch_handler(callback: callable) -> signal.Handlers:
+def install_sigwinch_handler(callback: typing.Callable[[], object]) -> signal.Handlers:
     """Install a SIGWINCH handler that calls *callback* with no arguments.
 
     Returns the previous handler.
     """
-    prev = signal.signal(signal.SIGWINCH, lambda _signum, _frame: callback())
-    return prev
+    return cast(
+        "signal.Handlers",
+        signal.signal(
+            signal.SIGWINCH,
+            lambda _signum, _frame: callback(),
+        ),
+    )

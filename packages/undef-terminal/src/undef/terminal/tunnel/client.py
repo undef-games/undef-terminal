@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Protocol, cast
 
 from websockets.asyncio.client import connect
 
@@ -25,6 +26,24 @@ log = logging.getLogger(__name__)
 BACKOFF_SCHEDULE: tuple[int, ...] = (1, 2, 5, 10, 30)
 
 
+class _WebSocketState(Protocol):
+    name: str
+
+
+class _WebSocketProtocol(Protocol):
+    state: _WebSocketState
+
+
+class _TunnelWebSocket(Protocol):
+    protocol: _WebSocketProtocol
+
+    async def close(self) -> object: ...
+
+    async def send(self, message: bytes) -> object: ...
+
+    async def recv(self) -> bytes | str: ...
+
+
 class TunnelClient:
     """Async WebSocket tunnel client.
 
@@ -34,22 +53,25 @@ class TunnelClient:
     def __init__(self, ws_url: str, token: str) -> None:
         self._ws_url = ws_url
         self._token = token
-        self._ws: object | None = None
+        self._ws: _TunnelWebSocket | None = None
 
     @property
     def connected(self) -> bool:
         if self._ws is None:
             return False
         try:
-            return self._ws.protocol.state.name == "OPEN"  # type: ignore[union-attr]
+            return self._ws.protocol.state.name == "OPEN"
         except Exception:
             return False
 
     async def connect(self) -> None:
         """Establish the WebSocket connection."""
-        self._ws = await connect(
-            self._ws_url,
-            additional_headers={"Authorization": f"Bearer {self._token}"},
+        self._ws = cast(
+            "_TunnelWebSocket",
+            await connect(
+                self._ws_url,
+                additional_headers={"Authorization": f"Bearer {self._token}"},
+            ),
         )
 
     async def close(self) -> None:
@@ -57,7 +79,7 @@ class TunnelClient:
         ws = self._ws
         self._ws = None
         if ws is not None:
-            await ws.close()  # type: ignore[union-attr]
+            await ws.close()
 
     async def open_terminal(self, cols: int, rows: int) -> None:
         """Send a control message to open a terminal channel."""
@@ -72,7 +94,11 @@ class TunnelClient:
     async def send_data(self, data: bytes, channel: int = CHANNEL_DATA) -> None:
         """Send a data frame on the given channel."""
         self._require_connected()
-        await self._ws.send(encode_frame(channel, data))  # type: ignore[union-attr]
+        ws = self._ws
+        if ws is None:
+            msg = "not connected"
+            raise RuntimeError(msg)
+        await ws.send(encode_frame(channel, data))
 
     async def send_resize(self, cols: int, rows: int) -> None:
         """Send a resize control message."""
@@ -82,12 +108,20 @@ class TunnelClient:
     async def send_eof(self, channel: int = CHANNEL_DATA) -> None:
         """Send an EOF frame on the given channel."""
         self._require_connected()
-        await self._ws.send(encode_frame(channel, b"", flags=FLAG_EOF))  # type: ignore[union-attr]
+        ws = self._ws
+        if ws is None:
+            msg = "not connected"
+            raise RuntimeError(msg)
+        await ws.send(encode_frame(channel, b"", flags=FLAG_EOF))
 
     async def recv(self) -> TunnelFrame:
         """Receive and decode a tunnel frame."""
         self._require_connected()
-        raw = await self._ws.recv()  # type: ignore[union-attr]
+        ws = self._ws
+        if ws is None:
+            msg = "not connected"
+            raise RuntimeError(msg)
+        raw = await ws.recv()
         if isinstance(raw, str):
             raw = raw.encode("latin-1")
         return decode_frame(raw)
@@ -109,7 +143,11 @@ class TunnelClient:
 
     async def _send_raw(self, data: bytes) -> None:
         self._require_connected()
-        await self._ws.send(data)  # type: ignore[union-attr]
+        ws = self._ws
+        if ws is None:
+            msg = "not connected"
+            raise RuntimeError(msg)
+        await ws.send(data)
 
     def _require_connected(self) -> None:
         if self._ws is None:

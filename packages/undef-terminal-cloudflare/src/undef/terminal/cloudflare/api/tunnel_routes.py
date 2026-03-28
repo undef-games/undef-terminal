@@ -78,7 +78,7 @@ async def handle_tunnel_message(
             runtime.last_snapshot = {"type": "snapshot", "screen": screen, "ts": time.time()}
 
 
-async def _handle_control(runtime: RuntimeProtocol, ws: object, payload: bytes) -> None:
+async def _handle_control(runtime: RuntimeProtocol, _ws: object, payload: bytes) -> None:
     """Handle a control channel message from the tunnel agent."""
     try:
         msg = json.loads(payload)

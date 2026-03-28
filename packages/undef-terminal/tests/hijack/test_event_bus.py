@@ -10,6 +10,7 @@ import asyncio
 import re
 
 import pytest
+
 from undef.terminal.hijack.hub.event_bus import EventBus, _compile_pattern
 
 # ---------------------------------------------------------------------------

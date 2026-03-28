@@ -16,7 +16,6 @@ Example::
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 import getpass
 import json
@@ -25,8 +24,12 @@ import platform
 import sys
 import urllib.error
 import urllib.request
+from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import argparse
 
 from undef.terminal.defaults import TerminalDefaults
 from undef.terminal.tunnel.protocol import (
@@ -38,7 +41,12 @@ from undef.terminal.tunnel.pty_capture import SpawnedPty, TtyProxy, spawn_pty
 
 log = logging.getLogger(__name__)
 
-_DEFAULT_TOKEN_FILE = "~/.uterm/session_token"
+
+def _default_token_file_hint() -> str:
+    """Return the user-facing default token file path with ``~`` when possible."""
+    home = str(Path.home())
+    actual = str(TerminalDefaults.token_file())
+    return actual.replace(home, "~", 1) if actual.startswith(home) else actual
 
 
 # ---------------------------------------------------------------------------
@@ -80,14 +88,12 @@ def _create_tunnel(server: str, display_name: str, token: str | None) -> dict[st
 
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")  # noqa: S310
     try:
-        with urllib.request.urlopen(req) as resp:  # noqa: S310
+        with urllib.request.urlopen(req) as resp:  # noqa: S310  # nosec B310
             return json.loads(resp.read())  # type: ignore[no-any-return]
     except urllib.error.HTTPError as exc:
         detail = ""
-        try:
+        with suppress(Exception):
             detail = exc.read().decode(errors="replace")
-        except Exception:
-            pass
         print(f"error: tunnel creation failed (HTTP {exc.code}): {detail}", file=sys.stderr)
         sys.exit(1)
     except urllib.error.URLError as exc:
@@ -255,10 +261,8 @@ async def _run_share(
         except KeyboardInterrupt:
             # Send EOF frame and close gracefully
             eof = encode_frame(CHANNEL_DATA, b"", flags=FLAG_EOF)
-            try:
+            with suppress(Exception):
                 await ws.send(eof)
-            except Exception:
-                pass
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +270,7 @@ async def _run_share(
 # ---------------------------------------------------------------------------
 
 
-def add_share_subcommand(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+def add_share_subcommand(subparsers: Any) -> None:
     """Register the ``share`` subcommand on the given subparsers action."""
     share_p = subparsers.add_parser(
         "share",
@@ -297,7 +301,7 @@ def add_share_subcommand(subparsers: argparse._SubParsersAction) -> None:  # typ
         "--token-file",
         metavar="FILE",
         default=str(TerminalDefaults.token_file()),
-        help=f"path to token file (default: {_DEFAULT_TOKEN_FILE})",
+        help=f"path to token file (default: {_default_token_file_hint()})",
     )
     share_p.add_argument(
         "--attach",

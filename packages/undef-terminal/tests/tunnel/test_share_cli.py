@@ -85,14 +85,14 @@ class TestShareArgParsing:
                 "--token",
                 "my-token",
                 "--token-file",
-                "/tmp/tok",
+                "/path/to/tok",
                 "--attach",
                 "--display-name",
                 "me@box",
             ]
         )
         assert args.token == "my-token"
-        assert args.token_file == "/tmp/tok"
+        assert args.token_file == "/path/to/tok"
         assert args.attach is True
         assert args.display_name == "me@box"
 

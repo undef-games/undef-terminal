@@ -238,9 +238,11 @@ class TestRecv:
 class TestReconnectLoop:
     async def test_reconnect_succeeds_on_first_attempt(self) -> None:
         client = TunnelClient("ws://localhost:9999", "tok")
-        with patch.object(client, "connect", new_callable=AsyncMock) as mock_connect:
-            with patch("undef.terminal.tunnel.client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-                await client.reconnect_loop(max_attempts=3)
+        with (
+            patch.object(client, "connect", new_callable=AsyncMock) as mock_connect,
+            patch("undef.terminal.tunnel.client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        ):
+            await client.reconnect_loop(max_attempts=3)
         mock_connect.assert_awaited_once()
         mock_sleep.assert_awaited_once_with(BACKOFF_SCHEDULE[0])
 
@@ -254,9 +256,11 @@ class TestReconnectLoop:
             if call_count < 3:
                 raise ConnectionRefusedError("nope")
 
-        with patch.object(client, "connect", side_effect=fail_then_succeed):
-            with patch("undef.terminal.tunnel.client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-                await client.reconnect_loop(max_attempts=5)
+        with (
+            patch.object(client, "connect", side_effect=fail_then_succeed),
+            patch("undef.terminal.tunnel.client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        ):
+            await client.reconnect_loop(max_attempts=5)
         assert call_count == 3
         # Delays: 1, 2, 5 (indices 0, 1, 2 of BACKOFF_SCHEDULE)
         delays = [c.args[0] for c in mock_sleep.await_args_list]
@@ -264,17 +268,21 @@ class TestReconnectLoop:
 
     async def test_reconnect_gives_up_after_max_attempts(self) -> None:
         client = TunnelClient("ws://localhost:9999", "tok")
-        with patch.object(client, "connect", side_effect=ConnectionRefusedError("nope")):
-            with patch("undef.terminal.tunnel.client.asyncio.sleep", new_callable=AsyncMock):
-                await client.reconnect_loop(max_attempts=2)
+        with (
+            patch.object(client, "connect", side_effect=ConnectionRefusedError("nope")),
+            patch("undef.terminal.tunnel.client.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            await client.reconnect_loop(max_attempts=2)
         # Should not raise, just log and return
         assert not client.connected
 
     async def test_reconnect_backoff_caps_at_last_value(self) -> None:
         client = TunnelClient("ws://localhost:9999", "tok")
-        with patch.object(client, "connect", side_effect=ConnectionRefusedError("nope")):
-            with patch("undef.terminal.tunnel.client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-                await client.reconnect_loop(max_attempts=7)
+        with (
+            patch.object(client, "connect", side_effect=ConnectionRefusedError("nope")),
+            patch("undef.terminal.tunnel.client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        ):
+            await client.reconnect_loop(max_attempts=7)
         delays = [c.args[0] for c in mock_sleep.await_args_list]
         assert delays == [1, 2, 5, 10, 30, 30, 30]
 

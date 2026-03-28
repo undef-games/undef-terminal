@@ -277,14 +277,12 @@ class SessionRuntime(_SessionRuntimeIoMixin, _WsHelperMixin, DurableObject):
         # skipped entirely and the request falls through to _resolve_principal()
         # which permits all callers in those modes.  In JWT mode, from_env()
         # guarantees worker_bearer_token is set (ValueError otherwise).
-        _is_worker_ws = upgrade_header == "websocket" and (
-            path.startswith("/ws/worker/") or path.startswith("/tunnel/")
-        )
+        _is_worker_ws = upgrade_header == "websocket" and path.startswith(("/ws/worker/", "/tunnel/"))
         if _is_worker_ws and self.config.worker_bearer_token:
             # CF Access service tokens bypass worker bearer token check.
             _cf_client = str(request.headers.get("CF-Access-Client-Id") or "")  # type: ignore[union-attr]
             if _cf_client.endswith(".access"):
-                principal, auth_error = None, None
+                _principal, auth_error = None, None
             else:
                 token = extract_bearer_or_cookie(request)
                 valid_worker_token = False
@@ -298,16 +296,16 @@ class SessionRuntime(_SessionRuntimeIoMixin, _WsHelperMixin, DurableObject):
                         status=403,
                         headers={"content-type": "application/json"},
                     )
-                principal, auth_error = None, None
+                _principal, auth_error = None, None
         else:
-            principal, auth_error = await self._resolve_principal(request)
+            _principal, auth_error = await self._resolve_principal(request)
             if auth_error is not None:
                 return auth_error
         if upgrade_header == "websocket":
             from js import WebSocketPair  # type: ignore[import-not-found]
 
             socket_role = "browser"
-            if path.startswith("/ws/worker/") or path.startswith("/tunnel/"):
+            if path.startswith(("/ws/worker/", "/tunnel/")):
                 socket_role = "worker"
             elif path.startswith("/ws/raw/"):
                 socket_role = "raw"

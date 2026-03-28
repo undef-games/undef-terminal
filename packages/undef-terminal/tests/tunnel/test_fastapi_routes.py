@@ -83,7 +83,7 @@ class TestTunnelConnect:
         with tc.websocket_connect(
             "/tunnel/test-auth",
             headers={"Authorization": "Bearer wrong-token"},
-        ) as ws:
+        ):
             # Should receive close frame with 1008
             pass  # connection closed by server
 
@@ -104,21 +104,23 @@ class TestTunnelConnect:
 class TestTunnelDataFlow:
     def test_data_frame_broadcast(self, client: TestClient) -> None:
         """Data frames from tunnel agent are broadcast to browsers."""
-        with client.websocket_connect("/tunnel/test-data") as tunnel_ws:
-            with client.websocket_connect("/ws/browser/test-data/term") as browser_ws:
-                # Drain hello + any worker_connected frames
-                _drain_until_hello(browser_ws)
+        with (
+            client.websocket_connect("/tunnel/test-data") as tunnel_ws,
+            client.websocket_connect("/ws/browser/test-data/term") as browser_ws,
+        ):
+            # Drain hello + any worker_connected frames
+            _drain_until_hello(browser_ws)
 
-                # Send data from tunnel agent
-                data_frame = encode_frame(CHANNEL_DATA, b"terminal output here")
-                tunnel_ws.send_bytes(data_frame)
+            # Send data from tunnel agent
+            data_frame = encode_frame(CHANNEL_DATA, b"terminal output here")
+            tunnel_ws.send_bytes(data_frame)
 
-                # Browser should receive the term data (may be preceded by hijack_state)
-                for _ in range(10):
-                    raw = browser_ws.receive_text()
-                    if "terminal output here" in raw:
-                        break
-                assert "terminal output here" in raw
+            # Browser should receive the term data (may be preceded by hijack_state)
+            for _ in range(10):
+                raw = browser_ws.receive_text()
+                if "terminal output here" in raw:
+                    break
+            assert "terminal output here" in raw
 
 
 class TestTunnelControl:
@@ -168,15 +170,17 @@ class TestTunnelControlExtra:
 class TestTunnelAndBrowserCoexist:
     def test_tunnel_worker_with_legacy_browser(self, client: TestClient) -> None:
         """A tunnel agent and a legacy browser can coexist on the same worker_id."""
-        with client.websocket_connect("/tunnel/coexist-1") as tunnel_ws:
-            with client.websocket_connect("/ws/browser/coexist-1/term") as browser_ws:
-                hello = _drain_until_hello(browser_ws)
-                assert hello["worker_online"] is True
+        with (
+            client.websocket_connect("/tunnel/coexist-1") as tunnel_ws,
+            client.websocket_connect("/ws/browser/coexist-1/term") as browser_ws,
+        ):
+            hello = _drain_until_hello(browser_ws)
+            assert hello["worker_online"] is True
 
-                # Tunnel sends data
-                tunnel_ws.send_bytes(encode_frame(CHANNEL_DATA, b"from tunnel"))
-                for _ in range(10):
-                    raw = browser_ws.receive_text()
-                    if "from tunnel" in raw:
-                        break
-                assert "from tunnel" in raw
+            # Tunnel sends data
+            tunnel_ws.send_bytes(encode_frame(CHANNEL_DATA, b"from tunnel"))
+            for _ in range(10):
+                raw = browser_ws.receive_text()
+                if "from tunnel" in raw:
+                    break
+            assert "from tunnel" in raw

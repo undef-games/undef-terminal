@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 
-import { routeApp } from "./router.js";
 import { setShareToken } from "../server-common.js";
+import { routeApp } from "./router.js";
 import type { AppBootstrap } from "./types.js";
 
 function readBootstrap(): AppBootstrap {
