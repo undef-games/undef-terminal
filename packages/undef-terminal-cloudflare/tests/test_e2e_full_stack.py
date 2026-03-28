@@ -71,6 +71,10 @@ def _http_post(base: str, path: str, body: dict) -> tuple[int, dict]:
 
 async def _recv_ws(ws, timeout: float = _WS_TIMEOUT_S) -> dict:
     raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+    # Handle control-channel encoded frames (DLE+STX prefix)
+    if raw and raw[0] == "\x10" and len(raw) > 11 and raw[1] == "\x02":
+        payload_start = 11  # skip DLE + STX + 8-hex-length + ':'
+        return json.loads(raw[payload_start:])
     return json.loads(raw)
 
 
