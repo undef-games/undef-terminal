@@ -341,6 +341,8 @@ def _match_api_route(path: str, request: object) -> object | None:
         return _api_sessions
     if path == "/api/connect":
         return _api_connect
+    if path.startswith("/api/profiles"):
+        return _api_profiles
     session_delete_match = _SESSION_ID_RE.match(path)
     if session_delete_match and str(getattr(request, "method", "GET")).upper() == "DELETE":
         # Stash the match for the handler.
@@ -357,6 +359,37 @@ async def _api_sessions(request: object, env: object, config: CloudflareConfig) 
 
 async def _api_connect(request: object, env: object, _config: CloudflareConfig) -> Response:
     return await _handle_connect(request, env)
+
+
+async def _api_profiles(request: object, env: object, config: CloudflareConfig) -> Response:
+    from undef.terminal.cloudflare.api._profiles import route_profiles
+
+    path = urlparse(str(getattr(request, "url", ""))).path
+    method = str(getattr(request, "method", "GET")).upper()
+    # In dev mode, use a fixed principal. In JWT mode, resolve from token.
+    principal_id = "dev-user" if config.jwt.mode == "dev" else _resolve_principal_id(request, config)
+    return await route_profiles(request, env, path, method, principal_id)
+
+
+def _resolve_principal_id(request: object, config: CloudflareConfig) -> str:
+    """Extract principal subject_id from JWT token on a pre-authenticated request.
+
+    Uses synchronous PyJWT decode (not the async Web Crypto path) since this runs
+    in the entry worker, not inside a DO.
+    """
+    from undef.terminal.cloudflare.auth.jwt import extract_bearer_or_cookie
+
+    token = extract_bearer_or_cookie(request)
+    if not token:
+        return "anonymous"
+    try:
+        import jwt as pyjwt
+
+        key = config.jwt.public_key_pem or ""
+        claims = pyjwt.decode(token, key, algorithms=list(config.jwt.algorithms), options={"verify_exp": True})
+        return str(claims.get("sub") or claims.get("common_name") or "anonymous")
+    except Exception:
+        return "anonymous"
 
 
 async def _as_future(value: Response) -> Response:
