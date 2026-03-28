@@ -95,7 +95,7 @@ class TunnelClient:
         """Send a data frame on the given channel."""
         self._require_connected()
         ws = self._ws
-        if ws is None:
+        if ws is None:  # pragma: no cover — guarded by _require_connected
             msg = "not connected"
             raise RuntimeError(msg)
         await ws.send(encode_frame(channel, data))
@@ -109,7 +109,7 @@ class TunnelClient:
         """Send an EOF frame on the given channel."""
         self._require_connected()
         ws = self._ws
-        if ws is None:
+        if ws is None:  # pragma: no cover — guarded by _require_connected
             msg = "not connected"
             raise RuntimeError(msg)
         await ws.send(encode_frame(channel, b"", flags=FLAG_EOF))
@@ -118,7 +118,7 @@ class TunnelClient:
         """Receive and decode a tunnel frame."""
         self._require_connected()
         ws = self._ws
-        if ws is None:
+        if ws is None:  # pragma: no cover — guarded by _require_connected
             msg = "not connected"
             raise RuntimeError(msg)
         raw = await ws.recv()
@@ -144,7 +144,7 @@ class TunnelClient:
     async def _send_raw(self, data: bytes) -> None:
         self._require_connected()
         ws = self._ws
-        if ws is None:
+        if ws is None:  # pragma: no cover — guarded by _require_connected
             msg = "not connected"
             raise RuntimeError(msg)
         await ws.send(data)

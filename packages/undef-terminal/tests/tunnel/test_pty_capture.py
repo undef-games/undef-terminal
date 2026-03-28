@@ -199,6 +199,13 @@ class TestTtyProxy:
             sp.close()
 
     @pytest.mark.asyncio
+    async def test_read_raises_when_not_started(self) -> None:
+        """Line 128-129: read() raises OSError when _fd is None."""
+        proxy = TtyProxy()
+        with pytest.raises(OSError, match="not active"):
+            await proxy.read()
+
+    @pytest.mark.asyncio
     async def test_write_local(self) -> None:
         """write_local() doesn't raise."""
         proxy = TtyProxy()

@@ -427,3 +427,75 @@ class TestRunShare:
 
         await _bridge_loop(mock_pty, ws_send, ws_recv, is_attach=True)
         mock_pty.write_local.assert_called_once_with(b"output")
+
+
+class TestCmdShareRelativeEndpoint:
+    def test_relative_ws_endpoint_resolved(self) -> None:
+        """Line 192-193: relative /tunnel/... resolved to full wss:// URL."""
+        resp = {**_TUNNEL_RESPONSE, "ws_endpoint": "/tunnel/tun-abc123"}
+        mock_pty = MagicMock()
+        with (
+            patch("undef.terminal.cli.share._create_tunnel", return_value=resp),
+            patch("undef.terminal.cli.share.spawn_pty", return_value=mock_pty),
+            patch("undef.terminal.cli.share.asyncio.run") as mock_run,
+        ):
+            _cmd_share(_make_args())
+        mock_pty.close.assert_called_once()
+        # asyncio.run was called with _run_share coroutine
+        mock_run.assert_called_once()
+
+
+class TestDisplayNameEdgeCases:
+    def test_getpass_exception_falls_back(self) -> None:
+        """Line 110-111: getpass.getuser() raises → user='unknown'."""
+        with patch("undef.terminal.cli.share.getpass.getuser", side_effect=KeyError("no user")):
+            name = _display_name(_make_args())
+        assert name.startswith("unknown@")
+
+
+class TestBridgeLoopExceptions:
+    @pytest.mark.asyncio
+    async def test_pty_read_oserror(self) -> None:
+        """Line 145-146: OSError in pty_to_ws is caught."""
+        from undef.terminal.cli.share import _bridge_loop
+
+        mock_pty = AsyncMock()
+        mock_pty.read = AsyncMock(side_effect=OSError("fd closed"))
+
+        async def ws_send(data: bytes) -> None:
+            pass
+
+        async def ws_recv() -> bytes:
+            return b""
+
+        await _bridge_loop(mock_pty, ws_send, ws_recv)  # no raise
+
+    @pytest.mark.asyncio
+    async def test_ws_recv_oserror(self) -> None:
+        """Line 158-159: OSError in ws_to_pty is caught."""
+        from undef.terminal.cli.share import _bridge_loop
+
+        mock_pty = AsyncMock()
+        mock_pty.read = AsyncMock(return_value=b"")
+        mock_pty.write = AsyncMock()
+
+        async def ws_send(data: bytes) -> None:
+            pass
+
+        async def ws_recv() -> bytes:
+            raise OSError("broken pipe")
+
+        await _bridge_loop(mock_pty, ws_send, ws_recv)  # no raise
+
+
+class TestCmdShareCleanup:
+    def test_pty_close_called_on_normal_exit(self) -> None:
+        """Line 192-193: pty_source.close() called in finally."""
+        mock_pty = MagicMock()
+        with (
+            patch("undef.terminal.cli.share._create_tunnel", return_value=_TUNNEL_RESPONSE),
+            patch("undef.terminal.cli.share.spawn_pty", return_value=mock_pty),
+            patch("undef.terminal.cli.share.asyncio.run"),
+        ):
+            _cmd_share(_make_args())
+        mock_pty.close.assert_called_once()

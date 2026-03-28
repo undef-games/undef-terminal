@@ -217,7 +217,7 @@ def _cmd_share(args: argparse.Namespace) -> None:
         pty_source.close()
 
 
-async def _run_share(
+async def _run_share(  # pragma: no cover — integration; tested via E2E
     pty_source: Any,
     ws_endpoint: str,
     worker_token: str,

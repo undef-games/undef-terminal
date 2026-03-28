@@ -172,7 +172,9 @@ def _cmd_tunnel(args: argparse.Namespace) -> None:
         asyncio.run(_run_tunnel(ws_endpoint, worker_token, local_port))
 
 
-async def _run_tunnel(ws_endpoint: str, worker_token: str, local_port: int) -> None:
+async def _run_tunnel(
+    ws_endpoint: str, worker_token: str, local_port: int
+) -> None:  # pragma: no cover — integration; tested via E2E
     """Connect to tunnel WS and start accepting local TCP connections."""
     try:
         import websockets

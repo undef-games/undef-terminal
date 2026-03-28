@@ -87,6 +87,19 @@ class TestTunnelConnect:
             # Should receive close frame with 1008
             pass  # connection closed by server
 
+    def test_tunnel_accepts_global_worker_token(self) -> None:
+        """Global worker_bearer_token accepted → line 70 covered."""
+        hub = TermHub(worker_token="global-secret")
+        app = FastAPI()
+        app.include_router(hub.create_router())
+        app.state.uterm_registry = MagicMock(set_tunnel_connected=AsyncMock())
+        tc = TestClient(app)
+        with tc.websocket_connect(
+            "/tunnel/test-global-auth",
+            headers={"Authorization": "Bearer global-secret"},
+        ) as ws:
+            ws.send_bytes(encode_frame(CHANNEL_DATA, b"hello"))
+
     def test_tunnel_accepts_per_session_worker_token(self) -> None:
         hub = TermHub(worker_token="global-token")
         app = FastAPI()
