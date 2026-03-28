@@ -38,10 +38,16 @@ async def handle_tunnels(request: object, env: object) -> object:
     share_token = secrets.token_urlsafe(32)
     control_token = secrets.token_urlsafe(32)
 
+    now = time.time()
+    ttl_s = int(body.get("ttl_s", 3600))
+    ttl_s = max(60, min(ttl_s, 86400))
+    expires_at = now + ttl_s
+
     entry = {
         "session_id": tunnel_id,
         "display_name": display_name,
-        "created_at": time.time(),
+        "created_at": now,
+        "expires_at": expires_at,
         "connector_type": f"tunnel:{tunnel_type}",
         "lifecycle_state": "waiting",
         "input_mode": "open",
@@ -73,6 +79,7 @@ async def handle_tunnels(request: object, env: object) -> object:
             "worker_token": worker_token,
             "share_url": f"{base_url}/s/{tunnel_id}?token={share_token}",
             "control_url": f"{base_url}/app/operator/{tunnel_id}?token={control_token}",
+            "expires_at": expires_at,
         }
     )
 
@@ -99,10 +106,18 @@ async def resolve_share_context(request: object, env: object, tunnel_id: str) ->
     except Exception:
         provided = None
 
+    # Check expiry.
+    expires_at = session.get("expires_at")
+    if isinstance(expires_at, (int, float)) and time.time() > float(expires_at):
+        return None
+
+    # Timing-safe comparison — prevents brute-force via response timing.
     role: str | None = None
-    if control_tok and provided == control_tok:
+    if control_tok and provided and secrets.compare_digest(str(provided), str(control_tok)):
         role = "operator"
-    elif (share_tok and provided == share_tok) or (not share_tok and not control_tok):
+    elif (share_tok and provided and secrets.compare_digest(str(provided), str(share_tok))) or (
+        not share_tok and not control_tok
+    ):
         role = "viewer"
 
     if role is None:
@@ -120,13 +135,8 @@ async def handle_share_route(
     """Serve a shared tunnel page when the presented token is valid."""
     share_context = await resolve_share_context(request, env, tunnel_id)
     if share_context is None:
-        kv = getattr(env, "SESSION_REGISTRY", None)
-        if kv is None:
-            return json_response({"error": "not_found", "session_id": tunnel_id}, status=404)
-        raw = await kv.get(f"session:{tunnel_id}")
-        if raw is None:
-            return json_response({"error": "not_found", "session_id": tunnel_id}, status=404)
-        return json_response({"error": "forbidden", "session_id": tunnel_id}, status=403)
+        # Return 404 for both "not found" and "invalid token" to prevent enumeration.
+        return json_response({"error": "not_found", "session_id": tunnel_id}, status=404)
 
     page_kind, share_role = share_context
     query = parse_qs(urlparse(str(request.url)).query)  # type: ignore[attr-defined]

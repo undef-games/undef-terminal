@@ -389,9 +389,14 @@ def create_api_router() -> APIRouter:
     async def create_tunnel(request: Request, payload: Annotated[dict[str, Any], Body(...)]) -> dict[str, Any]:
         """Create a tunnel session for ``uterm share``.
 
-        Returns tunnel_id, ws_endpoint, share_url, and control_url.
+        Returns tunnel_id, ws_endpoint, share_url, control_url, and expires_at.
+        Accepts optional ``ttl_s`` in payload to override server default.
         """
         import secrets
+        import time
+
+        cfg = request.app.state.uterm_config
+        tunnel_cfg = cfg.tunnel
 
         tunnel_type = str(payload.get("tunnel_type", "terminal")).strip()
         display_name = str(payload.get("display_name") or "tunnel").strip()
@@ -400,11 +405,19 @@ def create_api_router() -> APIRouter:
         share_token = secrets.token_urlsafe(32)
         control_token = secrets.token_urlsafe(32)
 
-        cfg = request.app.state.uterm_config
+        # TTL: per-tunnel override clamped to [60, server default * 24]
+        requested_ttl = int(payload.get("ttl_s", tunnel_cfg.token_ttl_s))
+        max_ttl = tunnel_cfg.token_ttl_s * 24
+        ttl_s = max(60, min(requested_ttl, max_ttl))
+        now = time.time()
+        expires_at = now + ttl_s
+
+        source_ip = str(getattr(request.client, "host", "unknown")) if request.client else "unknown"
+
         registry = _registry(request)
         base = cfg.server.public_base_url or str(request.base_url).rstrip("/")
         ws_base = base.replace("http://", "ws://").replace("https://", "wss://")
-        tunnel_tokens = cast("dict[str, dict[str, str]]", request.app.state.uterm_tunnel_tokens)
+        tunnel_tokens = cast("dict[str, dict[str, object]]", request.app.state.uterm_tunnel_tokens)
 
         try:
             await registry.create_session(
@@ -424,11 +437,25 @@ def create_api_router() -> APIRouter:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
         tunnel_tokens[tunnel_id] = {
             "worker_token": worker_token,
             "share_token": share_token,
             "control_token": control_token,
+            "created_at": now,
+            "expires_at": expires_at,
+            "issued_ip": source_ip if tunnel_cfg.ip_binding else None,
+            "tunnel_type": tunnel_type,
         }
+
+        from undef.telemetry import get_logger
+
+        get_logger(__name__).info(
+            "tunnel_token_created session_id=%s ttl_s=%d source_ip=%s",
+            tunnel_id,
+            ttl_s,
+            source_ip,
+        )
 
         return {
             "tunnel_id": tunnel_id,
@@ -438,6 +465,61 @@ def create_api_router() -> APIRouter:
             "worker_token": worker_token,
             "share_url": f"{base}{cfg.ui.app_path}/session/{tunnel_id}?token={share_token}",
             "control_url": f"{base}{cfg.ui.app_path}/operator/{tunnel_id}?token={control_token}",
+            "expires_at": expires_at,
+        }
+
+    @router.delete("/tunnels/{tunnel_id}/tokens")
+    async def revoke_tunnel_tokens(request: Request, tunnel_id: _SessionId) -> dict[str, Any]:
+        """Revoke all tokens for a tunnel session."""
+        tunnel_tokens = cast("dict[str, dict[str, object]]", request.app.state.uterm_tunnel_tokens)
+        removed = tunnel_tokens.pop(tunnel_id, None)
+        from undef.telemetry import get_logger
+
+        get_logger(__name__).info("tunnel_token_revoked session_id=%s found=%s", tunnel_id, removed is not None)
+        return {"ok": True, "session_id": tunnel_id}
+
+    @router.post("/tunnels/{tunnel_id}/tokens/rotate")
+    async def rotate_tunnel_tokens(request: Request, tunnel_id: _SessionId) -> dict[str, Any]:
+        """Rotate all tokens for a tunnel session. Returns new tokens and URLs."""
+        import secrets
+        import time
+
+        tunnel_tokens = cast("dict[str, dict[str, object]]", request.app.state.uterm_tunnel_tokens)
+        old = tunnel_tokens.get(tunnel_id)
+        if old is None:
+            raise HTTPException(status_code=404, detail=f"no tunnel tokens for {tunnel_id}")
+
+        cfg = request.app.state.uterm_config
+        ttl_s = cfg.tunnel.token_ttl_s
+        now = time.time()
+        worker_token = secrets.token_urlsafe(32)
+        share_token = secrets.token_urlsafe(32)
+        control_token = secrets.token_urlsafe(32)
+        source_ip = str(getattr(request.client, "host", "unknown")) if request.client else "unknown"
+
+        tunnel_tokens[tunnel_id] = {
+            "worker_token": worker_token,
+            "share_token": share_token,
+            "control_token": control_token,
+            "created_at": now,
+            "expires_at": now + ttl_s,
+            "issued_ip": source_ip if cfg.tunnel.ip_binding else None,
+            "tunnel_type": str(old.get("tunnel_type", "terminal")),
+        }
+
+        base = cfg.server.public_base_url or str(request.base_url).rstrip("/")
+        ws_base = base.replace("http://", "ws://").replace("https://", "wss://")
+        from undef.telemetry import get_logger
+
+        get_logger(__name__).info("tunnel_token_rotated session_id=%s source_ip=%s", tunnel_id, source_ip)
+
+        return {
+            "tunnel_id": tunnel_id,
+            "ws_endpoint": f"{ws_base}/tunnel/{tunnel_id}",
+            "worker_token": worker_token,
+            "share_url": f"{base}{cfg.ui.app_path}/session/{tunnel_id}?token={share_token}",
+            "control_url": f"{base}{cfg.ui.app_path}/operator/{tunnel_id}?token={control_token}",
+            "expires_at": now + ttl_s,
         }
 
     return router

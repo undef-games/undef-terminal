@@ -146,9 +146,21 @@ def create_server_app(config: ServerConfig) -> FastAPI:
         session_id = _share_session_id_for(path)
         if session_id is None:
             return None
+        # Check query param first, then cookie.
         raw_qs = connection.scope.get("query_string", b"")
         query = raw_qs.decode("utf-8", errors="ignore") if isinstance(raw_qs, bytes) else str(raw_qs)
         provided = (parse_qs(query).get("token", [None]) or [None])[0]
+        if not provided:
+            # Try cookie: uterm_tunnel_{session_id}
+            from http.cookies import SimpleCookie
+
+            cookie_header = (
+                dict(connection.scope.get("headers", [])).get(b"cookie", b"").decode("utf-8", errors="ignore")
+            )
+            cookies = SimpleCookie(cookie_header)
+            cookie_key = f"uterm_tunnel_{session_id}"
+            if cookie_key in cookies:
+                provided = cookies[cookie_key].value
         if not provided:
             return None
         app = connection.scope.get("app")
@@ -156,9 +168,26 @@ def create_server_app(config: ServerConfig) -> FastAPI:
         token_state = token_map.get(session_id) if isinstance(token_map, dict) else None
         if token_state is None:
             return None
+        # Check expiry.
+        expires_at = token_state.get("expires_at")
+        if isinstance(expires_at, (int, float)) and time.time() > float(expires_at):
+            logger.info("tunnel_token_expired session_id=%s", session_id)
+            return None
+        # Check IP binding.
+        if config.tunnel.ip_binding:
+            issued_ip = token_state.get("issued_ip")
+            client_ip = str((connection.scope.get("client") or ("unknown", 0))[0])
+            if issued_ip and issued_ip != client_ip:
+                logger.info(
+                    "tunnel_token_ip_mismatch session_id=%s issued=%s actual=%s", session_id, issued_ip, client_ip
+                )
+                return None
+        # Match token type.
+        source_ip = str((connection.scope.get("client") or ("unknown", 0))[0])
         if secrets.compare_digest(str(provided), str(token_state.get("control_token", ""))):
             connection.state.uterm_share_token = str(provided)
             connection.state.uterm_share_role = "operator"
+            logger.info("tunnel_token_validated session_id=%s token_type=control source_ip=%s", session_id, source_ip)
             return Principal(
                 subject_id=f"share:{session_id}:operator",
                 roles=frozenset({"admin"}),
@@ -167,11 +196,13 @@ def create_server_app(config: ServerConfig) -> FastAPI:
         if secrets.compare_digest(str(provided), str(token_state.get("share_token", ""))):
             connection.state.uterm_share_token = str(provided)
             connection.state.uterm_share_role = "viewer"
+            logger.info("tunnel_token_validated session_id=%s token_type=share source_ip=%s", session_id, source_ip)
             return Principal(
                 subject_id=f"share:{session_id}:viewer",
                 roles=frozenset({"viewer"}),
                 scopes=frozenset({"session.read"}),
             )
+        logger.info("tunnel_token_validated session_id=%s valid=false source_ip=%s", session_id, source_ip)
         return None
 
     async def _require_authenticated(connection: HTTPConnection) -> None:
@@ -256,6 +287,20 @@ def create_server_app(config: ServerConfig) -> FastAPI:
     )
     profile_store = FileProfileStore(config.profiles.directory)
 
+    async def _sweep_expired_tunnel_tokens() -> None:
+        """Periodically remove expired tunnel tokens from the in-memory map."""
+        while True:
+            await asyncio.sleep(60)
+            now = time.time()
+            expired = [
+                sid
+                for sid, state in tunnel_tokens.items()
+                if isinstance(state.get("expires_at"), (int, float)) and now > float(state["expires_at"])
+            ]
+            for sid in expired:
+                tunnel_tokens.pop(sid, None)
+                logger.info("tunnel_token_expired session_id=%s swept=true", sid)
+
     @asynccontextmanager
     async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
         async def _delayed_boot() -> None:
@@ -272,12 +317,16 @@ def create_server_app(config: ServerConfig) -> FastAPI:
                 else None
             )
         )
+        sweep_task = asyncio.create_task(_sweep_expired_tunnel_tokens())
         try:
             yield
         finally:
+            sweep_task.cancel()
             boot_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await boot_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await sweep_task
             await webhook_manager.shutdown()
             await registry.shutdown()
 

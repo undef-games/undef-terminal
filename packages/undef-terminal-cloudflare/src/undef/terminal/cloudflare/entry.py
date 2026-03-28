@@ -4,7 +4,7 @@ import re
 import sys
 import time
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 # Import handler base classes directly from workers — these MUST resolve to the
 # real CF runtime classes (not stubs) so Cloudflare's Pyodide validation phase
@@ -338,9 +338,7 @@ async def _route_request(request: object, env: object, config: CloudflareConfig)
                 session_id=str(spa[1]["session_id"]),
                 surface="operator" if share_role == "operator" else "user",
                 share_role=share_role,
-                share_token=(
-                    urlparse(str(request.url)).query.split("token=", 1)[1] if "token=" in str(request.url) else None
-                ),
+                share_token=(parse_qs(urlparse(str(request.url)).query).get("token", [None]) or [None])[0],
             )
 
     # Authenticated API routes.
