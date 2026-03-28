@@ -24,6 +24,8 @@ from pathlib import Path
 import pytest
 import websockets
 
+from undef.terminal.control_channel import encode_control
+
 _WS_TIMEOUT_S = 15.0
 _HTTP_UA = "undef-terminal-e2e-test/1.0"
 # In AUTH_MODE=dev, any non-empty bearer token is accepted for worker auth.
@@ -281,7 +283,7 @@ async def test_two_browsers_receive_same_snapshot(wrangler_server: str) -> None:
         await _drain_until(browser_b, "hello", max_frames=5, timeout=5.0)
 
         # Worker sends snapshot → DO calls broadcast_to_browsers → both sockets receive it.
-        await worker_ws.send(json.dumps({"type": "snapshot", "screen": snapshot_screen, "ts": time.time()}))
+        await worker_ws.send(encode_control({"type": "snapshot", "screen": snapshot_screen, "ts": time.time()}))
 
         snap_a, snap_b = await asyncio.gather(
             _drain_until(browser_a, "snapshot", max_frames=10, timeout=10.0),
@@ -311,9 +313,9 @@ async def test_state_persists_after_do_hibernation(wrangler_server: str) -> None
     worker_uri = f"{base_ws}/ws/worker/{worker_id}/term"
     snapshot_screen = f"persist-me-{uuid.uuid4().hex[:6]}"
 
-    # Step 1-2: connect, send snapshot, disconnect.
+    # Step 1-2: connect, send control-channel encoded snapshot, disconnect.
     async with _ws_connect(worker_uri) as ws:
-        await ws.send(json.dumps({"type": "snapshot", "screen": snapshot_screen, "ts": time.time()}))
+        await ws.send(encode_control({"type": "snapshot", "screen": snapshot_screen, "ts": time.time()}))
         await asyncio.sleep(1.0)  # let DO process the frame before close
 
     # Step 3: wait for DO to hibernate.
