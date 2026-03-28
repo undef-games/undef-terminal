@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -27,6 +28,17 @@ _HTTP_UA = "undef-terminal-e2e-test/1.0"
 # In AUTH_MODE=dev, any non-empty bearer token is accepted for worker auth.
 _DEV_BEARER = "e2e-dev-token"
 
+# CF Access service token for real_cf tests.
+_CF_CLIENT_ID = os.environ.get("CF_ACCESS_CLIENT_ID", "")
+_CF_CLIENT_SECRET = os.environ.get("CF_ACCESS_CLIENT_SECRET", "")
+_WORKER_BEARER_TOKEN = os.environ.get("CF_WORKER_BEARER_TOKEN", "")
+
+
+def _cf_access_headers() -> dict[str, str]:
+    if _CF_CLIENT_ID and _CF_CLIENT_SECRET:
+        return {"CF-Access-Client-Id": _CF_CLIENT_ID, "CF-Access-Client-Secret": _CF_CLIENT_SECRET}
+    return {}
+
 
 # ---------------------------------------------------------------------------
 # HTTP + WS helpers (duplicated from test_e2e_ws — no shared test package)
@@ -37,9 +49,17 @@ def _base_ws(base_http: str) -> str:
     return base_http.replace("http://", "ws://").replace("https://", "wss://")
 
 
+def _ws_connect(uri: str):
+    """Connect with CF Access headers and worker bearer token when available."""
+    extra = _cf_access_headers()
+    if "/ws/worker/" in uri:
+        extra["Authorization"] = f"Bearer {_WORKER_BEARER_TOKEN or _DEV_BEARER}"
+    return websockets.connect(uri, additional_headers=extra) if extra else websockets.connect(uri)
+
+
 def _http_get(base: str, path: str) -> tuple[int, object]:
     url = f"{base}{path}"
-    req = urllib.request.Request(url, headers={"User-Agent": _HTTP_UA})  # noqa: S310
+    req = urllib.request.Request(url, headers={"User-Agent": _HTTP_UA, **_cf_access_headers()})  # noqa: S310
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
             return resp.status, json.loads(resp.read())
@@ -57,7 +77,7 @@ def _http_post(base: str, path: str, body: dict) -> tuple[int, dict]:
         url,
         data=data,
         method="POST",
-        headers={"Content-Type": "application/json", "User-Agent": _HTTP_UA},
+        headers={"Content-Type": "application/json", "User-Agent": _HTTP_UA, **_cf_access_headers()},
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
@@ -113,7 +133,7 @@ async def shell_runtime(wrangler_server: str):
         defn,
         public_base_url=wrangler_server,
         recording=recording,
-        worker_bearer_token=_DEV_BEARER,
+        worker_bearer_token=_WORKER_BEARER_TOKEN or _DEV_BEARER,
     )
     await rt.start()
     await asyncio.sleep(2.0)  # allow WS connect + initial snapshot send
@@ -164,10 +184,10 @@ async def test_hosted_runtime_snapshot_reaches_browser(wrangler_server: str) -> 
         defn,
         public_base_url=wrangler_server,
         recording=recording,
-        worker_bearer_token=_DEV_BEARER,
+        worker_bearer_token=_WORKER_BEARER_TOKEN or _DEV_BEARER,
     )
     try:
-        async with websockets.connect(browser_uri) as browser_ws:
+        async with _ws_connect(browser_uri) as browser_ws:
             # Drain hello frames sent by fetch() and webSocketOpen before runtime starts.
             await _drain_until(browser_ws, "hello", max_frames=5, timeout=5.0)
             # Start runtime — shell connector sends initial snapshot over worker WS;
@@ -221,9 +241,9 @@ async def test_two_browsers_receive_same_snapshot(wrangler_server: str) -> None:
     snapshot_screen = f"dual-browser-{uuid.uuid4().hex[:6]}"
 
     async with (
-        websockets.connect(worker_uri, additional_headers={"Authorization": f"Bearer {_DEV_BEARER}"}) as worker_ws,
-        websockets.connect(browser_uri) as browser_a,
-        websockets.connect(browser_uri) as browser_b,
+        _ws_connect(worker_uri) as worker_ws,
+        _ws_connect(browser_uri) as browser_a,
+        _ws_connect(browser_uri) as browser_b,
     ):
         # Drain hello frames (fetch() + webSocketOpen) from both browsers.
         await _drain_until(browser_a, "hello", max_frames=5, timeout=5.0)
@@ -261,7 +281,7 @@ async def test_state_persists_after_do_hibernation(wrangler_server: str) -> None
     snapshot_screen = f"persist-me-{uuid.uuid4().hex[:6]}"
 
     # Step 1-2: connect, send snapshot, disconnect.
-    async with websockets.connect(worker_uri, additional_headers={"Authorization": f"Bearer {_DEV_BEARER}"}) as ws:
+    async with _ws_connect(worker_uri) as ws:
         await ws.send(json.dumps({"type": "snapshot", "screen": snapshot_screen, "ts": time.time()}))
         await asyncio.sleep(1.0)  # let DO process the frame before close
 
