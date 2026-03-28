@@ -448,10 +448,20 @@ class SessionRuntime(_SessionRuntimeIoMixin, _WsHelperMixin, DurableObject):
             return
 
         # Tunnel protocol: binary frames from the tunnel agent (worker role).
-        if isinstance(message, (bytes, bytearray, memoryview)) and role == "worker":
-            from undef.terminal.cloudflare.api.tunnel_routes import handle_tunnel_message
+        # In Pyodide, JS ArrayBuffer/Uint8Array arrives as a JsProxy, not Python bytes.
+        # Convert via to_py() or to_bytes() before checking isinstance.
+        _bin = message
+        if hasattr(_bin, "to_py"):
+            _bin = _bin.to_py()
+        elif hasattr(_bin, "to_bytes"):
+            _bin = _bin.to_bytes()
+        if isinstance(_bin, (bytes, bytearray, memoryview)) and role == "worker":
+            try:
+                from undef.terminal.cloudflare.api.tunnel_routes import handle_tunnel_message
+            except ImportError:
+                from api.tunnel_routes import handle_tunnel_message  # type: ignore[import-not-found]
 
-            await handle_tunnel_message(self, ws, bytes(message))
+            await handle_tunnel_message(self, ws, bytes(_bin))
             return
 
         raw = message if isinstance(message, str) else str(message)

@@ -321,12 +321,13 @@ async def _route_request(request: object, env: object, config: CloudflareConfig)
     if _STATIC_ASSET_PATH.match(path):
         return serve_asset(path.removeprefix("/"))
 
-    from undef.terminal.cloudflare.api._tunnel_api import resolve_share_context
+    try:
+        from undef.terminal.cloudflare.api._tunnel_api import handle_share_route, resolve_share_context
+    except ImportError:
+        from api._tunnel_api import handle_share_route, resolve_share_context  # type: ignore[import-not-found]
 
     spa = _resolve_spa_route(path)
     if spa is not None and spa[0] == "share" and "session_id" in spa[1]:
-        from undef.terminal.cloudflare.api._tunnel_api import handle_share_route
-
         return await handle_share_route(request, env, str(spa[1]["session_id"]), _spa_response)
 
     if spa is not None and "session_id" in spa[1]:
@@ -389,7 +390,10 @@ async def _api_connect(request: object, env: object, _config: CloudflareConfig) 
 
 
 async def _api_tunnels(request: object, env: object, _config: CloudflareConfig) -> Response:
-    from undef.terminal.cloudflare.api._tunnel_api import handle_tunnels
+    try:
+        from undef.terminal.cloudflare.api._tunnel_api import handle_tunnels
+    except ImportError:
+        from api._tunnel_api import handle_tunnels  # type: ignore[import-not-found]
 
     return await handle_tunnels(request, env)
 
