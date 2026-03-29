@@ -121,16 +121,39 @@
 - **Shared types**: `TunnelTokenState` + `TunnelCreateResponse` TypedDicts in `tunnel/types.py`
 - **Config model**: `TunnelConfig` added to `ServerConfig` (token_ttl_s, token_transport, cookie_secure, cookie_samesite, ip_binding)
 
+### 2026-03-28: TCP Port Forwarding (Phase 2)
+- **CLI**: `uterm tunnel <port> --server URL` forwards local TCP port through tunnel
+- Uses channel 0x02 for raw TCP bytes (multiplexed alongside terminal on 0x01)
+- Local TCP server accepts connections, relays through WS tunnel
+- 14 tests covering arg parsing, relay functions, error handling
+
+### 2026-03-29: HTTP Inspection (Phase 3)
+- **Channel 0x03**: structured JSON messages for HTTP request/response pairs
+- **CLI**: `uterm inspect <port> --server URL` — local HTTP reverse proxy with traffic logging
+- **Agent proxy**: parses request/response, sends `http_req`/`http_res` on channel 0x03, logs mitmproxy-style output to stderr
+- **Browser UI**: `/app/inspect/{id}` — split-pane view with live request list (method, URL, status, duration, size) + click-to-detail (headers, decoded body)
+- **Body rules**: < 256KB → base64 inline; > 256KB → truncated; binary content types → flagged
+- **Server-side**: FastAPI `fastapi_routes.py` + CF `tunnel_routes.py` both handle channel 0x03 frames, broadcast to browsers
+- **Page routes**: `/app/inspect/{id}` on both FastAPI and CF
+- **Frontend**: `inspect-view.ts` with WebSocket connection, control channel decoding, live DOM rendering
+- **Tests**: 369 tunnel + 47 CF + 54 API + 472 frontend = all passing; 100% statement coverage; 102 edge case + hypothesis fuzzing tests
+- **Verified**: Playwright headed browser — 54+ requests streaming live with detail pane
+
+### 2026-03-29: Pyodide + CF Deployment Fixes
+- **JsProxy fix**: `session_runtime.py` converts JS ArrayBuffer/Uint8Array via `to_py()`/`to_bytes()` before `isinstance` check
+- **Import fallbacks**: `entry.py` and `session_runtime.py` use `try/except ImportError` with CF flat path fallback for `_tunnel_api` and `tunnel_routes`
+- **Worker role fix**: skip JWT role resolution for worker WS connections (workers auth via bearer token, not JWT)
+- **Stale Vite manifest**: removed `.vite/manifest.json` that shadowed vanilla JS app
+
 ## Known Issues
 
 - CF overall package coverage at 96.5% (pre-existing gaps in contracts.py, ws_routes.py)
-- 13 xenon blocks above B in pre-existing files (config.py at D)
-- `undef-shell` 0.1.0 not yet on PyPI
 - FastAPI tunnel tokens are in-memory only — server restart loses active share links (CF side has KV persistence)
 - Frontend share token propagation uses query params by default; cookie mode available but not default
+- HTTP inspection body preview limited to 256KB (larger bodies proxied but not displayed)
 
 ## What's Next
 
-- **Phase 2**: `uterm tunnel <port>` — TCP port forwarding through the tunnel primitive (channel multiplexing already supports it)
-- **Phase 3**: HTTP-aware tunneling with inspection UI (MITM features)
+- **Phase 4 (future)**: HTTP intercept/modify mode (pause requests in flight, edit, forward/drop)
+- **Standalone embeddable inspect page**: `/inspect.html` for embedding in other tools
 - Ready to publish 0.4.0 when desired.
