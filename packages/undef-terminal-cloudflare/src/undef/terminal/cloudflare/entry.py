@@ -132,7 +132,7 @@ _FITADDON_CDN = "https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.11.0"
 _FONTS_CDN = "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&display=swap"
 
 # SPA route patterns → (page_kind, needs_session_id, extra_scripts).
-_SPA_SESSION_RE = re.compile(r"^/app/(?P<kind>session|operator|replay)/(?P<sid>[a-zA-Z0-9_-]{1,64})$")
+_SPA_SESSION_RE = re.compile(r"^/app/(?P<kind>session|operator|replay|inspect)/(?P<sid>[a-zA-Z0-9_-]{1,64})$")
 
 
 def _resolve_spa_route(path: str) -> tuple[str, dict[str, object]] | None:
@@ -168,7 +168,7 @@ def _spa_response(page_kind: str, **extra_bootstrap: object) -> Response:
     # Session/operator/replay pages need hijack.js loaded before the SPA bundle.
     pre_scripts = ""
     page_script = "server-session-page.js"
-    if page_kind in {"session", "operator"}:
+    if page_kind in {"session", "operator", "inspect"}:
         pre_scripts = "<script type='module' src='/assets/hijack.js'></script>"
     elif page_kind == "replay":
         page_script = "server-replay-page.js"
