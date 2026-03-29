@@ -322,13 +322,19 @@ async def _route_request(request: object, env: object, config: CloudflareConfig)
         return serve_asset(path.removeprefix("/"))
 
     try:
-        from undef.terminal.cloudflare.api._tunnel_api import handle_share_route, resolve_share_context
+        from undef.terminal.cloudflare.api._tunnel_api import resolve_share_context
     except ImportError:
-        from api._tunnel_api import handle_share_route, resolve_share_context  # type: ignore[import-not-found]
+        from api._tunnel_api import resolve_share_context  # type: ignore[import-not-found]
 
     spa = _resolve_spa_route(path)
     if spa is not None and spa[0] == "share" and "session_id" in spa[1]:
-        return await handle_share_route(request, env, str(spa[1]["session_id"]), _spa_response)
+        # /s/{id} → 302 redirect to /app/session/{id} (parity with FastAPI)
+        sid = str(spa[1]["session_id"])
+        qs = urlparse(str(request.url)).query
+        target = f"/app/session/{sid}"
+        if qs:
+            target += f"?{qs}"
+        return Response(None, status=302, headers={"location": target})
 
     if spa is not None and "session_id" in spa[1]:
         share_context = await resolve_share_context(request, env, str(spa[1]["session_id"]))

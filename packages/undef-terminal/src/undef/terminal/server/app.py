@@ -147,12 +147,14 @@ def create_server_app(config: ServerConfig) -> FastAPI:
         session_id = _share_session_id_for(path)
         if session_id is None:
             return None
-        # Check query param first, then cookie.
-        raw_qs = connection.scope.get("query_string", b"")
-        query = raw_qs.decode("utf-8", errors="ignore") if isinstance(raw_qs, bytes) else str(raw_qs)
-        provided = (parse_qs(query).get("token", [None]) or [None])[0]
-        if not provided:
-            # Try cookie: uterm_tunnel_{session_id}
+        # Check query param and/or cookie based on token_transport config.
+        transport = config.tunnel.token_transport
+        provided = None
+        if transport in ("query", "both"):
+            raw_qs = connection.scope.get("query_string", b"")
+            query = raw_qs.decode("utf-8", errors="ignore") if isinstance(raw_qs, bytes) else str(raw_qs)
+            provided = (parse_qs(query).get("token", [None]) or [None])[0]
+        if not provided and transport in ("cookie", "both"):
             from http.cookies import SimpleCookie
 
             cookie_header = (
