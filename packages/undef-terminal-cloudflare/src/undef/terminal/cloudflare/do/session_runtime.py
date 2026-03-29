@@ -316,7 +316,11 @@ class SessionRuntime(_SessionRuntimeIoMixin, _WsHelperMixin, DurableObject):
                 socket_role = "raw"
 
             # Resolve browser role from JWT (defaults to "admin" in dev/none mode).
-            browser_role = await self.browser_role_for_request(request)
+            # Workers authenticate via bearer token, not JWT — default to "admin".
+            if socket_role == "worker":
+                browser_role = "admin"
+            else:
+                browser_role = await self.browser_role_for_request(request)
 
             client, server = WebSocketPair.new().object_values()
             self.ctx.acceptWebSocket(server)
