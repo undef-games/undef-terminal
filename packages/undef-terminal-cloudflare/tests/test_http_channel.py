@@ -47,3 +47,19 @@ class TestCfHttpChannel:
         frame = b"\x03\x00" + payload
         await handle_tunnel_message(rt, MagicMock(), frame)
         assert rt.last_snapshot is None
+
+    @pytest.mark.asyncio
+    async def test_control_error_message(self):
+        """Line 113-114: 'error' control type handled."""
+        rt = _MockRuntime()
+        ctrl = json.dumps({"type": "error", "message": "upstream timeout"}).encode()
+        frame = b"\x00\x00" + ctrl  # channel 0 = control
+        await handle_tunnel_message(rt, MagicMock(), frame)
+
+    @pytest.mark.asyncio
+    async def test_control_unknown_type(self):
+        """Line 115-116: unknown control type handled."""
+        rt = _MockRuntime()
+        ctrl = json.dumps({"type": "custom_extension", "data": 42}).encode()
+        frame = b"\x00\x00" + ctrl
+        await handle_tunnel_message(rt, MagicMock(), frame)
