@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import parse_qs
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketException, status
+from fastapi import Request as FastAPIRequest
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import HTTPConnection  # noqa: TC002
 from starlette.staticfiles import StaticFiles
@@ -378,6 +379,17 @@ def create_server_app(config: ServerConfig) -> FastAPI:
     app.include_router(create_api_router(), dependencies=[Depends(_require_authenticated)])
     app.include_router(create_profiles_router(), dependencies=[Depends(_require_authenticated)])
     app.include_router(create_page_router(), prefix=config.ui.app_path, dependencies=[Depends(_require_authenticated)])
+
+    @app.get("/s/{session_id}")
+    async def short_share_url(request: FastAPIRequest, session_id: str) -> object:
+        """Short share URL: /s/{id}?token=... → redirect to /app/session/{id}?token=..."""
+        from starlette.responses import RedirectResponse
+
+        qs = str(request.url.query)
+        target = f"{config.ui.app_path}/session/{session_id}"
+        if qs:
+            target += f"?{qs}"
+        return RedirectResponse(url=target, status_code=302)
 
     if config.server.allowed_origins:
         app.add_middleware(
