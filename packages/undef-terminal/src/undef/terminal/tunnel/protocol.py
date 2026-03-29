@@ -12,6 +12,7 @@ from typing import Any
 
 CHANNEL_CONTROL: int = 0x00
 CHANNEL_DATA: int = 0x01
+CHANNEL_HTTP: int = 0x03
 
 FLAG_DATA: int = 0x00
 FLAG_EOF: int = 0x01
