@@ -31,10 +31,34 @@ Starts an interactive terminal REPL. Type `help` to see available commands.
 | `storage list` | List Durable Object storage keys |
 | `storage get <key>` | Read a Durable Object storage value |
 | `fetch [-X METHOD] <url> [body]` | Make an HTTP request |
+| `render [flags] <url>` | Render image as ANSI art (requires `images` extra) |
 | `env` | Show available context bindings |
 | `exit` / `quit` | Close the shell |
 
 The `py` sandbox pre-imports `json`, `datetime`, `re`, `hashlib`, and `base64`.
+
+### Image rendering
+
+The `render` command converts images (PNG, JPEG, GIF, APNG, WebP, BMP, TIFF) to
+ANSI terminal art using half-block characters. Animated images stream as video.
+
+```bash
+pip install 'undef-shell[images]'   # installs Pillow
+```
+
+```
+render https://example.com/photo.png
+render --mode 256 --cols 60 --rows 20 file:///path/to/image.png
+render --loop --fps 15 https://example.com/animation.gif
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--mode` | `truecolor` | Color mode: `truecolor`, `256`, or `16` |
+| `--cols` | `80` | Output width in columns |
+| `--rows` | `24` | Output height in rows |
+| `--fps` | from source | Override animation frame rate |
+| `--loop` | off | Loop animated images until Ctrl+C |
 
 ## Use with undef-terminal
 
