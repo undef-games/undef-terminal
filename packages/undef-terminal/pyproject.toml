@@ -28,7 +28,7 @@ classifiers = [
     "Topic :: Terminals",
     "Framework :: FastAPI",
 ]
-dependencies = ["undef-telemetry>=0.3", "undef-shell>=0.1.0"]
+dependencies = ["undef-telemetry>=0.3", "undef-shell>=0.1.0", "undef-terminal-render>=0.1"]
 
 [project.urls]
 Homepage = "https://github.com/undef-games/undef-terminal"

@@ -51,13 +51,14 @@ dev = [
 ]
 
 [tool.uv.workspace]
-members = ["packages/undef-terminal", "packages/undef-shell", "packages/undef-terminal-cloudflare", "packages/undef-deckmux"]
+members = ["packages/undef-terminal", "packages/undef-shell", "packages/undef-terminal-cloudflare", "packages/undef-deckmux", "packages/undef-terminal-render"]
 
 [tool.uv.sources]
 undef-terminal = { workspace = true }
 undef-shell = { workspace = true }
 undef-terminal-cloudflare = { workspace = true }
 undef-deckmux = { workspace = true }
+undef-terminal-render = { workspace = true }
 
 [tool.ruff]
 line-length = 120
@@ -97,7 +98,7 @@ follow_imports = "normal"
 ignore_missing_imports = false
 namespace_packages = true
 explicit_package_bases = true
-mypy_path = ["packages/undef-terminal/src", "packages/undef-shell/src", "packages/undef-deckmux/src"]
+mypy_path = ["packages/undef-terminal/src", "packages/undef-shell/src", "packages/undef-deckmux/src", "packages/undef-terminal-render/src"]
 
 [[tool.mypy.overrides]]
 module = ["undef.telemetry", "undef.telemetry.*", "undef.deckmux", "undef.deckmux.*", "structlog", "structlog.*"]
@@ -116,7 +117,7 @@ warn_unused_ignores = false
 
 [tool.ty.environment]
 python-version = "3.11"
-extra-paths = ["packages/undef-shell/src", "packages/undef-deckmux/src"]
+extra-paths = ["packages/undef-shell/src", "packages/undef-deckmux/src", "packages/undef-terminal-render/src"]
 
 [tool.ty.rules]
 invalid-argument-type = "ignore"
