@@ -15,7 +15,7 @@ terminal cell.  Supports three color modes:
 from __future__ import annotations
 
 import io
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -144,7 +144,7 @@ ColorMode = Literal["truecolor", "256", "16"]
 
 
 def _render_frame(
-    pixels,  # PIL PixelAccess object
+    pixels: Any,  # PIL PixelAccess object
     px_w: int,
     px_h: int,
     sgr_fn: Callable[[tuple[int, int, int], tuple[int, int, int]], str],
@@ -220,7 +220,7 @@ def image_to_ansi_frames(
         (frames, fps) — list of ANSI strings and the source FPS (0.0 for static).
     """
     try:
-        from PIL import Image
+        from PIL import Image  # type: ignore[import-not-found]
     except ImportError as exc:
         raise ImportError(
             "missing dependency — Pillow\ninstall the images extra: pip install 'undef-shell[images]'"
