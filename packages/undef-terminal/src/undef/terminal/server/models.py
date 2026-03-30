@@ -101,6 +101,18 @@ class RecordingConfig(ServerBaseModel):
         return value
 
 
+class SecurityConfig(ServerBaseModel):
+    """Configurable security response headers."""
+
+    mode: Literal["strict", "dev"] = "strict"
+    csp: str | None = None
+    hsts: str | None = None
+    x_frame_options: str | None = None
+    x_content_type_options: str | None = None
+    referrer_policy: str | None = None
+    permissions_policy: str | None = None
+
+
 class TunnelConfig(ServerBaseModel):
     """Tunnel sharing security settings."""
 
@@ -258,6 +270,7 @@ class ServerConfig(ServerBaseModel):
     ui: UiConfig = Field(default_factory=UiConfig)
     recording: RecordingConfig = Field(default_factory=RecordingConfig)
     profiles: ProfileStoreConfig = Field(default_factory=ProfileStoreConfig)
+    security: SecurityConfig = Field(default_factory=SecurityConfig)
     tunnel: TunnelConfig = Field(default_factory=TunnelConfig)
     sessions: list[SessionDefinition] = Field(default_factory=list)
 
@@ -267,6 +280,7 @@ ServerModel: TypeAlias = (
     | UiConfig
     | RecordingConfig
     | ProfileStoreConfig
+    | SecurityConfig
     | TunnelConfig
     | ServerBindConfig
     | SessionDefinition

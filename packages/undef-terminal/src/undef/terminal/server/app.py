@@ -38,6 +38,7 @@ from undef.terminal.server.registry import SessionRegistry
 from undef.terminal.server.routes.api import create_api_router
 from undef.terminal.server.routes.pages import create_page_router
 from undef.terminal.server.routes.profiles import create_profiles_router
+from undef.terminal.server.security import SecurityHeadersMiddleware
 from undef.terminal.server.webhooks import WebhookManager
 
 if TYPE_CHECKING:
@@ -401,6 +402,8 @@ def create_server_app(config: ServerConfig) -> FastAPI:
             allow_methods=["GET", "POST", "OPTIONS"],
             allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
         )
+
+    app.add_middleware(SecurityHeadersMiddleware, config=config.security)
 
     frontend_path = importlib.resources.files("undef.terminal") / "frontend"
     app.mount(config.ui.assets_path, StaticFiles(directory=str(frontend_path), html=False), name="uterm-assets")
