@@ -14,11 +14,16 @@ The animation tests record short videos of animated ANSI output.
 
 from __future__ import annotations
 
+import socket
+import socketserver
 import tempfile
+import threading
 import time
 import urllib.request
 
-from playwright.sync_api import Page
+import uvicorn
+from fastapi import FastAPI
+from playwright.sync_api import Page, expect
 
 from tests.playwright._ansi_palettes import (
     build_16_color_palette,
@@ -229,3 +234,91 @@ class TestGifToAnsi:
             _screenshot(page, "nyancat-16color.png")
         finally:
             worker.stop()
+
+
+# ---------------------------------------------------------------------------
+# Telnet path: ANSI colors through telnet echo → WS proxy → xterm.js
+# ---------------------------------------------------------------------------
+
+
+class _ColorTelnetHandler(socketserver.BaseRequestHandler):
+    """Telnet handler that sends ANSI color palette on connect."""
+
+    def handle(self) -> None:
+        from undef.terminal.transports.telnet_server import _build_telnet_handshake
+
+        self.request.sendall(_build_telnet_handshake())
+        palette = build_16_color_palette() + build_256_color_palette() + build_truecolor_palette()
+        self.request.sendall(palette.encode("utf-8"))
+        # Keep connection alive until client disconnects
+        while True:
+            data = self.request.recv(4096)
+            if not data:
+                return
+
+
+class _ColorTelnetServer(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+
+
+class TestTelnetColorPath:
+    """Prove ANSI colors survive: telnet server → WS proxy → browser xterm.js."""
+
+    def test_colors_through_telnet_proxy(self, page: Page) -> None:
+        """Send 16/256/truecolor palette via telnet, verify in browser."""
+        from undef.terminal.fastapi import WsTerminalProxy, mount_terminal_ui
+
+        # Start color telnet server
+        telnet_server = _ColorTelnetServer(("127.0.0.1", 0), _ColorTelnetHandler)
+        telnet_thread = threading.Thread(target=telnet_server.serve_forever, daemon=True)
+        telnet_thread.start()
+        telnet_port = telnet_server.server_address[1]
+
+        # Start WS proxy + terminal UI
+        app = FastAPI()
+        mount_terminal_ui(app)
+        app.include_router(WsTerminalProxy("127.0.0.1", telnet_port).create_router("/ws/raw/demo/term"))
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+
+        server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="critical"))
+        thread = threading.Thread(target=server.run, daemon=True)
+        thread.start()
+
+        deadline = time.monotonic() + 10.0
+        while not server.started:
+            if time.monotonic() > deadline:
+                raise RuntimeError("telnet proxy server failed to start")
+            time.sleep(0.05)
+
+        base_url = f"http://127.0.0.1:{port}"
+
+        try:
+            page.goto(f"{base_url}/terminal/terminal.html", wait_until="domcontentloaded")
+            expect(page.locator(".terminal-div")).to_be_visible(timeout=5000)
+            page.wait_for_function("Boolean(window.demoTerminal)", timeout=10000)
+
+            # Wait for telnet color data to arrive and render
+            page.wait_for_function(
+                "() => (window.demoTerminal?.getBufferText() || '').includes('256-Color')",
+                timeout=15000,
+            )
+
+            # Verify the xterm buffer contains all three palette labels
+            buf = page.evaluate("window.demoTerminal.getBufferText()")
+            assert "16-Color Palette" in buf, "16-color palette not found in telnet output"
+            assert "256-Color Palette" in buf, "256-color palette not found in telnet output"
+            assert "Truecolor Palette" in buf, "Truecolor palette not found in telnet output"
+
+            # terminal.html uses xterm canvas renderer — colors verified via
+            # screenshot visual inspection rather than DOM span checks
+
+            SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+            _screenshot(page, "telnet-color-palette.png")
+        finally:
+            server.should_exit = True
+            thread.join(timeout=5)
+            telnet_server.shutdown()
+            telnet_server.server_close()
