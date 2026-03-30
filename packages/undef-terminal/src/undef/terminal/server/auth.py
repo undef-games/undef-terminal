@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any
 
 from undef.telemetry import get_logger
 
+from undef.terminal.server.audit import audit_event
+
 if TYPE_CHECKING:
     from undef.terminal.server.models import AuthConfig
 
@@ -161,10 +163,13 @@ def _resolve_principal(headers: Any, cookies: Any, auth: AuthConfig) -> Principa
     if not token:
         return _anonymous_principal()
     try:
-        return _principal_from_jwt_token(token, auth)
+        principal = _principal_from_jwt_token(token, auth)
     except Exception as exc:
         logger.warning("jwt_auth_failed error=%s", exc)
+        audit_event("auth.failure", detail={"error": str(exc)})
         return _anonymous_principal()
+    audit_event("auth.success", principal=principal.subject_id)
+    return principal
 
 
 def resolve_http_principal(request: object, auth: AuthConfig) -> Principal:

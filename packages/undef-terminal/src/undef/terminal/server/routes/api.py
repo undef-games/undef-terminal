@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Annotated, Any, cast
 from fastapi import APIRouter, Body, HTTPException, Path, Query, Request, Response
 from fastapi.responses import FileResponse, PlainTextResponse
 
+from undef.terminal.server.audit import audit_event
 from undef.terminal.server.models import model_dump
 from undef.terminal.server.registry import SessionValidationError
 from undef.terminal.server.routes.sse import create_sse_router
@@ -40,6 +41,10 @@ def _principal(request: Request) -> Principal:
     if principal is None:
         raise HTTPException(status_code=500, detail="principal was not resolved")
     return cast("Principal", principal)
+
+
+def _source_ip(request: Request) -> str:
+    return str(getattr(request.client, "host", "unknown")) if request.client else "unknown"
 
 
 async def _session_definition(request: Request, session_id: str) -> SessionDefinition:
@@ -106,6 +111,12 @@ def create_api_router() -> APIRouter:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        audit_event(
+            "session.create",
+            principal=principal.subject_id,
+            session_id=str(mutable_payload.get("session_id", "")),
+            source_ip=_source_ip(request),
+        )
         return model_dump(session)
 
     def _sid_not_found(session_id: str) -> HTTPException:
@@ -153,6 +164,12 @@ def create_api_router() -> APIRouter:
         if not authz.can_mutate_session(principal, definition, "session.control.delete"):
             raise HTTPException(status_code=403, detail="insufficient privileges")
         await _registry(request).delete_session(session_id)
+        audit_event(
+            "session.delete",
+            principal=principal.subject_id,
+            session_id=session_id,
+            source_ip=_source_ip(request),
+        )
         return {"ok": True}
 
     @router.post("/sessions/{session_id}/connect")
@@ -381,6 +398,13 @@ def create_api_router() -> APIRouter:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        audit_event(
+            "session.create",
+            principal=principal.subject_id,
+            session_id=session_id,
+            source_ip=_source_ip(request),
+            detail={"connector_type": connector_type, "ephemeral": True},
+        )
         cfg = request.app.state.uterm_config
         url = f"{cfg.ui.app_path}/session/{session_id}"
         return {"session_id": session_id, "url": url, **model_dump(session)}
@@ -456,6 +480,13 @@ def create_api_router() -> APIRouter:
             ttl_s,
             source_ip,
         )
+        audit_event(
+            "tunnel.create",
+            principal=_principal(request).subject_id,
+            session_id=tunnel_id,
+            source_ip=source_ip,
+            detail={"tunnel_type": tunnel_type, "ttl_s": ttl_s},
+        )
 
         return {
             "tunnel_id": tunnel_id,
@@ -476,6 +507,12 @@ def create_api_router() -> APIRouter:
         from undef.telemetry import get_logger
 
         get_logger(__name__).info("tunnel_token_revoked session_id=%s found=%s", tunnel_id, removed is not None)
+        audit_event(
+            "tunnel.tokens.revoke",
+            principal=_principal(request).subject_id,
+            session_id=tunnel_id,
+            source_ip=_source_ip(request),
+        )
         return {"ok": True, "session_id": tunnel_id}
 
     @router.post("/tunnels/{tunnel_id}/tokens/rotate")
@@ -512,6 +549,12 @@ def create_api_router() -> APIRouter:
         from undef.telemetry import get_logger
 
         get_logger(__name__).info("tunnel_token_rotated session_id=%s source_ip=%s", tunnel_id, source_ip)
+        audit_event(
+            "tunnel.tokens.rotate",
+            principal=_principal(request).subject_id,
+            session_id=tunnel_id,
+            source_ip=source_ip,
+        )
 
         return {
             "tunnel_id": tunnel_id,
