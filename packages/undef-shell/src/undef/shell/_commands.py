@@ -16,6 +16,7 @@ kv get <key>        — read a KV value by key
 kv set <key> <val>  — write a KV entry
 kv delete <key>     — delete a KV entry
 fetch [-X METHOD] <url> [body] — HTTP request (GET by default)
+render [flags] <url>    — render image as ANSI art (requires undef-shell[images])
 storage list        — list DO storage keys
 storage get <key>   — read a DO storage value
 env                 — show available context keys
