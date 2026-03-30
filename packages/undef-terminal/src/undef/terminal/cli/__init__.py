@@ -334,6 +334,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     add_inspect_subcommand(sub)
 
+    # ---- watch subcommand ----
+    from undef.terminal.cli.watch import add_watch_subcommand
+
+    add_watch_subcommand(sub)
+
     return parser
 
 
