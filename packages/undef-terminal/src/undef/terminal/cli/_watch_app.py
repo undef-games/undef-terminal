@@ -158,7 +158,7 @@ class WatchApp(App[None]):
     TITLE = "uterm watch"
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("q", "quit", "Quit"),
-        Binding("tab", "cycle_layout", "Layout"),
+        Binding("l", "cycle_layout", "Layout"),
         Binding("f", "cycle_method", "Method"),
     ]
 
@@ -262,9 +262,12 @@ class WatchApp(App[None]):
                 break
 
     def _update_status(self) -> None:
-        bar = self.query_one("#status-bar", Static)
+        try:
+            bar = self.query_one("#status-bar", Static)
+        except Exception:
+            return  # Widget not mounted yet (e.g., during startup/teardown)
         conn = "Connected" if self._connected else "Disconnected"
-        bar.update(f" {self._tunnel_id}  {conn}  {self._request_count} requests  [Tab] Layout  [f] Method  [q] Quit")
+        bar.update(f" {self._tunnel_id}  {conn}  {self._request_count} requests  [l] Layout  [f] Method  [q] Quit")
 
     @on(DataTable.RowSelected)
     def _on_row_selected(self, event: DataTable.RowSelected) -> None:
