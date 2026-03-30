@@ -126,6 +126,8 @@ _WORKER_ROUTE_PATTERNS = (
 _STATIC_ASSET_PATH = re.compile(r"^/[a-zA-Z0-9._/-]+\.(?:html|css|js)$")
 _SESSION_ID_RE = re.compile(r"^/api/sessions/(?P<session_id>[a-zA-Z0-9_-]{1,64})$")
 _SHARE_ROUTE_RE = re.compile(r"^/s/(?P<sid>[a-zA-Z0-9_-]{1,64})$")
+_TUNNEL_TOKENS_RE = re.compile(r"^/api/tunnels/(?P<tunnel_id>[a-zA-Z0-9_-]{1,64})/tokens$")
+_TUNNEL_TOKENS_ROTATE_RE = re.compile(r"^/api/tunnels/(?P<tunnel_id>[a-zA-Z0-9_-]{1,64})/tokens/rotate$")
 
 _XTERM_CDN = "https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0"
 _FITADDON_CDN = "https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.11.0"
@@ -375,6 +377,16 @@ def _match_api_route(path: str, request: object) -> object | None:
         return _api_connect
     if path == "/api/tunnels":
         return _api_tunnels
+    rotate_match = _TUNNEL_TOKENS_ROTATE_RE.match(path)
+    if rotate_match:
+        tid = rotate_match.group("tunnel_id")
+        return lambda req, env, cfg: _api_tunnel_rotate(req, env, cfg, tid)
+    revoke_match = _TUNNEL_TOKENS_RE.match(path)
+    if revoke_match:
+        method = str(getattr(request, "method", "GET")).upper()
+        if method == "DELETE":
+            tid = revoke_match.group("tunnel_id")
+            return lambda req, env, _cfg: _api_tunnel_revoke(req, env, tid)
     if path.startswith("/api/profiles"):
         return _api_profiles
     session_delete_match = _SESSION_ID_RE.match(path)
@@ -402,6 +414,24 @@ async def _api_tunnels(request: object, env: object, _config: CloudflareConfig) 
         from api._tunnel_api import handle_tunnels  # type: ignore[import-not-found]
 
     return await handle_tunnels(request, env)
+
+
+async def _api_tunnel_revoke(request: object, env: object, tunnel_id: str) -> Response:
+    try:
+        from undef.terminal.cloudflare.api._tunnel_api import handle_tunnel_revoke_tokens
+    except ImportError:
+        from api._tunnel_api import handle_tunnel_revoke_tokens  # type: ignore[import-not-found]
+
+    return await handle_tunnel_revoke_tokens(request, env, tunnel_id)
+
+
+async def _api_tunnel_rotate(request: object, env: object, config: CloudflareConfig, tunnel_id: str) -> Response:
+    try:
+        from undef.terminal.cloudflare.api._tunnel_api import handle_tunnel_rotate_tokens
+    except ImportError:
+        from api._tunnel_api import handle_tunnel_rotate_tokens  # type: ignore[import-not-found]
+
+    return await handle_tunnel_rotate_tokens(request, env, tunnel_id, ttl_s=config.tunnel_token_ttl_s)
 
 
 async def _api_profiles(request: object, env: object, config: CloudflareConfig) -> Response:
