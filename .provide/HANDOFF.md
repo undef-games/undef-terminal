@@ -145,15 +145,27 @@
 - **Worker role fix**: skip JWT role resolution for worker WS connections (workers auth via bearer token, not JWT)
 - **Stale Vite manifest**: removed `.vite/manifest.json` that shadowed vanilla JS app
 
+### 2026-03-29: TUI Watch + Parity + Workspace
+- **`uterm watch`**: Textual TUI that connects to an existing tunnel and shows HTTP traffic in real time
+  - Three layouts: horizontal, vertical, modal (cycle with `l`)
+  - Method filter (`f`), keyboard navigation, detail pane with headers + body
+  - 18 real `App.run_test()` Textual tests — no mocks
+  - `_watch_app.py` + `watch.py` at 0 missed statements
+- **Full parity**: CF now has cookie-based share token auth, `/s/{id}` redirects on both backends, `TunnelConfig` on CF (env vars), `token_transport` enforced on FastAPI
+- **aiohttp → httpx+uvicorn**: eliminated unnecessary dependency in `uterm inspect`
+- **uv workspace**: root `pyproject.toml` declares workspace members; `uv sync` installs all packages + `uterm` CLI entry point automatically
+- **9 pywrangler E2E tests**: tunnel creation, share URLs, agent WS, HTTP frames, channel coexistence, registry, inspect page
+- **Tests**: 513 tunnel/CLI + 51 CF tunnel + 9 CF E2E + 472 frontend = all passing
+
 ## Known Issues
 
 - CF overall package coverage at 96.5% (pre-existing gaps in contracts.py, ws_routes.py)
 - FastAPI tunnel tokens are in-memory only — server restart loses active share links (CF side has KV persistence)
-- Frontend share token propagation uses query params by default; cookie mode available but not default
 - HTTP inspection body preview limited to 256KB (larger bodies proxied but not displayed)
 
 ## What's Next
 
 - **Phase 4 (future)**: HTTP intercept/modify mode (pause requests in flight, edit, forward/drop)
 - **Standalone embeddable inspect page**: `/inspect.html` for embedding in other tools
+- **pytest-textual-snapshot**: snapshot testing for TUI layouts
 - Ready to publish 0.4.0 when desired.

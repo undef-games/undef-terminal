@@ -521,6 +521,7 @@ Three tokens generated per tunnel session (`POST /api/tunnels`):
 uterm share [cmd]              # Share terminal (channel 0x01)
 uterm tunnel <port>            # Forward TCP port (channel 0x02)
 uterm inspect <port>           # HTTP proxy + inspection (channels 0x01 + 0x03)
+uterm watch <id-or-url>        # TUI viewer for existing tunnel (read-only, Textual)
 ```
 
 ### Browser Views
