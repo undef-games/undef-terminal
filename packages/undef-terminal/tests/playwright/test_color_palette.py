@@ -14,7 +14,9 @@ The animation tests record short videos of animated ANSI output.
 
 from __future__ import annotations
 
+import tempfile
 import time
+import urllib.request
 
 from playwright.sync_api import Page
 
@@ -25,6 +27,7 @@ from tests.playwright._ansi_palettes import (
     build_ansi_art,
     build_truecolor_palette,
 )
+from tests.playwright._gif_to_ansi import gif_to_ansi_frames
 from tests.playwright.conftest import (
     SCREENSHOTS_DIR,
     AnimatedWorker,
@@ -32,6 +35,9 @@ from tests.playwright.conftest import (
     assert_has_colored_spans,
     wait_for_color_data,
 )
+
+# Classic colorful Nyan Cat GIF — 240x152, 8 frames, 135+ colors
+_NYAN_CAT_URL = "https://media.giphy.com/media/sIIhZliB2McAo/giphy.gif"
 
 
 def _uid() -> str:
@@ -151,5 +157,75 @@ class TestAnsiAnimation:
 
             # Final frame
             _screenshot(page, "animation-final.png")
+        finally:
+            worker.stop()
+
+
+class TestGifToAnsi:
+    """Download a popular GIF, convert to ANSI art, play as animated video."""
+
+    def test_nyan_cat_gif_video(self, page: Page, color_server: str) -> None:
+        """Download Nyan Cat GIF from Giphy, convert to truecolor ANSI, stream as video."""
+        # Download the GIF
+        with tempfile.NamedTemporaryFile(suffix=".gif", delete=False) as f:
+            gif_path = f.name
+        urllib.request.urlretrieve(_NYAN_CAT_URL, gif_path)  # noqa: S310
+
+        # Convert to ANSI frames at truecolor (24-bit)
+        frames, fps = gif_to_ansi_frames(gif_path, cols=80, rows=25, mode="truecolor")
+        assert len(frames) > 1, "GIF should have multiple frames"
+
+        worker_id = f"nyancat-{_uid()}"
+        worker = AnimatedWorker(color_server, worker_id, frames, fps=fps).start()
+
+        try:
+            page.goto(f"{color_server}/color-test/{worker_id}", wait_until="domcontentloaded")
+            wait_for_color_data(page)
+            assert_has_colored_spans(page)
+
+            SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+            for i in range(8):
+                page.wait_for_timeout(int(1000 / fps))
+                _screenshot(page, f"nyancat-frame-{i:02d}.png")
+
+            _screenshot(page, "nyancat-final.png")
+        finally:
+            worker.stop()
+
+    def test_nyan_cat_256_color(self, page: Page, color_server: str) -> None:
+        """Same GIF quantized to 256-color palette (ESC[38;5;N)."""
+        with tempfile.NamedTemporaryFile(suffix=".gif", delete=False) as f:
+            gif_path = f.name
+        urllib.request.urlretrieve(_NYAN_CAT_URL, gif_path)  # noqa: S310
+
+        frames, fps = gif_to_ansi_frames(gif_path, cols=80, rows=25, mode="256")
+        worker_id = f"nyan256-{_uid()}"
+        worker = AnimatedWorker(color_server, worker_id, frames, fps=fps).start()
+
+        try:
+            page.goto(f"{color_server}/color-test/{worker_id}", wait_until="domcontentloaded")
+            wait_for_color_data(page)
+            assert_has_colored_spans(page)
+            SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+            _screenshot(page, "nyancat-256color.png")
+        finally:
+            worker.stop()
+
+    def test_nyan_cat_16_color(self, page: Page, color_server: str) -> None:
+        """Same GIF quantized to 16-color palette (classic ANSI)."""
+        with tempfile.NamedTemporaryFile(suffix=".gif", delete=False) as f:
+            gif_path = f.name
+        urllib.request.urlretrieve(_NYAN_CAT_URL, gif_path)  # noqa: S310
+
+        frames, fps = gif_to_ansi_frames(gif_path, cols=80, rows=25, mode="16")
+        worker_id = f"nyan16-{_uid()}"
+        worker = AnimatedWorker(color_server, worker_id, frames, fps=fps).start()
+
+        try:
+            page.goto(f"{color_server}/color-test/{worker_id}", wait_until="domcontentloaded")
+            wait_for_color_data(page)
+            assert_has_colored_spans(page)
+            SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+            _screenshot(page, "nyancat-16color.png")
         finally:
             worker.stop()
