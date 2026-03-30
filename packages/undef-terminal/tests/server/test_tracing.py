@@ -213,3 +213,42 @@ def test_ws_browser_connection_creates_span(app_client: TestClient) -> None:
     span = ct.spans_named("uterm.ws.browser.connect")[0]
     assert span.attributes.get("uterm.worker_id") == "trace-ws-2"
     assert span.attributes.get("uterm.operation") == "ws.browser.connect"
+
+
+# ---------------------------------------------------------------------------
+# tracing.py span() helper unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestSpanHelper:
+    """Unit tests for the tracing.span() context manager."""
+
+    def test_span_creates_context(self) -> None:
+        from undef.terminal.server.tracing import span
+
+        with span("test.operation", **{"uterm.session_id": "s1"}) as s:
+            assert s is not None
+
+    def test_span_sets_attributes(self) -> None:
+        from undef.terminal.server.tracing import span
+
+        with span("test.attrs", **{"uterm.session_id": "s1", "uterm.op": "create"}) as s:
+            assert s is not None
+
+    def test_span_none_attributes_skipped(self) -> None:
+        from undef.terminal.server.tracing import span
+
+        with span("test.none", **{"uterm.session_id": None, "uterm.real": "value"}) as s:
+            assert s is not None
+
+    def test_tracer_exists(self) -> None:
+        from undef.terminal.server.tracing import _tracer
+
+        assert _tracer is not None
+
+    @pytest.mark.asyncio()
+    async def test_async_span_context(self) -> None:
+        from undef.terminal.server.tracing import span
+
+        async with span("test.async", **{"uterm.session_id": "a1"}) as s:
+            assert s is not None

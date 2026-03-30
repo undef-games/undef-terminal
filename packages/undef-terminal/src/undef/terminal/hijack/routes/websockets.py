@@ -17,7 +17,7 @@ import time
 from contextlib import suppress
 from typing import TYPE_CHECKING, Annotated, Any, cast
 
-from undef.telemetry import get_logger
+from undef.telemetry import get_logger, get_tracer
 
 try:
     from fastapi import APIRouter, Path, WebSocket, WebSocketDisconnect, WebSocketException
@@ -57,6 +57,16 @@ _WORKER_HIJACK_CLEANUP_INTERVAL_S = 1.0
 _BROWSER_HIJACK_CLEANUP_INTERVAL_S = 1.0
 
 
+def _set_ws_span_attrs(span: Any, **attrs: str | None) -> None:
+    """Set uterm.* attributes on a span if it exposes set_attribute."""
+    set_attr = getattr(span, "set_attribute", None)
+    if not callable(set_attr):
+        return
+    for key, val in attrs.items():
+        if val is not None:
+            set_attr(f"uterm.{key}", val)
+
+
 async def _periodic_hijack_cleanup(hub: TermHub, worker_id: str, interval_s: float) -> None:
     """Run lease cleanup on a fixed cadence while a WS handler is active."""
     while True:
@@ -89,6 +99,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         # a dead session.
         prev_was_hijacked = await hub.register_worker(worker_id, websocket)
         await hub.touch_activity(worker_id)
+        with get_tracer(__name__).start_as_current_span("uterm.ws.worker.connect") as _w_span:
+            _set_ws_span_attrs(_w_span, worker_id=worker_id, operation="ws.worker.connect")
         logger.info("term_worker_connected worker_id=%s", worker_id)
         if prev_was_hijacked:
             hub.notify_hijack_changed(worker_id, enabled=False, owner=None)
@@ -196,6 +208,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
             with suppress(asyncio.CancelledError):
                 await cleanup_task
             should_broadcast, was_hijacked = await hub.deregister_worker(worker_id, websocket)
+            with get_tracer(__name__).start_as_current_span("uterm.ws.worker.disconnect") as _wd_span:
+                _set_ws_span_attrs(_wd_span, worker_id=worker_id, operation="ws.worker.disconnect")
             if should_broadcast:
                 hub.metric("ws_disconnect_total")
                 hub.metric("ws_disconnect_worker_total")
@@ -257,6 +271,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         # Capture all startup state atomically while registering the browser.
         browser_state = await hub.register_browser(worker_id, websocket, role)
         await hub.touch_activity(worker_id)
+        with get_tracer(__name__).start_as_current_span("uterm.ws.browser.connect") as _b_span:
+            _set_ws_span_attrs(_b_span, worker_id=worker_id, operation="ws.browser.connect", role=role)
         is_hijacked = browser_state["is_hijacked"]
         hijacked_by_me = browser_state["hijacked_by_me"]
         worker_online = browser_state["worker_online"]
