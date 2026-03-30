@@ -6,7 +6,9 @@
 
 from __future__ import annotations
 
+import importlib
 import io
+import sys
 
 import pytest
 from PIL import Image
@@ -254,3 +256,30 @@ def test_invalid_bytes_raises() -> None:
 
     with pytest.raises(UnidentifiedImageError):
         image_to_ansi_frames(b"this is not an image")
+
+
+# ---------------------------------------------------------------------------
+# Pillow ImportError path
+# ---------------------------------------------------------------------------
+
+
+def test_pillow_import_error_raises_helpful_message() -> None:
+    """Cover _render.py:224-225 — ImportError when PIL is not installed."""
+    import undef.shell._render as render_mod
+
+    # Block PIL so the lazy import inside image_to_ansi_frames raises ImportError.
+    pil_modules = {k: v for k, v in sys.modules.items() if k == "PIL" or k.startswith("PIL.")}
+    for key in pil_modules:
+        sys.modules[key] = None  # type: ignore[assignment]
+    try:
+        importlib.reload(render_mod)
+        with pytest.raises(ImportError, match="Pillow"):
+            render_mod.image_to_ansi_frames(b"data")
+    finally:
+        # Restore original PIL modules
+        for key in pil_modules:
+            if pil_modules[key] is None:
+                sys.modules.pop(key, None)
+            else:
+                sys.modules[key] = pil_modules[key]
+        importlib.reload(render_mod)
