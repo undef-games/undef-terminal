@@ -51,12 +51,13 @@ dev = [
 ]
 
 [tool.uv.workspace]
-members = ["packages/undef-terminal", "packages/undef-shell", "packages/undef-terminal-cloudflare"]
+members = ["packages/undef-terminal", "packages/undef-shell", "packages/undef-terminal-cloudflare", "packages/undef-deckmux"]
 
 [tool.uv.sources]
 undef-terminal = { workspace = true }
 undef-shell = { workspace = true }
 undef-terminal-cloudflare = { workspace = true }
+undef-deckmux = { workspace = true }
 
 [tool.ruff]
 line-length = 120

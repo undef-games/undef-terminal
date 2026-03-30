@@ -10,6 +10,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "undef-deckmux",
     "undef-shell",
     "undef-terminal",
     "undef-terminal-cloudflare",
@@ -3022,6 +3023,19 @@ sdist = { url = "https://files.pythonhosted.org/packages/02/7c/b5b7d8136f872e3f1
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ff/7f/4320d9ce3be404e6310b915c3629fe27bf1e2f438a1a7a3cb0396e32e9a9/uncalled_for-0.2.0-py3-none-any.whl", hash = "sha256:2c0bd338faff5f930918f79e7eb9ff48290df2cb05fcc0b40a7f334e55d4d85f", size = 11351, upload-time = "2026-02-27T17:40:56.804Z" },
 ]
+
+[[package]]
+name = "undef-deckmux"
+source = { editable = "packages/undef-deckmux" }
+
+[package.optional-dependencies]
+terminal = [
+    { name = "undef-terminal" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "undef-terminal", marker = "extra == 'terminal'", editable = "packages/undef-terminal" }]
+provides-extras = ["terminal"]
 
 [[package]]
 name = "undef-shell"
