@@ -199,6 +199,26 @@ shows the intended reference-implementation structure for server config.
 For production JWT deployments, start from
 [`scripts/uterm-server.jwt.example.toml`](scripts/uterm-server.jwt.example.toml).
 
+### Security Headers
+
+`security.mode` controls HTTP response headers (CSP, HSTS, X-Frame-Options, etc.):
+
+- `"strict"` (default) — all security headers set with production defaults
+- `"dev"` — headers disabled for frictionless local development (only `X-Content-Type-Options: nosniff` always set)
+
+Each header is individually overridable:
+
+```toml
+[security]
+mode = "strict"
+csp = "default-src 'self' *.mycdn.com"  # override just CSP
+hsts = ""                                # suppress HSTS
+```
+
+CF Worker equivalent: `SECURITY_MODE`, `SECURITY_CSP`, etc. environment variables.
+
+CDN-loaded scripts (xterm.js) include SRI `integrity` hashes in both backends.
+
 ### Auth Runtime Posture
 
 - `default_server_config()` is intentionally local-friendly and uses `auth.mode = "dev"`.

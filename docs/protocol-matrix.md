@@ -102,6 +102,21 @@ Flags: `0x00` = data, `0x01` = EOF (half-close).
 | Binary content | `body_binary: true`, no `body_b64` | same |
 | Inspect view | `/app/inspect/{id}` — live request list + detail | same |
 
+## Security headers
+
+| Capability | FastAPI backend | Cloudflare backend |
+|---|---|---|
+| `security.mode` | `"strict"` / `"dev"` (SecurityConfig) | `SECURITY_MODE` env var |
+| Content-Security-Policy | strict: full CSP; dev: not set | same |
+| Strict-Transport-Security | strict: `max-age=63072000; includeSubDomains`; dev: not set | same |
+| X-Frame-Options | strict: `DENY`; dev: not set | same |
+| X-Content-Type-Options | always `nosniff` | same |
+| Referrer-Policy | strict: `strict-origin-when-cross-origin`; dev: not set | same |
+| Permissions-Policy | strict: `camera=(), microphone=(), geolocation=()`; dev: not set | same |
+| Per-header override | config field (None=default, ""=suppress, "value"=custom) | env var (same semantics) |
+| SRI on CDN assets | `integrity` + `crossorigin` on all jsdelivr script/link tags | same |
+| WebSocket 101 bypass | headers not applied to WS upgrades | same |
+
 ## Accuracy note
 
 This document describes the intended public contract. It does not mean every
