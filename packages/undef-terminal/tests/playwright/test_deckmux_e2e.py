@@ -11,7 +11,6 @@ presence sync, updates, pins, control transfer, and leave broadcasts.
 from __future__ import annotations
 
 import importlib.resources
-import json
 import socket
 import threading
 import time
@@ -19,6 +18,7 @@ import uuid
 from collections.abc import Generator
 from pathlib import Path
 
+import httpx
 import pytest
 import starlette.requests
 import uvicorn
@@ -425,24 +425,17 @@ class TestControlTransfer:
                 assert user_a_id != user_b_id
 
                 # Broadcast a control_transfer message via the test helper endpoint
-                import urllib.request
-
-                transfer_msg = json.dumps(
-                    {
+                httpx.post(
+                    f"{base_url}/deckmux-broadcast/{worker_id}",
+                    json={
                         "type": "control_transfer",
                         "from_user_id": user_a_id,
                         "to_user_id": user_b_id,
                         "reason": "handover",
                         "queued_keys": "",
-                    }
+                    },
+                    timeout=5,
                 )
-                req = urllib.request.Request(  # noqa: S310
-                    f"{base_url}/deckmux-broadcast/{worker_id}",
-                    data=transfer_msg.encode(),
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                urllib.request.urlopen(req, timeout=5)  # noqa: S310
 
                 # Both browsers should see the transfer
                 page.wait_for_function(
