@@ -147,6 +147,39 @@ class AnsiBuffer:
 # ---------------------------------------------------------------------------
 
 
+_HEX_CHARS = frozenset("0123456789abcdef")
+
+
+def _is_hex_color(value: str) -> bool:
+    """Return True if *value* is a 6-character hex RGB string (e.g. ``"ff8000"``)."""
+    return len(value) == 6 and all(c in _HEX_CHARS for c in value.lower())
+
+
+def _hex_to_rgb(value: str) -> tuple[int, int, int]:
+    """Parse a 6-char hex string into (R, G, B) integers."""
+    return (int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16))
+
+
+def _color_sgr(color: str, *, is_fg: bool) -> list[int]:
+    """Return SGR codes for a pyte color value.
+
+    Handles three formats:
+    - ``"default"`` → no codes
+    - Named 16-color (``"red"``, ``"brightcyan"``) → single code from FG/BG tables
+    - 6-char hex (``"ff8000"``) → truecolor ``38;2;R;G;B`` or ``48;2;R;G;B``
+    """
+    if color == "default":
+        return []
+    table = FG_CODES if is_fg else BG_CODES
+    if color in table:
+        return [table[color]]
+    if _is_hex_color(color):
+        r, g, b = _hex_to_rgb(color)
+        base = 38 if is_fg else 48
+        return [base, 2, r, g, b]
+    return []
+
+
 def _attr_codes(bold: bool, underscore: bool, blink: bool) -> list[int]:
     codes: list[int] = []
     if bold:
@@ -166,14 +199,15 @@ def style_to_sgr(
     reverse: bool,
     blink: bool,
 ) -> str:
-    """Convert pyte cell style attributes to an SGR escape sequence."""
+    """Convert pyte cell style attributes to an SGR escape sequence.
+
+    Supports named 16-color, 256-color (pyte hex), and truecolor (pyte hex).
+    """
     if reverse:
         fg, bg = bg, fg
     codes = _attr_codes(bold, underscore, blink)
-    if fg != "default" and fg in FG_CODES:
-        codes.append(FG_CODES[fg])
-    if bg != "default" and bg in BG_CODES:
-        codes.append(BG_CODES[bg])
+    codes.extend(_color_sgr(fg, is_fg=True))
+    codes.extend(_color_sgr(bg, is_fg=False))
     if not codes:
         return ANSI_RESET
     return f"\x1b[{';'.join(str(c) for c in codes)}m"
