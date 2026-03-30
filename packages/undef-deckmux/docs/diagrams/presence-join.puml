@@ -1,0 +1,27 @@
+' SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+' SPDX-License-Identifier: AGPL-3.0-or-later
+
+@startuml presence-join
+title DeckMux — Browser Joins Session
+
+skinparam backgroundColor #0d1117
+skinparam defaultFontColor #c9d1d9
+skinparam sequenceArrowColor #58a6ff
+skinparam sequenceLifeLineBorderColor #30363d
+skinparam sequenceParticipantBorderColor #30363d
+skinparam sequenceParticipantBackgroundColor #161b22
+skinparam noteBorderColor #30363d
+skinparam noteBackgroundColor #161b22
+
+participant "Browser A\n(existing)" as A
+participant "Server\n(TermHub)" as S
+participant "Browser B\n(joining)" as B
+
+B -> S: WebSocket connect
+S -> B: hello {presence_enabled: true}
+S -> B: presence_sync {users: [A], config: {...}}
+B -> S: presence_update {scroll_line: 0, name: "Red Hawk"}
+S -> A: presence_update {user_id: B, name: "Red Hawk", color: "#2ecc71"}
+note over A: Avatar bar adds "Red Hawk"\nGreen edge bar appears
+
+@enduml

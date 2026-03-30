@@ -1,0 +1,33 @@
+' SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+' SPDX-License-Identifier: AGPL-3.0-or-later
+
+@startuml hibernation-wake
+title DeckMux — CF Worker Hibernation Recovery
+
+skinparam backgroundColor #0d1117
+skinparam defaultFontColor #c9d1d9
+skinparam sequenceArrowColor #58a6ff
+skinparam sequenceLifeLineBorderColor #30363d
+skinparam sequenceParticipantBorderColor #30363d
+skinparam sequenceParticipantBackgroundColor #161b22
+skinparam noteBorderColor #30363d
+skinparam noteBackgroundColor #161b22
+
+participant "Browser A" as A
+participant "CF Worker\n(Durable Object)" as DO
+participant "Browser B" as B
+
+note over DO: Hibernated\n(>30s no messages)\nPresence state lost
+
+A -> A: user scrolls
+A -> DO: presence_update {scroll_line: 42}
+note over DO: **Wake from hibernation**\nPresenceStore is empty
+
+DO -> B: presence_update {user_id: A, ...}
+note over B: Received message after gap\nLast sent presence >10s ago\nTriggering re-announce
+
+B -> DO: presence_update {scroll_line: 15, ...}
+DO -> A: presence_update {user_id: B, ...}
+note over A,B: Both have fresh presence\nRecovery < 200ms
+
+@enduml

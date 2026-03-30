@@ -117,6 +117,44 @@ Flags: `0x00` = data, `0x01` = EOF (half-close).
 | SRI on CDN assets | `integrity` + `crossorigin` on all jsdelivr script/link tags | same |
 | WebSocket 101 bypass | headers not applied to WS upgrades | same |
 
+## DeckMux (collaborative presence)
+
+Real-time collaborative presence for terminal sessions. Enabled per session with `presence: true`.
+
+| Capability | FastAPI backend | Cloudflare backend |
+|---|---|---|
+| Session config: `presence` | `SessionDefinition.presence` | KV session entry |
+| `presence_update` relay | TermHub broadcast | DO broadcast |
+| `presence_sync` on join | sent from hub mixin | sent from DO |
+| `presence_leave` on disconnect | sent from hub mixin | sent from DO |
+| `control_request` / `control_transfer` | via hijack lease system | via DO lease state |
+| Auto-transfer (idle owner) | background check in hub | event-driven in DO |
+| Keystroke queue | in-memory buffer | in-memory buffer |
+| Hibernation recovery | N/A (always running) | ephemeral re-announce |
+| Identity (JWT users) | from principal claims | from JWT claims |
+| Identity (anonymous) | deterministic adjective+animal | same |
+| Edge indicators | frontend-only | same |
+| Name labels toggle | frontend-only | same |
+
+### DeckMux message types
+
+| Direction | Type | Payload |
+|---|---|---|
+| Browser -> Server | `presence_update` | `scroll_line`, `scroll_range`, `selection`, `pin`, `typing` |
+| Browser -> Server | `queued_input` | `keys` (buffered keystrokes from non-owner) |
+| Browser -> Server | `control_request` | `target` (user to request control from) |
+| Browser -> Server | `control_handover` | `to` (user to hand control to) |
+| Browser -> Server | `control_deny` | `requester` (user whose request is denied) |
+| Server -> Browser | `presence_update` | `user_id`, `name`, `color`, `role`, scroll/selection/pin state |
+| Server -> Browser | `presence_sync` | `users` (full state array), `config` |
+| Server -> Browser | `presence_leave` | `user_id` |
+| Server -> Browser | `control_transfer` | `from_user_id`, `to_user_id`, `reason`, `queued_keys` |
+| Server -> Browser | `control_request_notification` | `from` (requesting user) |
+| Server -> Browser | `control_denied` | (empty) |
+| Server -> Browser | `auto_transfer_warning` | `seconds_remaining` |
+
+All messages use the existing control channel (DLE+STX JSON framing). 200ms client-side debounce on presence updates. See [`packages/undef-deckmux/`](../packages/undef-deckmux/README.md) for full documentation and PlantUML diagrams.
+
 ## Accuracy note
 
 This document describes the intended public contract. It does not mean every

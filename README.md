@@ -293,6 +293,29 @@ Commands include `py <expr>`, `sessions`, `kv list/get/set/delete`, `fetch [-X M
 `env`, `clear`, and `exit`. The REPL sandbox pre-imports `json`, `datetime`, `re`,
 `hashlib`, and `base64`.
 
+### DeckMux (Collaborative Presence)
+
+Enable real-time collaborative presence on any terminal session. See who's connected,
+where they're looking, and who has keyboard control.
+
+- **Avatar bar** — colored circles with initials, role badges, idle/typing indicators
+- **Edge indicators** — minimap-style viewport bars showing where each user is scrolled
+- **Pinned cursors** — click a line to pin your position, visible to all watchers
+- **Control transfer** — request/handover/auto-transfer with keystroke queue buffering
+- **Per-session** — enable with `presence: true` in session config
+
+```toml
+[sessions.debug]
+presence = true
+auto_transfer_idle_s = 30
+keystroke_queue = "replay"
+```
+
+DeckMux is a standalone package (`undef-deckmux`) with zero required dependencies,
+integrated into `undef-terminal` via a TermHub mixin. Both FastAPI and Cloudflare
+backends are supported at parity. See the [DeckMux README](packages/undef-deckmux/README.md)
+for full documentation and [PlantUML diagrams](packages/undef-deckmux/docs/diagrams/).
+
 ### Frontend — UndefTerminal
 
 Standalone terminal widget (no hijack controls):
