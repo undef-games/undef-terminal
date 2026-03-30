@@ -325,6 +325,50 @@ async def test_stream_animation_loop_then_cancel():
     assert task.done()
 
 
+async def test_stop_cancels_running_animation():
+    """Cover stop() cancelling a running animation task (line 86)."""
+    conn = UshellConnector("s1")
+    await conn.start()
+    await conn.poll_messages()
+
+    animated = AnimatedResult(frames=["frame\n"], fps=200.0, loop=True)
+    conn._animation_task = asyncio.create_task(conn._stream_animation(animated))
+    await asyncio.sleep(0.02)
+    assert conn._animation_task is not None
+    assert not conn._animation_task.done()
+
+    await conn.stop()
+    await asyncio.sleep(0.01)
+    assert conn._animation_task.done()
+
+
+async def test_new_render_cancels_previous_animation():
+    """Cover handle_input cancelling previous animation before starting new one (line 131)."""
+    conn = UshellConnector("s1")
+    await conn.start()
+    await conn.poll_messages()
+
+    # Start first animation via a looping render
+    animated = AnimatedResult(frames=["first\n"], fps=200.0, loop=True)
+    conn._animation_task = asyncio.create_task(conn._stream_animation(animated))
+    first_task = conn._animation_task
+    await asyncio.sleep(0.02)
+    assert not first_task.done()
+
+    # Dispatch a second render which should cancel the first
+    animated2 = AnimatedResult(frames=["second\n"], fps=200.0, loop=False)
+    with patch.object(conn._dispatcher, "dispatch", return_value=animated2):
+        conn._buf.feed("render something\r")
+        _ = conn._buf.take_echo()
+        await conn.handle_input("")  # process completed lines
+    # Actually dispatch manually since buf was already fed
+    # The handle_input above processed the "render something" line
+
+    await asyncio.sleep(0.05)
+    assert first_task.done()  # first was cancelled
+    await conn.stop()
+
+
 def test_session_connector_import_error_falls_back_to_object():
     """Cover the except-ImportError branch in _connector.py (lines 35-36).
 

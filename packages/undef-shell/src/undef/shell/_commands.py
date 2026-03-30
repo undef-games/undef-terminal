@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from undef.shell._output import (
     BOLD,
@@ -408,7 +408,7 @@ class CommandDispatcher:
             ]
 
         # Parse flags
-        mode = "truecolor"
+        mode: Literal["truecolor", "256", "16"] = "truecolor"
         cols = 80
         rows = 24
         fps_override: float | None = None
@@ -419,9 +419,10 @@ class CommandDispatcher:
         while i < len(tokens):
             tok = tokens[i]
             if tok == "--mode" and i + 1 < len(tokens):
-                mode = tokens[i + 1]
-                if mode not in {"truecolor", "256", "16"}:
-                    return [error_msg(f"unknown mode {mode!r} (use truecolor, 256, or 16)") + PROMPT]
+                _mode_raw = tokens[i + 1]
+                if _mode_raw not in {"truecolor", "256", "16"}:
+                    return [error_msg(f"unknown mode {_mode_raw!r} (use truecolor, 256, or 16)") + PROMPT]
+                mode = cast('Literal["truecolor", "256", "16"]', _mode_raw)
                 i += 2
             elif tok == "--cols" and i + 1 < len(tokens):
                 cols = int(tokens[i + 1])
@@ -469,7 +470,7 @@ class CommandDispatcher:
         try:
             from undef.shell._render import image_to_ansi_frames
 
-            frames, source_fps = image_to_ansi_frames(data, cols=cols, rows=rows, mode=mode)  # type: ignore[arg-type]
+            frames, source_fps = image_to_ansi_frames(data, cols=cols, rows=rows, mode=mode)
         except ImportError as exc:
             return [error_msg(str(exc)) + PROMPT]
         except Exception as exc:
