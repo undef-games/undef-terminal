@@ -40,8 +40,63 @@ _FIT_CDN = "https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.11.0"
 _SCREENSHOTS_DIR = Path("packages/undef-terminal/tests/playwright/screenshots")
 
 
+_16_NAMES = [
+    "black",
+    "red",
+    "green",
+    "yellow",
+    "blue",
+    "magenta",
+    "cyan",
+    "white",
+    "bright black",
+    "bright red",
+    "bright green",
+    "bright yellow",
+    "bright blue",
+    "bright magenta",
+    "bright cyan",
+    "bright white",
+]
+
+
+def _build_16_color_palette() -> str:
+    """Build a 16-color palette using standard SGR codes (30-37, 40-47, 90-97, 100-107)."""
+    lines: list[str] = []
+    lines.append("\x1b[1;37m 16-Color Palette (Standard SGR)\x1b[0m\r\n\r\n")
+
+    # Foreground colors (text on dark background)
+    lines.append(" Foreground:\r\n")
+    row = " "
+    for code in range(30, 38):
+        row += f"\x1b[{code}m {_16_NAMES[code - 30]:>7s} \x1b[0m"
+    lines.append(f"{row}\r\n")
+    row = " "
+    for code in range(90, 98):
+        row += f"\x1b[{code}m {_16_NAMES[code - 82]:>7s} \x1b[0m"
+    lines.append(f"{row}\r\n\r\n")
+
+    # Background colors (white text on colored background)
+    lines.append(" Background:\r\n")
+    row = " "
+    for code in range(40, 48):
+        row += f"\x1b[{code};37m {_16_NAMES[code - 40]:>7s} \x1b[0m"
+    lines.append(f"{row}\r\n")
+    row = " "
+    for code in range(100, 108):
+        row += f"\x1b[{code};30m {_16_NAMES[code - 92]:>7s} \x1b[0m"
+    lines.append(f"{row}\r\n\r\n")
+
+    # Attributes (bold, underline, blink, reverse)
+    lines.append(" Attributes:\r\n")
+    lines.append(" \x1b[1mBold\x1b[0m  \x1b[4mUnderline\x1b[0m  \x1b[5mBlink\x1b[0m  \x1b[7mReverse\x1b[0m")
+    lines.append("  \x1b[1;31mBold Red\x1b[0m  \x1b[4;32mUnder Green\x1b[0m  \x1b[7;34mRev Blue\x1b[0m\r\n")
+
+    return "".join(lines)
+
+
 def _build_256_color_palette() -> str:
-    """Build a 256-color palette using SGR 48;5;N (background) codes."""
+    """Build a 256-color palette using SGR 38;5;N (fg) and 48;5;N (bg) codes."""
     lines: list[str] = []
     lines.append("\x1b[1;37m 256-Color Palette (ESC[48;5;Nm)\x1b[0m\r\n\r\n")
 
@@ -70,7 +125,13 @@ def _build_256_color_palette() -> str:
     row = ""
     for n in range(232, 256):
         row += f"\x1b[48;5;{n}m  \x1b[0m"
-    lines.append(f" {row}  grayscale\r\n")
+    lines.append(f" {row}  grayscale\r\n\r\n")
+
+    # Foreground text samples (38;5;N)
+    lines.append(" \x1b[1;37mForeground text (ESC[38;5;Nm):\x1b[0m\r\n")
+    lines.extend(
+        f" \x1b[38;5;{n}m Color {n:>3d}: The quick brown fox \x1b[0m\r\n" for n in [196, 208, 220, 46, 51, 21, 93, 201]
+    )
 
     return "".join(lines)
 
@@ -383,6 +444,26 @@ def _assert_has_colored_spans(page: Page) -> None:
 # ---------------------------------------------------------------------------
 
 
+class TestColorPalette16:
+    """Verify standard 16-color ANSI sequences render in xterm.js through TermHub."""
+
+    def test_16_color_palette_screenshot(self, page: Page, color_server: str) -> None:
+        """Send 16-color palette through TermHub -> browser xterm.js, capture screenshot."""
+        worker_id = f"color16-{int(time.time() * 1000) % 100000}"
+        palette = _build_16_color_palette()
+        worker = ColorWorker(color_server, worker_id, palette).start()
+
+        try:
+            page.goto(f"{color_server}/color-test/{worker_id}", wait_until="domcontentloaded")
+            _wait_for_color_data(page)
+            _assert_has_colored_spans(page)
+
+            _SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=str(_SCREENSHOTS_DIR / "16-color-palette.png"), full_page=True)
+        finally:
+            worker.stop()
+
+
 class TestColorPalette256:
     """Verify 256-color ANSI sequences render in xterm.js through TermHub."""
 
@@ -424,12 +505,12 @@ class TestColorPaletteTruecolor:
 
 
 class TestColorPaletteCombined:
-    """Verify both 256-color and truecolor in a single terminal session."""
+    """Verify 16-color, 256-color, and truecolor in a single terminal session."""
 
     def test_combined_palette_screenshot(self, page: Page, color_server: str) -> None:
-        """Send both palettes through TermHub -> browser xterm.js, capture screenshot."""
+        """Send all palettes through TermHub -> browser xterm.js, capture screenshot."""
         worker_id = f"combined-{int(time.time() * 1000) % 100000}"
-        palette = _build_256_color_palette() + _build_truecolor_palette()
+        palette = _build_16_color_palette() + _build_256_color_palette() + _build_truecolor_palette()
         worker = ColorWorker(color_server, worker_id, palette).start()
 
         try:
