@@ -3,10 +3,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 
-"""Guard: verify undef.shell is present in the CF python_modules vendor tree.
+"""Guard: verify undef.terminal.shell is present in the CF python_modules vendor tree.
 
 If this test fails, run:
-  uv pip install --python .venv-workers/pyodide-venv/bin/python --reinstall /path/to/undef-shell
+  uv pip install --python .venv-workers/pyodide-venv/bin/python --reinstall /path/to/undef-terminal-shell
   pywrangler sync --force
 from packages/undef-terminal-cloudflare/.
 """
@@ -15,16 +15,16 @@ from pathlib import Path
 
 
 def test_ushell_vendor_tree_exists() -> None:
-    """undef/shell must be present in python_modules — absent means a missing vendor sync."""
+    """undef/terminal/shell must be present in python_modules — absent means a missing vendor sync."""
     vendor_root = Path(__file__).resolve().parents[1] / "python_modules"
-    ushell_path = vendor_root / "undef" / "shell"
+    ushell_path = vendor_root / "undef" / "terminal" / "shell"
     assert vendor_root.exists(), (
         "python_modules/ directory not found — run pywrangler sync from packages/undef-terminal-cloudflare/"
     )
     assert ushell_path.exists() and ushell_path.is_dir(), (
-        f"undef/shell missing from vendor tree at {ushell_path}. "
+        f"undef/terminal/shell missing from vendor tree at {ushell_path}. "
         "Run: uv pip install --python .venv-workers/pyodide-venv/bin/python "
-        "--reinstall /path/to/undef-shell && pywrangler sync --force"
+        "--reinstall /path/to/undef-terminal-shell && pywrangler sync --force"
     )
     py_files = list(ushell_path.rglob("*.py"))
-    assert py_files, f"undef/shell vendor tree at {ushell_path} is empty"
+    assert py_files, f"undef/terminal/shell vendor tree at {ushell_path} is empty"

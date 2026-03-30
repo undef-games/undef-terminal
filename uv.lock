@@ -10,11 +10,11 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "undef-deckmux",
-    "undef-shell",
     "undef-terminal",
     "undef-terminal-cloudflare",
+    "undef-terminal-deckmux",
     "undef-terminal-render",
+    "undef-terminal-shell",
     "undef-terminal-workspace",
 ]
 
@@ -3026,40 +3026,6 @@ wheels = [
 ]
 
 [[package]]
-name = "undef-deckmux"
-source = { editable = "packages/undef-deckmux" }
-
-[package.optional-dependencies]
-terminal = [
-    { name = "undef-terminal" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "undef-terminal", marker = "extra == 'terminal'", editable = "packages/undef-terminal" }]
-provides-extras = ["terminal"]
-
-[[package]]
-name = "undef-shell"
-source = { editable = "packages/undef-shell" }
-
-[package.optional-dependencies]
-images = [
-    { name = "pillow" },
-    { name = "undef-terminal-render" },
-]
-terminal = [
-    { name = "undef-terminal" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "pillow", marker = "extra == 'images'", specifier = ">=10.0" },
-    { name = "undef-terminal", marker = "extra == 'terminal'", editable = "packages/undef-terminal" },
-    { name = "undef-terminal-render", marker = "extra == 'images'", editable = "packages/undef-terminal-render" },
-]
-provides-extras = ["terminal", "images"]
-
-[[package]]
 name = "undef-telemetry"
 version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3075,9 +3041,9 @@ wheels = [
 name = "undef-terminal"
 source = { editable = "packages/undef-terminal" }
 dependencies = [
-    { name = "undef-shell" },
     { name = "undef-telemetry" },
     { name = "undef-terminal-render" },
+    { name = "undef-terminal-shell" },
 ]
 
 [package.optional-dependencies]
@@ -3184,9 +3150,9 @@ requires-dist = [
     { name = "pyyaml", marker = "extra == 'all'", specifier = ">=6.0" },
     { name = "pyyaml", marker = "extra == 'manager'", specifier = ">=6.0" },
     { name = "textual", marker = "extra == 'cli'", specifier = ">=0.50" },
-    { name = "undef-shell", editable = "packages/undef-shell" },
     { name = "undef-telemetry", specifier = ">=0.3" },
     { name = "undef-terminal-render", editable = "packages/undef-terminal-render" },
+    { name = "undef-terminal-shell", editable = "packages/undef-terminal-shell" },
     { name = "uvicorn", marker = "extra == 'all'", specifier = ">=0.24" },
     { name = "uvicorn", marker = "extra == 'cli'", specifier = ">=0.24" },
     { name = "uvicorn", marker = "extra == 'manager'", specifier = ">=0.24" },
@@ -3251,7 +3217,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-playwright" },
     { name = "ruff" },
-    { name = "undef-shell" },
+    { name = "undef-terminal-shell" },
     { name = "websockets" },
     { name = "workers-py", version = "1.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "workers-py", version = "1.9.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -3267,12 +3233,25 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "pytest-playwright", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15" },
-    { name = "undef-shell", marker = "extra == 'dev'", editable = "packages/undef-shell" },
     { name = "undef-terminal", editable = "packages/undef-terminal" },
+    { name = "undef-terminal-shell", marker = "extra == 'dev'", editable = "packages/undef-terminal-shell" },
     { name = "websockets", marker = "extra == 'dev'", specifier = ">=16.0" },
     { name = "workers-py", marker = "extra == 'dev'", specifier = ">=0.4.0" },
 ]
 provides-extras = ["dev"]
+
+[[package]]
+name = "undef-terminal-deckmux"
+source = { editable = "packages/undef-terminal-deckmux" }
+
+[package.optional-dependencies]
+terminal = [
+    { name = "undef-terminal" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "undef-terminal", marker = "extra == 'terminal'", editable = "packages/undef-terminal" }]
+provides-extras = ["terminal"]
 
 [[package]]
 name = "undef-terminal-render"
@@ -3294,13 +3273,34 @@ requires-dist = [
 provides-extras = ["emulator", "images"]
 
 [[package]]
+name = "undef-terminal-shell"
+source = { editable = "packages/undef-terminal-shell" }
+
+[package.optional-dependencies]
+images = [
+    { name = "pillow" },
+    { name = "undef-terminal-render" },
+]
+terminal = [
+    { name = "undef-terminal" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pillow", marker = "extra == 'images'", specifier = ">=10.0" },
+    { name = "undef-terminal", marker = "extra == 'terminal'", editable = "packages/undef-terminal" },
+    { name = "undef-terminal-render", marker = "extra == 'images'", editable = "packages/undef-terminal-render" },
+]
+provides-extras = ["terminal", "images"]
+
+[[package]]
 name = "undef-terminal-workspace"
 version = "0.4.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "undef-shell" },
     { name = "undef-telemetry" },
     { name = "undef-terminal", extra = ["cli", "emulator", "server", "ssh"] },
+    { name = "undef-terminal-shell" },
 ]
 
 [package.dev-dependencies]
@@ -3342,9 +3342,9 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "undef-shell", editable = "packages/undef-shell" },
     { name = "undef-telemetry", specifier = ">=0.3" },
     { name = "undef-terminal", extras = ["cli", "server", "ssh", "emulator"], editable = "packages/undef-terminal" },
+    { name = "undef-terminal-shell", editable = "packages/undef-terminal-shell" },
 ]
 
 [package.metadata.requires-dev]

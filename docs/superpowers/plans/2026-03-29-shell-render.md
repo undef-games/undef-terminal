@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a `render` command to `undef.shell` that converts images (including animated GIF/APNG/WebP) to ANSI terminal art with truecolor, 256-color, and 16-color palette quantization.
+**Goal:** Add a `render` command to `undef.terminal.shell` that converts images (including animated GIF/APNG/WebP) to ANSI terminal art with truecolor, 256-color, and 16-color palette quantization.
 
 **Architecture:** `_render.py` converts raw image bytes to ANSI frames using Pillow and half-block characters. `_commands.py` adds the `render` command that fetches URLs, calls the converter, and returns either a static frame or an `AnimatedResult` for streaming. Callers (`__main__.py`, `_connector.py`) handle animation timing.
 
-**Tech Stack:** Python 3.11+, Pillow>=10.0 (optional extra), existing undef.shell command infrastructure
+**Tech Stack:** Python 3.11+, Pillow>=10.0 (optional extra), existing undef.terminal.shell command infrastructure
 
 ---
 
@@ -14,24 +14,24 @@
 
 | File | Action | Responsibility |
 |------|--------|----------------|
-| `packages/undef-shell/src/undef/shell/_render.py` | **Create** | Image bytes → ANSI frames converter |
-| `packages/undef-shell/src/undef/shell/_commands.py` | **Modify** | Add `_cmd_render`, `AnimatedResult`, dispatch routing, help text |
-| `packages/undef-shell/src/undef/shell/__main__.py` | **Modify** | Handle `AnimatedResult` in CLI loop |
-| `packages/undef-shell/src/undef/shell/terminal/_connector.py` | **Modify** | Handle `AnimatedResult` in `UshellConnector.handle_input` |
-| `packages/undef-shell/pyproject.toml` | **Modify** | Add `images = ["Pillow>=10.0"]` optional extra |
-| `packages/undef-shell/tests/shell/test_shell_render.py` | **Create** | Converter unit tests |
-| `packages/undef-shell/tests/shell/test_shell_commands_render.py` | **Create** | Command integration tests |
+| `packages/undef-terminal-shell/src/undef/shell/_render.py` | **Create** | Image bytes → ANSI frames converter |
+| `packages/undef-terminal-shell/src/undef/shell/_commands.py` | **Modify** | Add `_cmd_render`, `AnimatedResult`, dispatch routing, help text |
+| `packages/undef-terminal-shell/src/undef/shell/__main__.py` | **Modify** | Handle `AnimatedResult` in CLI loop |
+| `packages/undef-terminal-shell/src/undef/shell/terminal/_connector.py` | **Modify** | Handle `AnimatedResult` in `UshellConnector.handle_input` |
+| `packages/undef-terminal-shell/pyproject.toml` | **Modify** | Add `images = ["Pillow>=10.0"]` optional extra |
+| `packages/undef-terminal-shell/tests/shell/test_shell_render.py` | **Create** | Converter unit tests |
+| `packages/undef-terminal-shell/tests/shell/test_shell_commands_render.py` | **Create** | Command integration tests |
 
 ---
 
 ### Task 1: Add Pillow optional extra to pyproject.toml
 
 **Files:**
-- Modify: `packages/undef-shell/pyproject.toml:22-23`
+- Modify: `packages/undef-terminal-shell/pyproject.toml:22-23`
 
 - [ ] **Step 1: Add the images extra**
 
-In `packages/undef-shell/pyproject.toml`, change:
+In `packages/undef-terminal-shell/pyproject.toml`, change:
 
 ```toml
 [project.optional-dependencies]
@@ -48,13 +48,13 @@ images = ["Pillow>=10.0"]
 
 - [ ] **Step 2: Verify the extra resolves**
 
-Run: `uv pip install -e "packages/undef-shell[images]" 2>&1 | tail -3`
+Run: `uv pip install -e "packages/undef-terminal-shell[images]" 2>&1 | tail -3`
 Expected: Pillow installs or is already installed.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add packages/undef-shell/pyproject.toml
+git add packages/undef-terminal-shell/pyproject.toml
 git commit -m "feat(shell): add images optional extra for Pillow"
 ```
 
@@ -63,25 +63,25 @@ git commit -m "feat(shell): add images optional extra for Pillow"
 ### Task 2: Create `_render.py` — palette tables and quantizers
 
 **Files:**
-- Create: `packages/undef-shell/src/undef/shell/_render.py`
-- Create: `packages/undef-shell/tests/shell/test_shell_render.py`
+- Create: `packages/undef-terminal-shell/src/undef/shell/_render.py`
+- Create: `packages/undef-terminal-shell/tests/shell/test_shell_render.py`
 
 - [ ] **Step 1: Write failing tests for palette helpers**
 
-Create `packages/undef-shell/tests/shell/test_shell_render.py`:
+Create `packages/undef-terminal-shell/tests/shell/test_shell_render.py`:
 
 ```python
 #
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-"""Tests for undef.shell._render — image-to-ANSI converter."""
+"""Tests for undef.terminal.shell._render — image-to-ANSI converter."""
 
 from __future__ import annotations
 
 import pytest
 
-from undef.shell._render import (
+from undef.terminal.shell._render import (
     _nearest_16,
     _nearest_256,
     _sgr_16,
@@ -145,12 +145,12 @@ class TestSgr16:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `uv run pytest packages/undef-shell/tests/shell/test_shell_render.py -v --no-cov -x 2>&1 | tail -5`
-Expected: FAIL with `ModuleNotFoundError: No module named 'undef.shell._render'`
+Run: `uv run pytest packages/undef-terminal-shell/tests/shell/test_shell_render.py -v --no-cov -x 2>&1 | tail -5`
+Expected: FAIL with `ModuleNotFoundError: No module named 'undef.terminal.shell._render'`
 
 - [ ] **Step 3: Implement palette tables and quantizers**
 
-Create `packages/undef-shell/src/undef/shell/_render.py`:
+Create `packages/undef-terminal-shell/src/undef/shell/_render.py`:
 
 ```python
 #
@@ -162,7 +162,7 @@ Create `packages/undef-shell/src/undef/shell/_render.py`:
 Uses half-block characters to render two vertical pixels per terminal cell.
 Supports truecolor (24-bit), 256-color (xterm), and 16-color (classic ANSI).
 
-Requires the ``images`` optional extra: ``pip install 'undef-shell[images]'``
+Requires the ``images`` optional extra: ``pip install 'undef-terminal-shell[images]'``
 """
 
 from __future__ import annotations
@@ -285,13 +285,13 @@ ColorMode = Literal["truecolor", "256", "16"]
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `uv run pytest packages/undef-shell/tests/shell/test_shell_render.py -v --no-cov -x 2>&1 | tail -15`
+Run: `uv run pytest packages/undef-terminal-shell/tests/shell/test_shell_render.py -v --no-cov -x 2>&1 | tail -15`
 Expected: All tests PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/undef-shell/src/undef/shell/_render.py packages/undef-shell/tests/shell/test_shell_render.py
+git add packages/undef-terminal-shell/src/undef/shell/_render.py packages/undef-terminal-shell/tests/shell/test_shell_render.py
 git commit -m "feat(shell): add ANSI palette tables and quantizers for render"
 ```
 
@@ -300,19 +300,19 @@ git commit -m "feat(shell): add ANSI palette tables and quantizers for render"
 ### Task 3: Add `image_to_ansi_frames` — the core converter
 
 **Files:**
-- Modify: `packages/undef-shell/src/undef/shell/_render.py`
-- Modify: `packages/undef-shell/tests/shell/test_shell_render.py`
+- Modify: `packages/undef-terminal-shell/src/undef/shell/_render.py`
+- Modify: `packages/undef-terminal-shell/tests/shell/test_shell_render.py`
 
 - [ ] **Step 1: Write failing tests for image_to_ansi_frames**
 
-Append to `packages/undef-shell/tests/shell/test_shell_render.py`:
+Append to `packages/undef-terminal-shell/tests/shell/test_shell_render.py`:
 
 ```python
 import io
 
 from PIL import Image
 
-from undef.shell._render import image_to_ansi_frames
+from undef.terminal.shell._render import image_to_ansi_frames
 
 
 def _make_png(width: int = 4, height: int = 4, color: tuple[int, int, int] = (255, 0, 0)) -> bytes:
@@ -421,12 +421,12 @@ class TestImageToAnsiFramesErrors:
 
 - [ ] **Step 2: Run tests to verify new tests fail**
 
-Run: `uv run pytest packages/undef-shell/tests/shell/test_shell_render.py::TestImageToAnsiFramesStatic -v --no-cov -x 2>&1 | tail -5`
+Run: `uv run pytest packages/undef-terminal-shell/tests/shell/test_shell_render.py::TestImageToAnsiFramesStatic -v --no-cov -x 2>&1 | tail -5`
 Expected: FAIL with `ImportError: cannot import name 'image_to_ansi_frames'`
 
 - [ ] **Step 3: Implement image_to_ansi_frames**
 
-Append to `packages/undef-shell/src/undef/shell/_render.py`:
+Append to `packages/undef-terminal-shell/src/undef/shell/_render.py`:
 
 ```python
 # ---------------------------------------------------------------------------
@@ -511,7 +511,7 @@ def image_to_ansi_frames(
     except ImportError:
         raise ImportError(
             "missing dependency \u2014 Pillow\n"
-            "install the images extra: pip install 'undef-shell[images]'"
+            "install the images extra: pip install 'undef-terminal-shell[images]'"
         ) from None
 
     import io
@@ -540,13 +540,13 @@ Also add the `from typing import Any` import at the top of the file (after `Lite
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `uv run pytest packages/undef-shell/tests/shell/test_shell_render.py -v --no-cov 2>&1 | tail -20`
+Run: `uv run pytest packages/undef-terminal-shell/tests/shell/test_shell_render.py -v --no-cov 2>&1 | tail -20`
 Expected: All tests PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/undef-shell/src/undef/shell/_render.py packages/undef-shell/tests/shell/test_shell_render.py
+git add packages/undef-terminal-shell/src/undef/shell/_render.py packages/undef-terminal-shell/tests/shell/test_shell_render.py
 git commit -m "feat(shell): add image_to_ansi_frames converter"
 ```
 
@@ -555,19 +555,19 @@ git commit -m "feat(shell): add image_to_ansi_frames converter"
 ### Task 4: Add `AnimatedResult` and `_cmd_render` to `_commands.py`
 
 **Files:**
-- Modify: `packages/undef-shell/src/undef/shell/_commands.py`
-- Create: `packages/undef-shell/tests/shell/test_shell_commands_render.py`
+- Modify: `packages/undef-terminal-shell/src/undef/shell/_commands.py`
+- Create: `packages/undef-terminal-shell/tests/shell/test_shell_commands_render.py`
 
 - [ ] **Step 1: Write failing tests for the render command**
 
-Create `packages/undef-shell/tests/shell/test_shell_commands_render.py`:
+Create `packages/undef-terminal-shell/tests/shell/test_shell_commands_render.py`:
 
 ```python
 #
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-"""Tests for undef.shell._commands — render command."""
+"""Tests for undef.terminal.shell._commands — render command."""
 
 from __future__ import annotations
 
@@ -577,7 +577,7 @@ from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
-from undef.shell._commands import AnimatedResult, CommandDispatcher
+from undef.terminal.shell._commands import AnimatedResult, CommandDispatcher
 
 
 def make_dispatcher(ctx: dict[str, Any] | None = None) -> CommandDispatcher:
@@ -755,7 +755,7 @@ async def test_render_invalid_image():
 
 
 async def test_render_missing_pillow():
-    with patch("undef.shell._render.image_to_ansi_frames", side_effect=ImportError("missing dependency")):
+    with patch("undef.terminal.shell._render.image_to_ansi_frames", side_effect=ImportError("missing dependency")):
         d = make_dispatcher()
         result = await d.dispatch("render http://example.com/test.png")
     assert "error:" in first_data(result)
@@ -776,12 +776,12 @@ async def test_render_file_not_found():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `uv run pytest packages/undef-shell/tests/shell/test_shell_commands_render.py -v --no-cov -x 2>&1 | tail -5`
+Run: `uv run pytest packages/undef-terminal-shell/tests/shell/test_shell_commands_render.py -v --no-cov -x 2>&1 | tail -5`
 Expected: FAIL with `ImportError: cannot import name 'AnimatedResult'`
 
 - [ ] **Step 3: Implement AnimatedResult and _cmd_render**
 
-In `packages/undef-shell/src/undef/shell/_commands.py`:
+In `packages/undef-terminal-shell/src/undef/shell/_commands.py`:
 
 **Add import at top** (after existing imports):
 
@@ -816,7 +816,7 @@ f"{fmt_kv('render [flags] <url>', 'render image as ANSI art')}"
     "  Render an image as ANSI art in the terminal.\r\n"
     "  Supports PNG, JPEG, GIF, APNG, WebP, BMP, TIFF, and more.\r\n"
     "  Animated images stream frames; use --loop to repeat.\r\n"
-    "  Requires: pip install 'undef-shell[images]'\r\n"
+    "  Requires: pip install 'undef-terminal-shell[images]'\r\n"
 ),
 ```
 
@@ -880,7 +880,7 @@ async def _cmd_render(self, arg: str) -> list[str] | AnimatedResult:
             data = file_path.read_bytes()
         elif url.startswith(("http://", "https://")):
             import urllib.request
-            req = urllib.request.Request(url, headers={"User-Agent": "undef-shell/1.0"})  # noqa: S310
+            req = urllib.request.Request(url, headers={"User-Agent": "undef-terminal-shell/1.0"})  # noqa: S310
             with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # nosec B310
                 data = resp.read()
         else:
@@ -890,7 +890,7 @@ async def _cmd_render(self, arg: str) -> list[str] | AnimatedResult:
 
     # Convert to ANSI frames
     try:
-        from undef.shell._render import image_to_ansi_frames
+        from undef.terminal.shell._render import image_to_ansi_frames
         frames, source_fps = image_to_ansi_frames(data, cols=cols, rows=rows, mode=mode)  # type: ignore[arg-type]
     except ImportError as exc:
         return [error_msg(str(exc)) + PROMPT]
@@ -908,13 +908,13 @@ async def _cmd_render(self, arg: str) -> list[str] | AnimatedResult:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `uv run pytest packages/undef-shell/tests/shell/test_shell_commands_render.py -v --no-cov 2>&1 | tail -25`
+Run: `uv run pytest packages/undef-terminal-shell/tests/shell/test_shell_commands_render.py -v --no-cov 2>&1 | tail -25`
 Expected: All tests PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/undef-shell/src/undef/shell/_commands.py packages/undef-shell/tests/shell/test_shell_commands_render.py
+git add packages/undef-terminal-shell/src/undef/shell/_commands.py packages/undef-terminal-shell/tests/shell/test_shell_commands_render.py
 git commit -m "feat(shell): add render command with AnimatedResult"
 ```
 
@@ -923,26 +923,26 @@ git commit -m "feat(shell): add render command with AnimatedResult"
 ### Task 5: Handle `AnimatedResult` in CLI (`__main__.py`)
 
 **Files:**
-- Modify: `packages/undef-shell/src/undef/shell/__main__.py`
+- Modify: `packages/undef-terminal-shell/src/undef/shell/__main__.py`
 
 - [ ] **Step 1: Implement AnimatedResult handling**
 
-Replace the contents of `packages/undef-shell/src/undef/shell/__main__.py`:
+Replace the contents of `packages/undef-terminal-shell/src/undef/shell/__main__.py`:
 
 ```python
 #
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-"""CLI entry point for undef.shell — run with: python -m undef.shell"""
+"""CLI entry point for undef.terminal.shell — run with: python -m undef.terminal.shell"""
 
 from __future__ import annotations
 
 import asyncio
 import sys
 
-from undef.shell._commands import AnimatedResult, CommandDispatcher
-from undef.shell._output import BANNER, PROMPT
+from undef.terminal.shell._commands import AnimatedResult, CommandDispatcher
+from undef.terminal.shell._output import BANNER, PROMPT
 
 
 async def _play_animation(result: AnimatedResult, write: Any) -> None:
@@ -1001,13 +1001,13 @@ Also add `from typing import Any` import at the top.
 
 - [ ] **Step 2: Run existing CLI tests to verify no regression**
 
-Run: `uv run pytest packages/undef-shell/tests/ -v --no-cov -x 2>&1 | tail -10`
+Run: `uv run pytest packages/undef-terminal-shell/tests/ -v --no-cov -x 2>&1 | tail -10`
 Expected: All existing tests PASS.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add packages/undef-shell/src/undef/shell/__main__.py
+git add packages/undef-terminal-shell/src/undef/shell/__main__.py
 git commit -m "feat(shell): handle AnimatedResult in CLI loop"
 ```
 
@@ -1016,14 +1016,14 @@ git commit -m "feat(shell): handle AnimatedResult in CLI loop"
 ### Task 6: Handle `AnimatedResult` in `UshellConnector`
 
 **Files:**
-- Modify: `packages/undef-shell/src/undef/shell/terminal/_connector.py`
+- Modify: `packages/undef-terminal-shell/src/undef/shell/terminal/_connector.py`
 
 - [ ] **Step 1: Implement AnimatedResult handling in handle_input**
 
-In `packages/undef-shell/src/undef/shell/terminal/_connector.py`, update the import:
+In `packages/undef-terminal-shell/src/undef/shell/terminal/_connector.py`, update the import:
 
 ```python
-from undef.shell._commands import AnimatedResult, CommandDispatcher
+from undef.terminal.shell._commands import AnimatedResult, CommandDispatcher
 ```
 
 Replace `handle_input` method:
@@ -1102,13 +1102,13 @@ async def poll_messages(self) -> list[dict[str, Any]]:
 
 - [ ] **Step 2: Run all tests to verify no regression**
 
-Run: `uv run pytest packages/undef-shell/tests/ -v --no-cov 2>&1 | tail -10`
+Run: `uv run pytest packages/undef-terminal-shell/tests/ -v --no-cov 2>&1 | tail -10`
 Expected: All tests PASS.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add packages/undef-shell/src/undef/shell/terminal/_connector.py
+git add packages/undef-terminal-shell/src/undef/shell/terminal/_connector.py
 git commit -m "feat(shell): handle AnimatedResult in UshellConnector"
 ```
 
@@ -1117,12 +1117,12 @@ git commit -m "feat(shell): handle AnimatedResult in UshellConnector"
 ### Task 7: Achieve 100% coverage
 
 **Files:**
-- Modify: `packages/undef-shell/tests/shell/test_shell_render.py`
-- Modify: `packages/undef-shell/tests/shell/test_shell_commands_render.py`
+- Modify: `packages/undef-terminal-shell/tests/shell/test_shell_render.py`
+- Modify: `packages/undef-terminal-shell/tests/shell/test_shell_commands_render.py`
 
 - [ ] **Step 1: Run coverage and identify missing lines**
 
-Run: `uv run pytest packages/undef-shell/tests/ -v 2>&1 | tail -30`
+Run: `uv run pytest packages/undef-terminal-shell/tests/ -v 2>&1 | tail -30`
 Expected: Coverage report showing any uncovered lines.
 
 - [ ] **Step 2: Add tests for uncovered lines**
@@ -1134,7 +1134,7 @@ Common gaps to cover:
 class TestMissingPillow:
     def test_import_error_message(self) -> None:
         """Verify helpful error when Pillow is not installed."""
-        import undef.shell._render as mod
+        import undef.terminal.shell._render as mod
         original = mod.image_to_ansi_frames
         # We can't truly uninstall Pillow, but we can test the message format
         # by checking the import path exists and the function works
@@ -1143,8 +1143,8 @@ class TestMissingPillow:
 # In test_shell_commands_render.py — connector animation
 async def test_connector_render_animated(tmp_path):
     """UshellConnector handles AnimatedResult by queueing frames."""
-    from undef.shell.terminal._connector import UshellConnector
-    from undef.shell.terminal._output import term
+    from undef.terminal.shell.terminal._connector import UshellConnector
+    from undef.terminal.shell.terminal._output import term
 
     gif_data = _make_gif_bytes(n_frames=2)
     img_path = tmp_path / "test.gif"
@@ -1166,13 +1166,13 @@ async def test_connector_render_animated(tmp_path):
 
 - [ ] **Step 3: Run full coverage check**
 
-Run: `uv run pytest packages/undef-shell/tests/ -v 2>&1 | tail -30`
+Run: `uv run pytest packages/undef-terminal-shell/tests/ -v 2>&1 | tail -30`
 Expected: `100%` coverage, all tests PASS.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add packages/undef-shell/tests/
+git add packages/undef-terminal-shell/tests/
 git commit -m "test(shell): achieve 100% coverage for render command"
 ```
 
@@ -1181,19 +1181,19 @@ git commit -m "test(shell): achieve 100% coverage for render command"
 ### Task 8: Update module docstring and final verification
 
 **Files:**
-- Modify: `packages/undef-shell/src/undef/shell/_commands.py:5-23`
+- Modify: `packages/undef-terminal-shell/src/undef/shell/_commands.py:5-23`
 
 - [ ] **Step 1: Add render to module docstring**
 
-In `packages/undef-shell/src/undef/shell/_commands.py`, add to the docstring commands list:
+In `packages/undef-terminal-shell/src/undef/shell/_commands.py`, add to the docstring commands list:
 
 ```python
-render [flags] <url>    — render image as ANSI art (requires undef-shell[images])
+render [flags] <url>    — render image as ANSI art (requires undef-terminal-shell[images])
 ```
 
 - [ ] **Step 2: Run full test suite**
 
-Run: `uv run pytest packages/undef-shell/tests/ -v 2>&1 | tail -5`
+Run: `uv run pytest packages/undef-terminal-shell/tests/ -v 2>&1 | tail -5`
 Expected: All tests PASS, 100% coverage.
 
 - [ ] **Step 3: Run pre-commit hooks**
@@ -1204,6 +1204,6 @@ Expected: All hooks pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add packages/undef-shell/src/undef/shell/_commands.py
+git add packages/undef-terminal-shell/src/undef/shell/_commands.py
 git commit -m "docs(shell): add render command to module docstring"
 ```

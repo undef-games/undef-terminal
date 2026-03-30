@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import contextlib
 
-from undef.terminal.server.connectors.registry import build_connector, register_connector, registered_types
-
 from undef.terminal.server.connectors.base import SessionConnector
+from undef.terminal.server.connectors.registry import build_connector, register_connector, registered_types
 from undef.terminal.server.connectors.telnet import TelnetSessionConnector  # registers "telnet"
 
 __all__ = [
@@ -33,8 +32,8 @@ with contextlib.suppress(ImportError):
     from undef.terminal.server.connectors.websocket import WebSocketSessionConnector  # registers "websocket"
 with contextlib.suppress(ImportError):
     # register_connector is always available (from our own registry.py);
-    # only the UshellConnector import is optional — it requires undef-shell installed.
-    from undef.shell.terminal._connector import UshellConnector
+    # only the UshellConnector import is optional — it requires undef-terminal-shell installed.
+    from undef.terminal.shell.terminal._connector import UshellConnector
 
     register_connector("ushell", UshellConnector)
 

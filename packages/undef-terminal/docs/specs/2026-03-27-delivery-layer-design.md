@@ -141,8 +141,8 @@ packages/undef-terminal-cloudflare/tests/
 
 ```bash
 # FastAPI package — 100% coverage
-uv run pytest packages/undef-terminal/tests/ packages/undef-shell/tests/ \
-  -q --cov=undef.terminal --cov=undef.shell --cov-fail-under=100 \
+uv run pytest packages/undef-terminal/tests/ packages/undef-terminal-shell/tests/ \
+  -q --cov=undef.terminal --cov=undef.terminal.shell --cov-fail-under=100 \
   --ignore=packages/undef-terminal/tests/memray \
   --ignore=packages/undef-terminal/tests/playwright
 

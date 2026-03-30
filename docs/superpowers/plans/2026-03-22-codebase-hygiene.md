@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fix two CI-failing LOC violations, add connector self-registration, remove compiled frontend from git, add undef.shell vendoring guard, and add session-state unification to the backlog.
+**Goal:** Fix two CI-failing LOC violations, add connector self-registration, remove compiled frontend from git, add undef.terminal.shell vendoring guard, and add session-state unification to the backlog.
 
 **Architecture:** Six independent tasks that can be committed separately; each produces working, tested, passing-CI code on its own. Work in priority order (Tasks 1-2 fix active CI failures).
 
@@ -476,8 +476,8 @@ with contextlib.suppress(ImportError):
     from undef.terminal.server.connectors.websocket import WebSocketSessionConnector  # registers "websocket"
 with contextlib.suppress(ImportError):
     # register_connector is always available (from our own registry.py);
-    # only the UshellConnector import is optional — it requires undef-shell installed.
-    from undef.shell.terminal._connector import UshellConnector
+    # only the UshellConnector import is optional — it requires undef-terminal-shell installed.
+    from undef.terminal.shell.terminal._connector import UshellConnector
     register_connector("ushell", UshellConnector)
 
 # Derived from the registry — reflects whatever connectors are available in this env.
@@ -588,9 +588,9 @@ git commit -m "build: remove compiled frontend from git; generate in CI via npm 
 
 ---
 
-## Task 5: undef.shell Vendoring Guard
+## Task 5: undef.terminal.shell Vendoring Guard
 
-**Goal:** Prevent silent CF deploys where `undef.shell` is absent from the vendor tree.
+**Goal:** Prevent silent CF deploys where `undef.terminal.shell` is absent from the vendor tree.
 
 **Files:**
 - Create: `packages/undef-terminal-cloudflare/tests/test_ushell_vendor_guard.py`
@@ -606,10 +606,10 @@ Create `packages/undef-terminal-cloudflare/tests/test_ushell_vendor_guard.py`:
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 
-"""Guard: verify undef.shell is present in the CF python_modules vendor tree.
+"""Guard: verify undef.terminal.shell is present in the CF python_modules vendor tree.
 
 If this test fails, run:
-  uv pip install --python .venv-workers/pyodide-venv/bin/python --reinstall /path/to/undef-shell
+  uv pip install --python .venv-workers/pyodide-venv/bin/python --reinstall /path/to/undef-terminal-shell
   pywrangler sync --force
 from packages/undef-terminal-cloudflare/.
 """
@@ -627,7 +627,7 @@ def test_ushell_vendor_tree_exists() -> None:
     assert ushell_path.exists() and ushell_path.is_dir(), (
         f"undef/shell missing from vendor tree at {ushell_path}. "
         "Run: uv pip install --python .venv-workers/pyodide-venv/bin/python "
-        "--reinstall /path/to/undef-shell && pywrangler sync --force"
+        "--reinstall /path/to/undef-terminal-shell && pywrangler sync --force"
     )
     py_files = list(ushell_path.rglob("*.py"))
     assert py_files, f"undef/shell vendor tree at {ushell_path} is empty"
@@ -646,14 +646,14 @@ Expected: PASS (vendor tree exists locally). If it fails, run the vendor sync fi
 In the `quality` job, add a step before `uv run pytest -q packages/undef-terminal-cloudflare/tests`:
 
 ```yaml
-      - name: Check undef.shell vendor tree
+      - name: Check undef.terminal.shell vendor tree
         run: |
           if [ ! -d "packages/undef-terminal-cloudflare/python_modules/undef/shell" ]; then
-            echo "ERROR: undef.shell missing from CF vendor tree"
+            echo "ERROR: undef.terminal.shell missing from CF vendor tree"
             exit 1
           fi
           if [ -z "$(find packages/undef-terminal-cloudflare/python_modules/undef/shell -name '*.py' -print -quit)" ]; then
-            echo "ERROR: undef.shell vendor tree is empty"
+            echo "ERROR: undef.terminal.shell vendor tree is empty"
             exit 1
           fi
 ```
@@ -663,7 +663,7 @@ In the `quality` job, add a step before `uv run pytest -q packages/undef-termina
 ```bash
 git add packages/undef-terminal-cloudflare/tests/test_ushell_vendor_guard.py
 git add .github/workflows/ci.yml
-git commit -m "test(cf): add undef.shell vendor tree guard test and CI check"
+git commit -m "test(cf): add undef.terminal.shell vendor tree guard test and CI check"
 ```
 
 ---

@@ -2,12 +2,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-"""Tests for undef.shell.terminal._connector — UshellConnector."""
+"""Tests for undef.terminal.shell.terminal._connector — UshellConnector."""
 
 from unittest.mock import AsyncMock, patch
 
-from undef.shell._output import BANNER, PROMPT
-from undef.shell.terminal._connector import UshellConnector
+from undef.terminal.shell._output import BANNER, PROMPT
+from undef.terminal.shell.terminal._connector import UshellConnector
 
 # ---------------------------------------------------------------------------
 # Lifecycle

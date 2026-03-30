@@ -10,6 +10,28 @@ directly from ``undef.terminal.render``.
 
 from __future__ import annotations
 
+__all__ = [
+    "ANSI16_PALETTE",
+    "ANSI_ALT_SCREEN",
+    "ANSI_EXIT_ALT",
+    "ANSI_HIDE_CURSOR",
+    "ANSI_RESET",
+    "ANSI_SHOW_CURSOR",
+    "BG_CODES",
+    "FG_CODES",
+    "SGR_FUNCTIONS",
+    "AnsiBuffer",
+    "ColorMode",
+    "clear_screen",
+    "move_to",
+    "nearest_16",
+    "nearest_256",
+    "sgr_16",
+    "sgr_256",
+    "sgr_truecolor",
+    "style_to_sgr",
+]
+
 # Re-export everything from the render package for backwards compat
 from undef.terminal.render.buffer import (  # noqa: F401
     ANSI_ALT_SCREEN,
@@ -28,12 +50,12 @@ from undef.terminal.render.buffer import (  # noqa: F401
     move_to,
     style_to_sgr,
 )
-from undef.terminal.render.palette import (  # noqa: F401
+from undef.terminal.render.palette import (
     ANSI16_PALETTE,
     nearest_16,
     nearest_256,
 )
-from undef.terminal.render.sgr import (  # noqa: F401
+from undef.terminal.render.sgr import (
     SGR_FUNCTIONS,
     ColorMode,
     sgr_16,

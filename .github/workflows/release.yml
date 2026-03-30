@@ -4,7 +4,7 @@
 # Publish all workspace packages to TestPyPI (staging) then PyPI (production),
 # with Sigstore signing and GitHub Release asset upload.
 #
-# Dependency order: undef-shell → undef-terminal → undef-terminal-cloudflare
+# Dependency order: undef-terminal-shell → undef-terminal → undef-terminal-cloudflare
 
 name: Release
 
@@ -27,7 +27,7 @@ jobs:
       fail-fast: true
       matrix:
         package:
-          - undef-shell
+          - undef-terminal-shell
           - undef-terminal
           - undef-terminal-cloudflare
     steps:
@@ -44,9 +44,9 @@ jobs:
           name: dist-${{ matrix.package }}
           path: dist/*
 
-  # ── Stage 1: undef-shell (no PyPI deps on other workspace packages) ──
+  # ── Stage 1: undef-terminal-shell (no PyPI deps on other workspace packages) ──
   testpypi-shell:
-    name: TestPyPI · undef-shell
+    name: TestPyPI · undef-terminal-shell
     needs: build
     runs-on: ubuntu-latest
     environment: testpypi
@@ -55,14 +55,14 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: dist-undef-shell
+          name: dist-undef-terminal-shell
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
 
   verify-shell:
-    name: Verify TestPyPI · undef-shell
+    name: Verify TestPyPI · undef-terminal-shell
     needs: testpypi-shell
     runs-on: ubuntu-latest
     steps:
@@ -72,14 +72,14 @@ jobs:
           python-version: "3.11"
       - name: Read expected version
         id: ver
-        run: echo "version=$(cat packages/undef-shell/VERSION)" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(cat packages/undef-terminal-shell/VERSION)" >> "$GITHUB_OUTPUT"
       - name: Install from TestPyPI (with retries)
         run: |
           for i in 1 2 3 4 5; do
             if pip install \
                  --index-url https://test.pypi.org/simple/ \
                  --extra-index-url https://pypi.org/simple/ \
-                 "undef-shell==${{ steps.ver.outputs.version }}"; then
+                 "undef-terminal-shell==${{ steps.ver.outputs.version }}"; then
               break
             fi
             echo "Attempt $i failed — waiting 30s for index propagation…"
@@ -87,13 +87,13 @@ jobs:
           done
       - name: Verify installed version
         run: |
-          installed=$(pip show undef-shell | grep '^Version:' | awk '{print $2}')
+          installed=$(pip show undef-terminal-shell | grep '^Version:' | awk '{print $2}')
           expected="${{ steps.ver.outputs.version }}"
           echo "Installed: $installed  Expected: $expected"
           [ "$installed" = "$expected" ]
 
   pypi-shell:
-    name: PyPI · undef-shell
+    name: PyPI · undef-terminal-shell
     needs: verify-shell
     runs-on: ubuntu-latest
     environment: pypi
@@ -102,11 +102,11 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: dist-undef-shell
+          name: dist-undef-terminal-shell
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
 
-  # ── Stage 2: undef-terminal (depends on undef-shell) ─────────────────
+  # ── Stage 2: undef-terminal (depends on undef-terminal-shell) ─────────────────
   testpypi-terminal:
     name: TestPyPI · undef-terminal
     needs: [build, pypi-shell]

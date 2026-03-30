@@ -288,7 +288,7 @@ predictable and fast in the hosted server. If you need key-based auth in config
 without a file path, prefer `client_key_data`.
 
 For `connector_type = "ushell"`, no external process is required. The session runs
-a built-in Python REPL powered by [`undef-shell`](packages/undef-shell/README.md).
+a built-in Python REPL powered by [`undef-terminal-shell`](packages/undef-terminal-shell/README.md).
 Commands include `py <expr>`, `sessions`, `kv list/get/set/delete`, `fetch [-X METHOD] <url>`,
 `env`, `clear`, and `exit`. The REPL sandbox pre-imports `json`, `datetime`, `re`,
 `hashlib`, and `base64`.
@@ -311,10 +311,10 @@ auto_transfer_idle_s = 30
 keystroke_queue = "replay"
 ```
 
-DeckMux is a standalone package (`undef-deckmux`) with zero required dependencies,
+DeckMux is a standalone package (`undef-terminal-deckmux`) with zero required dependencies,
 integrated into `undef-terminal` via a TermHub mixin. Both FastAPI and Cloudflare
-backends are supported at parity. See the [DeckMux README](packages/undef-deckmux/README.md)
-for full documentation and [PlantUML diagrams](packages/undef-deckmux/docs/diagrams/).
+backends are supported at parity. See the [DeckMux README](packages/undef-terminal-deckmux/README.md)
+for full documentation and [PlantUML diagrams](packages/undef-terminal-deckmux/docs/diagrams/).
 
 ### Frontend — UndefTerminal
 

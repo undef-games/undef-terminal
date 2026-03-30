@@ -5,7 +5,7 @@
 - **Main package (`undef-terminal`)**: 4043 tests passing. 100% branch coverage. Pre-commit hooks active.
 - **CF package (`undef-terminal-cloudflare`)**: 599 unit tests + 14 real_cf E2E tests — all pass.
   100% coverage across all files. Deployed to `https://undef-terminal-cloudflare.neurotic.workers.dev`.
-- **Shell package (`undef-shell`)**: 160 tests passing. 100% coverage.
+- **Shell package (`undef-terminal-shell`)**: 160 tests passing. 100% coverage.
 - **Frontend**: TypeScript tests pass (vitest). Biome lint+format clean. TypeScript typecheck clean.
 - **Release gate**: All three packages at 100% coverage. Pre-commit clean. Ready for v0.4.0 tag.
 
@@ -50,12 +50,12 @@
 - ushell package + CF DO adapter
 
 ### 2026-03-22: Release prep (0.4.0)
-- `src/undef/shell` symlink committed (enables monorepo-root `from undef.shell import ...`)
+- `src/undef/shell` symlink committed (enables monorepo-root `from undef.terminal.shell import ...`)
 - CF `python_modules/` new files + `uv.lock` committed
 - Root `.gitignore`: added `mutation-score.json`
 - `undef-terminal` + `undef-terminal-cloudflare` bumped to **0.4.0**; CF `pyproject.toml` dep updated
 - `README.md`: test count 2000→4000; connector list adds `websocket`, `ushell`; ushell docs added
-- `packages/undef-shell/README.md`: expanded from stub to full usage doc
+- `packages/undef-terminal-shell/README.md`: expanded from stub to full usage doc
 - Mutation testing: 95.7% score (134/140 killed); 6 equivalent mutants (unkillable by design)
 - `OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES` added to pymutant MCP server env in `~/.claude.json`
   to fix macOS fork-safety SIGSEGV in mutmut
@@ -64,14 +64,14 @@
 
 - CF overall package coverage at 96.5% (pre-existing gaps in http_routes.py, contracts.py, ws_routes.py)
 - 13 xenon blocks above B in pre-existing files (http_routes.py at F, config.py at D)
-- `undef-shell` 0.1.0 not yet on PyPI (blocked on non-publishing decision; undef-terminal 0.4.0 also not yet published)
+- `undef-terminal-shell` 0.1.0 not yet on PyPI (blocked on non-publishing decision; undef-terminal 0.4.0 also not yet published)
 
 ### 2026-03-22: Codebase Hygiene (current session)
 - Split `detection/detector.py` (501→437 lines): extracted `auto_detect_input_type` to `detection/input_type.py`
 - Split `api/http_routes.py` (504 lines): converted to `api/http_routes/` module dir (`_shared`, `_hijack`, `_session`, `_dispatch`)
 - Connector self-registration: replaced hardcoded `KNOWN_CONNECTOR_TYPES` frozenset + if/elif factory with `server/connectors/registry.py`; each connector registers itself at import time
 - Removed compiled frontend from git: build artifacts in `.gitignore`; `npm run build:frontend` step added to CI `quality` and `release-readiness` jobs
-- Vendored `undef.shell` into CF `python_modules/`; added guard test + CI check
+- Vendored `undef.terminal.shell` into CF `python_modules/`; added guard test + CI check
 - Pre-commit config: `tsconfig.json` + `vite.config.ts` `outDir` fixed (was writing to stale repo-root path)
 
 ## Known Issues
@@ -79,7 +79,7 @@
 - `tests/detection/test_extractor.py` is 540 lines — pre-existing LOC violation not in scope of hygiene pass; needs split
 - CF overall package coverage at 96.5% (pre-existing gaps in contracts.py, ws_routes.py)
 - 13 xenon blocks above B in pre-existing files (config.py at D)
-- `undef-shell` 0.1.0 not yet on PyPI (blocked on non-publishing decision; undef-terminal 0.4.0 also not yet published)
+- `undef-terminal-shell` 0.1.0 not yet on PyPI (blocked on non-publishing decision; undef-terminal 0.4.0 also not yet published)
 
 ### 2026-03-22: _bridge_session recv bug fix
 - **Bug**: `ShellSessionConnector.poll_messages()` returns `[]` instantly, so `poll_task` always
@@ -91,7 +91,7 @@
   Added `finally` block to cancel `recv_task` on exit.
 - **Coverage**: added `test_cancel_and_wait_empty_set_is_noop` and updated
   `test_backoff_reset_after_clean_session` to directly mock `_bridge_session`; 100% branch coverage restored.
-- **E2E verified**: Playwright browser at `http://127.0.0.1:8780/app/operator/undef-shell` shows
+- **E2E verified**: Playwright browser at `http://127.0.0.1:8780/app/operator/undef-terminal-shell` shows
   "Connected (shared)" and responds to `/status` with full session info.
 
 ## Backlog

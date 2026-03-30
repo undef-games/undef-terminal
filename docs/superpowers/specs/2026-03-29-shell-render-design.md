@@ -2,13 +2,13 @@
 
 ## Goal
 
-Add a `render` command to `undef.shell` that fetches an image from a URL or local file and displays it as ANSI art in the terminal. Supports all Pillow image formats, animated playback (GIF, APNG, WebP), three color modes (truecolor, 256, 16), and configurable output dimensions.
+Add a `render` command to `undef.terminal.shell` that fetches an image from a URL or local file and displays it as ANSI art in the terminal. Supports all Pillow image formats, animated playback (GIF, APNG, WebP), three color modes (truecolor, 256, 16), and configurable output dimensions.
 
 ## Scope
 
 - **Images only** — no HTML/web page rendering
 - **CLI and FastAPI** — not available in Pyodide/CF Workers (Pillow unavailable)
-- **Optional extra** — `undef-shell[images]` installs Pillow
+- **Optional extra** — `undef-terminal-shell[images]` installs Pillow
 
 ## Command Interface
 
@@ -31,7 +31,7 @@ render [--mode truecolor|256|16] [--cols N] [--rows N] [--fps N] [--loop] <url>
 
 - **Static images** (JPEG, PNG, BMP, TIFF, etc.) — render once, return single frame + PROMPT
 - **Animated images** (GIF, APNG, animated WebP) — stream frames at source FPS (overridable), play once by default, `--loop` repeats until interrupted
-- **Missing Pillow** — returns error: `"error: missing dependency — Pillow\ninstall the images extra: pip install 'undef-shell[images]'"`
+- **Missing Pillow** — returns error: `"error: missing dependency — Pillow\ninstall the images extra: pip install 'undef-terminal-shell[images]'"`
 
 ## Architecture
 
@@ -146,7 +146,7 @@ try:
 except ImportError as exc:
     raise ImportError(
         "missing dependency — Pillow\n"
-        "install the images extra: pip install 'undef-shell[images]'"
+        "install the images extra: pip install 'undef-terminal-shell[images]'"
     ) from exc
 ```
 
@@ -198,10 +198,10 @@ The existing Playwright tests in `test_color_palette.py` prove the full ANSI ren
 
 | File | Action |
 |------|--------|
-| `packages/undef-shell/src/undef/shell/_render.py` | **Create** — image converter |
-| `packages/undef-shell/src/undef/shell/_commands.py` | **Modify** — add `_cmd_render`, AnimatedResult, routing |
-| `packages/undef-shell/src/undef/shell/__main__.py` | **Modify** — handle AnimatedResult in CLI loop |
-| `packages/undef-shell/src/undef/shell/terminal/_connector.py` | **Modify** — handle AnimatedResult in UshellConnector |
-| `packages/undef-shell/pyproject.toml` | **Modify** — add `[images]` optional extra |
-| `packages/undef-shell/tests/shell/test_shell_render.py` | **Create** — converter unit tests |
-| `packages/undef-shell/tests/shell/test_shell_commands_render.py` | **Create** — command integration tests |
+| `packages/undef-terminal-shell/src/undef/shell/_render.py` | **Create** — image converter |
+| `packages/undef-terminal-shell/src/undef/shell/_commands.py` | **Modify** — add `_cmd_render`, AnimatedResult, routing |
+| `packages/undef-terminal-shell/src/undef/shell/__main__.py` | **Modify** — handle AnimatedResult in CLI loop |
+| `packages/undef-terminal-shell/src/undef/shell/terminal/_connector.py` | **Modify** — handle AnimatedResult in UshellConnector |
+| `packages/undef-terminal-shell/pyproject.toml` | **Modify** — add `[images]` optional extra |
+| `packages/undef-terminal-shell/tests/shell/test_shell_render.py` | **Create** — converter unit tests |
+| `packages/undef-terminal-shell/tests/shell/test_shell_commands_render.py` | **Create** — command integration tests |

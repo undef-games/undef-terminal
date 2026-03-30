@@ -9,7 +9,7 @@ version = "0.4.0"
 requires-python = ">=3.11"
 dependencies = [
     "undef-terminal[cli,server,ssh,emulator]",
-    "undef-shell",
+    "undef-terminal-shell",
     "undef-telemetry>=0.3",
 ]
 
@@ -51,13 +51,13 @@ dev = [
 ]
 
 [tool.uv.workspace]
-members = ["packages/undef-terminal", "packages/undef-shell", "packages/undef-terminal-cloudflare", "packages/undef-deckmux", "packages/undef-terminal-render"]
+members = ["packages/undef-terminal", "packages/undef-terminal-shell", "packages/undef-terminal-cloudflare", "packages/undef-terminal-deckmux", "packages/undef-terminal-render"]
 
 [tool.uv.sources]
 undef-terminal = { workspace = true }
-undef-shell = { workspace = true }
+undef-terminal-shell = { workspace = true }
 undef-terminal-cloudflare = { workspace = true }
-undef-deckmux = { workspace = true }
+undef-terminal-deckmux = { workspace = true }
 undef-terminal-render = { workspace = true }
 
 [tool.ruff]
@@ -98,10 +98,10 @@ follow_imports = "normal"
 ignore_missing_imports = false
 namespace_packages = true
 explicit_package_bases = true
-mypy_path = ["packages/undef-terminal/src", "packages/undef-shell/src", "packages/undef-deckmux/src", "packages/undef-terminal-render/src"]
+mypy_path = ["packages/undef-terminal/src", "packages/undef-terminal-shell/src", "packages/undef-terminal-deckmux/src", "packages/undef-terminal-render/src"]
 
 [[tool.mypy.overrides]]
-module = ["undef.telemetry", "undef.telemetry.*", "undef.deckmux", "undef.deckmux.*", "structlog", "structlog.*"]
+module = ["undef.telemetry", "undef.telemetry.*", "undef.terminal.deckmux", "undef.terminal.deckmux.*", "structlog", "structlog.*"]
 ignore_missing_imports = true
 
 
@@ -117,7 +117,7 @@ warn_unused_ignores = false
 
 [tool.ty.environment]
 python-version = "3.11"
-extra-paths = ["packages/undef-shell/src", "packages/undef-deckmux/src", "packages/undef-terminal-render/src"]
+extra-paths = ["packages/undef-terminal-shell/src", "packages/undef-terminal-deckmux/src", "packages/undef-terminal-render/src"]
 
 [tool.ty.rules]
 invalid-argument-type = "ignore"
@@ -132,12 +132,12 @@ exclude_dirs = [
     "packages/undef-terminal/tests",
     "packages/undef-terminal-cloudflare/python_modules",
     "packages/undef-terminal-cloudflare/node_modules",
-    "packages/undef-shell/tests",
+    "packages/undef-terminal-shell/tests",
 ]
 
 [tool.vulture]
 min_confidence = 80
-paths = ["packages/undef-terminal/src", "packages/undef-terminal/tests", "packages/undef-shell/src"]
+paths = ["packages/undef-terminal/src", "packages/undef-terminal/tests", "packages/undef-terminal-shell/src"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -147,7 +147,7 @@ addopts = "--import-mode=importlib"
 testpaths = [
     "packages/undef-terminal/tests",
     "packages/undef-terminal-cloudflare/tests",
-    "packages/undef-shell/tests",
+    "packages/undef-terminal-shell/tests",
 ]
 norecursedirs = [
     ".git",
@@ -171,16 +171,16 @@ max_modules = "B"
 max_average = "A"
 
 [tool.mutmut]
-paths_to_mutate = ["src/undef/shell/_render.py"]
+paths_to_mutate = ["src/undef/terminal/shell/_render.py"]
 tests_dir = [
-    "packages/undef-shell/tests/shell/test_shell_render.py",
+    "packages/undef-terminal-shell/tests/shell/test_shell_render.py",
 ]
 also_copy = [
     "src",
-    "packages/undef-shell/src",
+    "packages/undef-terminal-shell/src",
     "packages/undef-terminal/src",
     "packages/undef-terminal/tests",
-    "packages/undef-shell/tests",
+    "packages/undef-terminal-shell/tests",
     "conftest.py",
 ]
 pytest_add_cli_args = ["--timeout=30", "-p", "no:randomly", "-p", "no:hypothesis"]

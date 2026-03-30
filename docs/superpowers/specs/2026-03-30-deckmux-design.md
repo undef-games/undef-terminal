@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add real-time collaborative presence to terminal sessions: see who's connected, where they're looking, who has control, and transfer control seamlessly. The feature is called **Deck Mux** (DM). It lives in `packages/undef-deckmux/` as a workspace member with zero required dependencies.
+Add real-time collaborative presence to terminal sessions: see who's connected, where they're looking, who has control, and transfer control seamlessly. The feature is called **Deck Mux** (DM). It lives in `packages/undef-terminal-deckmux/` as a workspace member with zero required dependencies.
 
 ## Scope
 
@@ -11,12 +11,12 @@ Add real-time collaborative presence to terminal sessions: see who's connected, 
 - **Keystroke queue** — buffer and display attempted keystrokes from non-owners
 - **Both backends** — FastAPI and CF Worker at parity
 - **Per-session** — enabled/disabled per session definition
-- **Standalone package** — `undef-deckmux` in the monorepo, integrates with undef-terminal
+- **Standalone package** — `undef-terminal-deckmux` in the monorepo, integrates with undef-terminal
 
 ## Package Structure
 
 ```
-packages/undef-deckmux/
+packages/undef-terminal-deckmux/
   src/undef/deckmux/
     __init__.py
     _protocol.py      — message type schemas and constants
@@ -426,7 +426,7 @@ Does NOT duplicate TermHub's broadcast, role checking, or lease management. Call
 
 ## Testing
 
-### Unit Tests (`packages/undef-deckmux/tests/`)
+### Unit Tests (`packages/undef-terminal-deckmux/tests/`)
 
 - `test_presence.py` — PresenceStore CRUD, sync payload, concurrent updates
 - `test_names.py` — deterministic generation, collision avoidance, all 1024 combos unique
@@ -452,13 +452,13 @@ Does NOT duplicate TermHub's broadcast, role checking, or lease management. Call
 
 | File | Action |
 |---|---|
-| `packages/undef-deckmux/` | **Create** — entire package |
+| `packages/undef-terminal-deckmux/` | **Create** — entire package |
 | `packages/undef-terminal/src/undef/terminal/deckmux/` | **Create** — hub integration |
 | `packages/undef-terminal-frontend/src/app/deckmux/` | **Create** — frontend widgets |
 | `packages/undef-terminal/src/undef/terminal/hijack/hub/core.py` | **Modify** — add DeckMux mixin hook points |
 | `packages/undef-terminal/src/undef/terminal/hijack/routes/websockets.py` | **Modify** — route presence messages |
 | `packages/undef-terminal/src/undef/terminal/server/models.py` | **Modify** — add presence fields to SessionDefinition |
 | `packages/undef-terminal-cloudflare/src/undef/terminal/cloudflare/do/session_runtime.py` | **Modify** — presence routing in DO |
-| `pyproject.toml` (root) | **Modify** — add undef-deckmux to workspace members |
+| `pyproject.toml` (root) | **Modify** — add undef-terminal-deckmux to workspace members |
 | `docs/protocol-matrix.md` | **Modify** — add Deck Mux section |
 | `README.md` | **Modify** — mention Deck Mux feature |

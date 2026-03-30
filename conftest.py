@@ -20,7 +20,7 @@ if not os.environ.get("MUTANT_UNDER_TEST"):
     _PACKAGE_SRCS = [
         _ROOT / "packages" / "undef-terminal" / "src",
         _ROOT / "packages" / "undef-terminal-cloudflare" / "src",
-        _ROOT / "packages" / "undef-shell" / "src",
+        _ROOT / "packages" / "undef-terminal-shell" / "src",
     ]
     for _src in reversed(_PACKAGE_SRCS):
         _src_str = str(_src)
