@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>5 Users — Transient Comparison</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #010409; color: #ccc; font-family: 'Fira Code', 'Consolas', monospace; font-size: 13px; }
+  .container { max-width: 1100px; margin: 20px auto; }
+  h2 { color: #e6edf3; font-family: system-ui, sans-serif; font-size: 18px; margin-bottom: 4px; }
+  .subtitle { color: #6e7681; font-family: system-ui, sans-serif; font-size: 13px; margin-bottom: 20px; }
+
+  .option-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .option-card { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; }
+  .option-header { padding: 10px 12px; background: #161b22; border-bottom: 1px solid #30363d; font-family: system-ui, sans-serif; }
+  .option-header h3 { color: #e6edf3; font-size: 13px; margin-bottom: 2px; }
+  .option-header p { color: #8b949e; font-size: 11px; }
+  .option-letter { display: inline-block; width: 20px; height: 20px; border-radius: 50%; background: #30363d; color: #e6edf3; font-size: 11px; font-weight: bold; text-align: center; line-height: 20px; margin-right: 6px; font-family: system-ui, sans-serif; }
+
+  .term { padding: 6px 0; line-height: 1.5; position: relative; font-size: 11px; }
+  .term .line { white-space: pre; padding: 0 8px; position: relative; height: 17px; }
+  .term .ln { color: #3b424a; display: inline-block; width: 22px; text-align: right; margin-right: 6px; user-select: none; }
+  .g { color: #3fb950; } .r { color: #f85149; } .d { color: #6e7681; } .w { color: #e6edf3; } .h { color: #8b949e; }
+
+  /* Colors for 5 users */
+  /* Tim=#e74c3c Jane=#3498db RedHawk=#2ecc71 SilverCrane=#9b59b6 CoralOtter=#e67e22 */
+
+  /* A: Gutter markers */
+  .gutter-dot { position: absolute; left: 3px; width: 5px; height: 5px; border-radius: 50%; top: 6px; }
+  .gutter-bar { position: absolute; left: 2px; width: 4px; height: 13px; border-radius: 2px; top: 2px; }
+  /* Stack multiple dots horizontally */
+  .gutter-dot.g2 { left: 9px; }
+  .gutter-dot.g3 { left: 15px; }
+
+  /* B: Edge indicators */
+  .edge-track { position: absolute; right: 4px; top: 6px; bottom: 6px; width: 5px; background: #161b22; border-radius: 3px; }
+  .edge-marker { position: absolute; right: 4px; width: 5px; border-radius: 2px; opacity: 0.5; }
+  .edge-label { position: absolute; right: 12px; font-size: 8px; font-weight: 600; padding: 1px 4px; border-radius: 2px; color: white; white-space: nowrap; font-family: system-ui, sans-serif; }
+
+  /* C: Row highlight */
+  .row-hl { position: absolute; left: 0; right: 0; height: 17px; pointer-events: none; }
+  .row-label { position: absolute; right: 6px; font-size: 8px; font-weight: 600; padding: 1px 4px; border-radius: 2px; color: white; white-space: nowrap; font-family: system-ui, sans-serif; opacity: 0.7; }
+
+  /* Pinned cursor */
+  .pin { position: absolute; display: flex; align-items: center; height: 17px; pointer-events: none; }
+  .pin-bar { width: 2px; height: 100%; border-radius: 1px; }
+  .pin-lbl { font-size: 9px; font-weight: 600; padding: 1px 4px; border-radius: 2px; color: white; white-space: nowrap; font-family: system-ui, sans-serif; box-shadow: 0 0 4px rgba(255,255,255,0.1); }
+
+  .option-note { padding: 8px 10px; font-family: system-ui, sans-serif; font-size: 10px; color: #6e7681; border-top: 1px solid #21262d; line-height: 1.5; }
+  .verdict { color: #e6edf3; font-weight: 600; }
+
+  /* Users legend */
+  .legend { margin-top: 16px; padding: 10px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; font-family: system-ui, sans-serif; font-size: 11px; color: #8b949e; display: flex; gap: 16px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h2>5 users in one session — how does each scale?</h2>
+  <p class="subtitle">Tim 📌 line 13 · Jane viewing 5-9 · Red Hawk viewing 2-6 · Silver Crane viewing 7-11 · Coral Otter viewing 10-14</p>
+
+  <div class="legend">
+    <div class="legend-item"><span class="legend-dot" style="background:#e74c3c;"></span> Tim (admin, 📌 pinned)</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#3498db;"></span> Jane (operator)</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#2ecc71;"></span> Red Hawk (viewer)</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#9b59b6;"></span> Silver Crane (viewer)</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#e67e22;"></span> Coral Otter (viewer)</div>
+  </div>
+
+  <div class="option-grid" style="margin-top:16px;">
+
+    <!-- OPTION A: Gutter Markers -->
+    <div class="option-card">
+      <div class="option-header">
+        <h3><span class="option-letter">A</span> Gutter Markers</h3>
+        <p>Multiple dots stack horizontally</p>
+      </div>
+      <div class="term">
+        <div class="line"><span class="ln">1</span><span class="g">$</span> <span class="w">kubectl get pods -n prod</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#2ecc71;"></span><span class="ln">2</span><span class="h">NAME           READY  STATUS</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#2ecc71;"></span><span class="ln">3</span><span class="w">api-gw-7d4f   1/1    </span><span class="g">Running</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#2ecc71;"></span><span class="gutter-bar" style="background:#2ecc71; left:10px;"></span><span class="ln">4</span><span class="w">auth-svc-5c9  1/1    </span><span class="g">Running</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#2ecc71;"></span><span class="gutter-dot g2" style="background:#3498db;"></span><span class="ln">5</span><span class="w">cache-redis    1/1    </span><span class="g">Running</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#2ecc71;"></span><span class="gutter-dot g2" style="background:#3498db;"></span><span class="ln">6</span><span class="w">db-postgres   1/1    </span><span class="g">Running</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#3498db;"></span><span class="gutter-bar" style="background:#3498db; left:10px;"></span><span class="gutter-dot g3" style="background:#9b59b6;"></span><span class="ln">7</span><span class="w">worker-k8p    0/1    </span><span class="r">CrashLoop</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#3498db;"></span><span class="gutter-dot g2" style="background:#9b59b6;"></span><span class="ln">8</span><span class="w">worker-q7n    0/1    </span><span class="r">CrashLoop</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#3498db;"></span><span class="gutter-bar" style="background:#9b59b6; left:10px;"></span><span class="gutter-dot g3" style="background:#e67e22;"></span><span class="ln">9</span><span class="w">stream-4b2d   1/1    </span><span class="g">Running</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#9b59b6;"></span><span class="gutter-dot g2" style="background:#e67e22;"></span><span class="ln">10</span><span class="w">metrics-6f8e  1/1    </span><span class="g">Running</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#9b59b6;"></span><span class="gutter-dot g2" style="background:#e67e22;"></span><span class="ln">11</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#e67e22;"></span><span class="gutter-bar" style="background:#e67e22; left:10px;"></span><span class="ln">12</span><span class="g">$</span> <span class="w">kubectl logs worker-k8p</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#e67e22;"></span><span class="ln">13</span><span class="r">panic: index out of range</span>
+          <div class="pin" style="left:280px;"><div class="pin-bar" style="background:#e74c3c;"></div><div class="pin-lbl" style="background:#e74c3c;">📌Tim</div></div>
+        </div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#e67e22;"></span><span class="ln">14</span><span class="d">goroutine 1 [running]:</span></div>
+        <div class="line"><span class="ln">15</span><span class="d">main.processBatch(...)</span></div>
+      </div>
+      <div class="option-note">
+        <span class="verdict">Gets busy.</span> Lines 7 and 9 have 3 dots stacked. Gutter area widens. Still readable but the left margin becomes a rainbow. With 10 users this breaks.
+      </div>
+    </div>
+
+    <!-- OPTION B: Edge Indicators -->
+    <div class="option-card">
+      <div class="option-header">
+        <h3><span class="option-letter">B</span> Edge Indicators</h3>
+        <p>Range bars stack on right edge</p>
+      </div>
+      <div class="term" style="padding-right: 18px;">
+        <div class="edge-track"></div>
+        <!-- Jane: lines 5-9 / 15 total → 27%-60% -->
+        <div class="edge-marker" style="background:#3498db; top: calc(6px + 27%); height: 33%;"></div>
+        <div class="edge-label" style="background:#3498db; top: calc(6px + 38%);">Jane</div>
+        <!-- Red Hawk: lines 2-6 → 7%-40% -->
+        <div class="edge-marker" style="background:#2ecc71; top: calc(6px + 7%); height: 33%; right: 10px;"></div>
+        <div class="edge-label" style="background:#2ecc71; top: calc(6px + 18%); right: 18px;">RH</div>
+        <!-- Silver Crane: lines 7-11 → 40%-73% -->
+        <div class="edge-marker" style="background:#9b59b6; top: calc(6px + 40%); height: 33%; right: 16px;"></div>
+        <div class="edge-label" style="background:#9b59b6; top: calc(6px + 52%); right: 24px;">SC</div>
+        <!-- Coral Otter: lines 10-14 → 60%-93% -->
+        <div class="edge-marker" style="background:#e67e22; top: calc(6px + 60%); height: 33%;"></div>
+        <div class="edge-label" style="background:#e67e22; top: calc(6px + 72%);">CO</div>
+        <!-- Tim pin: line 13 → 80% -->
+        <div class="edge-marker" style="background:#e74c3c; top: calc(6px + 80%); height: 3px; opacity: 0.9; right: 10px;"></div>
+        <div class="edge-label" style="background:#e74c3c; top: calc(6px + 77%); right: 18px;">📌Tim</div>
+
+        <div class="line"><span class="ln">1</span><span class="g">$</span> <span class="w">kubectl get pods -n prod</span></div>
+        <div class="line"><span class="ln">2</span><span class="h">NAME           READY  STATUS</span></div>
+        <div class="line"><span class="ln">3</span><span class="w">api-gw-7d4f   1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">4</span><span class="w">auth-svc-5c9  1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">5</span><span class="w">cache-redis    1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">6</span><span class="w">db-postgres   1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">7</span><span class="w">worker-k8p    0/1    </span><span class="r">CrashLoop</span></div>
+        <div class="line"><span class="ln">8</span><span class="w">worker-q7n    0/1    </span><span class="r">CrashLoop</span></div>
+        <div class="line"><span class="ln">9</span><span class="w">stream-4b2d   1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">10</span><span class="w">metrics-6f8e  1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">11</span></div>
+        <div class="line"><span class="ln">12</span><span class="g">$</span> <span class="w">kubectl logs worker-k8p</span></div>
+        <div class="line" style="position:relative;"><span class="ln">13</span><span class="r">panic: index out of range</span>
+          <div class="pin" style="left:280px;"><div class="pin-bar" style="background:#e74c3c;"></div><div class="pin-lbl" style="background:#e74c3c;">📌Tim</div></div>
+        </div>
+        <div class="line"><span class="ln">14</span><span class="d">goroutine 1 [running]:</span></div>
+        <div class="line"><span class="ln">15</span><span class="d">main.processBatch(...)</span></div>
+      </div>
+      <div class="option-note">
+        <span class="verdict">Scales well.</span> Overlapping ranges just layer — you see the colored bands. Labels can stagger columns. Terminal text is completely clean. Works with 20+ users.
+      </div>
+    </div>
+
+    <!-- OPTION C: Row Highlight -->
+    <div class="option-card">
+      <div class="option-header">
+        <h3><span class="option-letter">C</span> Row Highlight</h3>
+        <p>Multiple stripes on center lines</p>
+      </div>
+      <div class="term">
+        <!-- Red Hawk center = line 4 -->
+        <div class="row-hl" style="top: calc(3 * 17px + 6px); background: rgba(46, 204, 113, 0.08);"></div>
+        <div class="row-label" style="top: calc(3 * 17px + 6px); background: rgba(46, 204, 113, 0.5);">RH</div>
+        <!-- Jane center = line 7 -->
+        <div class="row-hl" style="top: calc(6 * 17px + 6px); background: rgba(52, 152, 219, 0.08);"></div>
+        <div class="row-label" style="top: calc(6 * 17px + 6px); background: rgba(52, 152, 219, 0.5);">Jane</div>
+        <!-- Silver Crane center = line 9 -->
+        <div class="row-hl" style="top: calc(8 * 17px + 6px); background: rgba(155, 89, 182, 0.08);"></div>
+        <div class="row-label" style="top: calc(8 * 17px + 6px); background: rgba(155, 89, 182, 0.5);">SC</div>
+        <!-- Coral Otter center = line 12 -->
+        <div class="row-hl" style="top: calc(11 * 17px + 6px); background: rgba(230, 126, 34, 0.08);"></div>
+        <div class="row-label" style="top: calc(11 * 17px + 6px); background: rgba(230, 126, 34, 0.5);">CO</div>
+
+        <div class="line"><span class="ln">1</span><span class="g">$</span> <span class="w">kubectl get pods -n prod</span></div>
+        <div class="line"><span class="ln">2</span><span class="h">NAME           READY  STATUS</span></div>
+        <div class="line"><span class="ln">3</span><span class="w">api-gw-7d4f   1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">4</span><span class="w">auth-svc-5c9  1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">5</span><span class="w">cache-redis    1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">6</span><span class="w">db-postgres   1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">7</span><span class="w">worker-k8p    0/1    </span><span class="r">CrashLoop</span></div>
+        <div class="line"><span class="ln">8</span><span class="w">worker-q7n    0/1    </span><span class="r">CrashLoop</span></div>
+        <div class="line"><span class="ln">9</span><span class="w">stream-4b2d   1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">10</span><span class="w">metrics-6f8e  1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">11</span></div>
+        <div class="line"><span class="ln">12</span><span class="g">$</span> <span class="w">kubectl logs worker-k8p</span></div>
+        <div class="line" style="position:relative;"><span class="ln">13</span><span class="r">panic: index out of range</span>
+          <div class="pin" style="left:280px;"><div class="pin-bar" style="background:#e74c3c;"></div><div class="pin-lbl" style="background:#e74c3c;">📌Tim</div></div>
+        </div>
+        <div class="line"><span class="ln">14</span><span class="d">goroutine 1 [running]:</span></div>
+        <div class="line"><span class="ln">15</span><span class="d">main.processBatch(...)</span></div>
+      </div>
+      <div class="option-note">
+        <span class="verdict">OK at 5, breaks at more.</span> Four colored stripes across the terminal. If two people scroll to the same line, stripes overlap and colors muddy. Labels pile up on right edge.
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

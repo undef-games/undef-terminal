@@ -3,6 +3,8 @@
 #
 # Publish all workspace packages to TestPyPI (staging) then PyPI (production),
 # with Sigstore signing and GitHub Release asset upload.
+#
+# Dependency order: undef-shell → undef-terminal → undef-terminal-cloudflare
 
 name: Release
 
@@ -17,7 +19,7 @@ permissions:
   contents: read
 
 jobs:
-  # ── Build ──────────────────────────────────────────────────────────────
+  # ── Build (all packages in parallel — uses workspace sources) ─────────
   build:
     name: Build ${{ matrix.package }}
     runs-on: ubuntu-latest
@@ -42,112 +44,201 @@ jobs:
           name: dist-${{ matrix.package }}
           path: dist/*
 
-  # ── Publish to TestPyPI ────────────────────────────────────────────────
-  publish-testpypi:
-    name: TestPyPI · ${{ matrix.package }}
+  # ── Stage 1: undef-shell (no PyPI deps on other workspace packages) ──
+  testpypi-shell:
+    name: TestPyPI · undef-shell
     needs: build
     runs-on: ubuntu-latest
     environment: testpypi
     permissions:
-      id-token: write          # OIDC for trusted publishing
-    strategy:
-      fail-fast: true
-      matrix:
-        package:
-          - undef-shell
-          - undef-terminal
-          - undef-terminal-cloudflare
+      id-token: write
     steps:
-      - name: Download dists
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: dist-${{ matrix.package }}
+          name: dist-undef-shell
           path: dist/
-
-      - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
 
-  # ── Verify TestPyPI installs ──────────────────────────────────────────
-  verify-testpypi:
-    name: Verify TestPyPI · ${{ matrix.package }}
-    needs: publish-testpypi
+  verify-shell:
+    name: Verify TestPyPI · undef-shell
+    needs: testpypi-shell
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: true
-      matrix:
-        package:
-          - undef-shell
-          - undef-terminal
-          - undef-terminal-cloudflare
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Read expected version
         id: ver
-        run: |
-          version=$(cat "packages/${{ matrix.package }}/VERSION")
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
+        run: echo "version=$(cat packages/undef-shell/VERSION)" >> "$GITHUB_OUTPUT"
       - name: Install from TestPyPI (with retries)
         run: |
           for i in 1 2 3 4 5; do
             if pip install \
                  --index-url https://test.pypi.org/simple/ \
                  --extra-index-url https://pypi.org/simple/ \
-                 "${{ matrix.package }}==${{ steps.ver.outputs.version }}"; then
+                 "undef-shell==${{ steps.ver.outputs.version }}"; then
               break
             fi
             echo "Attempt $i failed — waiting 30s for index propagation…"
             sleep 30
           done
-
       - name: Verify installed version
         run: |
-          installed=$(pip show "${{ matrix.package }}" | grep '^Version:' | awk '{print $2}')
+          installed=$(pip show undef-shell | grep '^Version:' | awk '{print $2}')
           expected="${{ steps.ver.outputs.version }}"
           echo "Installed: $installed  Expected: $expected"
           [ "$installed" = "$expected" ]
 
-  # ── Publish to production PyPI ─────────────────────────────────────────
-  publish-pypi:
-    name: PyPI · ${{ matrix.package }}
-    needs: verify-testpypi
+  pypi-shell:
+    name: PyPI · undef-shell
+    needs: verify-shell
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      id-token: write          # OIDC for trusted publishing
-    strategy:
-      fail-fast: true
-      matrix:
-        package:
-          - undef-shell
-          - undef-terminal
-          - undef-terminal-cloudflare
+      id-token: write
     steps:
-      - name: Download dists
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: dist-${{ matrix.package }}
+          name: dist-undef-shell
           path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+  # ── Stage 2: undef-terminal (depends on undef-shell) ─────────────────
+  testpypi-terminal:
+    name: TestPyPI · undef-terminal
+    needs: [build, pypi-shell]
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-undef-terminal
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
 
-  # ── Sigstore signing + GitHub Release upload ───────────────────────────
+  verify-terminal:
+    name: Verify TestPyPI · undef-terminal
+    needs: testpypi-terminal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Read expected version
+        id: ver
+        run: echo "version=$(cat packages/undef-terminal/VERSION)" >> "$GITHUB_OUTPUT"
+      - name: Install from TestPyPI (with retries)
+        run: |
+          for i in 1 2 3 4 5; do
+            if pip install \
+                 --index-url https://test.pypi.org/simple/ \
+                 --extra-index-url https://pypi.org/simple/ \
+                 "undef-terminal==${{ steps.ver.outputs.version }}"; then
+              break
+            fi
+            echo "Attempt $i failed — waiting 30s for index propagation…"
+            sleep 30
+          done
+      - name: Verify installed version
+        run: |
+          installed=$(pip show undef-terminal | grep '^Version:' | awk '{print $2}')
+          expected="${{ steps.ver.outputs.version }}"
+          echo "Installed: $installed  Expected: $expected"
+          [ "$installed" = "$expected" ]
+
+  pypi-terminal:
+    name: PyPI · undef-terminal
+    needs: verify-terminal
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-undef-terminal
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  # ── Stage 3: undef-terminal-cloudflare (depends on both) ─────────────
+  testpypi-cloudflare:
+    name: TestPyPI · undef-terminal-cloudflare
+    needs: [build, pypi-terminal]
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-undef-terminal-cloudflare
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  verify-cloudflare:
+    name: Verify TestPyPI · undef-terminal-cloudflare
+    needs: testpypi-cloudflare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Read expected version
+        id: ver
+        run: echo "version=$(cat packages/undef-terminal-cloudflare/VERSION)" >> "$GITHUB_OUTPUT"
+      - name: Install from TestPyPI (with retries)
+        run: |
+          for i in 1 2 3 4 5; do
+            if pip install \
+                 --index-url https://test.pypi.org/simple/ \
+                 --extra-index-url https://pypi.org/simple/ \
+                 "undef-terminal-cloudflare==${{ steps.ver.outputs.version }}"; then
+              break
+            fi
+            echo "Attempt $i failed — waiting 30s for index propagation…"
+            sleep 30
+          done
+      - name: Verify installed version
+        run: |
+          installed=$(pip show undef-terminal-cloudflare | grep '^Version:' | awk '{print $2}')
+          expected="${{ steps.ver.outputs.version }}"
+          echo "Installed: $installed  Expected: $expected"
+          [ "$installed" = "$expected" ]
+
+  pypi-cloudflare:
+    name: PyPI · undef-terminal-cloudflare
+    needs: verify-cloudflare
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-undef-terminal-cloudflare
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  # ── Sigstore signing + GitHub Release upload ─────────────────────────
   sign-and-release:
     name: Sign & upload to GitHub Release
-    needs: publish-pypi
+    needs: [pypi-shell, pypi-terminal, pypi-cloudflare]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
-      id-token: write          # Sigstore OIDC
-      contents: write          # upload release assets
+      id-token: write
+      contents: write
     steps:
       - name: Download all dists
         uses: actions/download-artifact@v4

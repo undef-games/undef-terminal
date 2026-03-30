@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DeckMux Diagrams</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #010409; color: #ccc; font-family: system-ui, sans-serif; padding: 20px; }
+  h1 { color: #e6edf3; font-size: 20px; margin-bottom: 16px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+  .tab {
+    padding: 6px 14px; border-radius: 6px; cursor: pointer;
+    background: #161b22; border: 1px solid #30363d; color: #8b949e;
+    font-size: 12px; font-weight: 600; transition: all 0.15s;
+  }
+  .tab:hover { background: #1c2128; color: #c9d1d9; }
+  .tab.active { background: #1f6feb22; border-color: #1f6feb88; color: #58a6ff; }
+  .diagram-frame {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+    padding: 16px; overflow: auto; min-height: 400px;
+  }
+  .diagram-frame img { max-width: 100%; height: auto; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>DeckMux — PlantUML Diagrams</h1>
+<div class="tabs" id="tabs"></div>
+<div class="diagram-frame" id="frame"></div>
+
+<script>
+const diagrams = [
+  { id: 'join', label: 'Browser Join', file: 'presence-join.svg' },
+  { id: 'events', label: 'Presence Events', file: 'presence-events.svg' },
+  { id: 'transfer', label: 'Control Transfer', file: 'control-transfer.svg' },
+  { id: 'auto', label: 'Auto-Transfer', file: 'auto-transfer.svg' },
+  { id: 'hibernate', label: 'Hibernation Wake', file: 'hibernation-wake.svg' },
+  { id: 'arch', label: 'Architecture', file: 'architecture.svg' },
+];
+
+// Serve SVGs from a simple inline data approach — read from fetch
+const BASE = '/diagrams/';
+
+const tabs = document.getElementById('tabs');
+const frame = document.getElementById('frame');
+
+// We'll embed the SVGs via object tags since we can't use file:// URLs
+// Instead, create a mini server endpoint or use data URIs
+// Simplest: use fetch from the brainstorm server
+
+function showDiagram(idx) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', i === idx);
+  });
+  const d = diagrams[idx];
+  // Try fetching from same origin
+  frame.innerHTML = '<div style="color:#6e7681;padding:40px;text-align:center;">Loading ' + d.label + '...</div>';
+
+  // Since we can't serve arbitrary files, embed as inline SVG via XMLHttpRequest
+  // The brainstorm server only serves content/ files, so we need to copy SVGs there
+  // For now, show instructions
+  frame.innerHTML = `
+    <div style="padding:20px;color:#8b949e;line-height:1.6;">
+      <p style="color:#e6edf3;font-size:16px;margin-bottom:8px;">📊 ${d.label}</p>
+      <p>SVG rendered at: <code style="color:#58a6ff;">packages/undef-deckmux/docs/diagrams/${d.file}</code></p>
+      <p style="margin-top:8px;">Open in browser: <code style="color:#58a6ff;">open packages/undef-deckmux/docs/diagrams/${d.file}</code></p>
+    </div>
+  `;
+}
+
+diagrams.forEach((d, i) => {
+  const tab = document.createElement('div');
+  tab.className = 'tab' + (i === 0 ? ' active' : '');
+  tab.textContent = d.label;
+  tab.onclick = () => showDiagram(i);
+  tabs.appendChild(tab);
+});
+
+showDiagram(0);
+</script>
+</body>
+</html>

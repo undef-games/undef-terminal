@@ -4,15 +4,15 @@
 @startuml architecture
 title DeckMux — Package Architecture
 
-skinparam backgroundColor #0d1117
-skinparam defaultFontColor #c9d1d9
-skinparam componentBorderColor #30363d
-skinparam componentBackgroundColor #161b22
-skinparam packageBorderColor #30363d
-skinparam packageBackgroundColor #0d1117
-skinparam arrowColor #58a6ff
-skinparam noteBorderColor #30363d
-skinparam noteBackgroundColor #161b22
+skinparam backgroundColor #ffffff
+skinparam defaultFontColor #333333
+skinparam componentBorderColor #d1d5db
+skinparam componentBackgroundColor #f3f4f6
+skinparam packageBorderColor #d1d5db
+skinparam packageBackgroundColor #ffffff
+skinparam arrowColor #2563eb
+skinparam noteBorderColor #d1d5db
+skinparam noteBackgroundColor #f9fafb
 
 package "undef-deckmux (standalone)" {
   [_protocol.py\nmessage types & serialization] as PROTO

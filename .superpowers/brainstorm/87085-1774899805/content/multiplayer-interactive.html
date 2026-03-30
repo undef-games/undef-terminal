@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Multi Player — Interactive Demo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #010409; color: #ccc; font-family: 'Fira Code', 'Consolas', monospace; font-size: 13px; }
+
+  .container { max-width: 1020px; margin: 20px auto; }
+  .scene-label { color: #484f58; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; padding-left: 4px; font-family: system-ui, sans-serif; }
+
+  /* ===== AVATAR BAR ===== */
+  .avatar-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; background: #0d1117;
+    border: 1px solid #30363d; border-bottom: none; border-radius: 8px 8px 0 0;
+  }
+  .avatar { position: relative; cursor: pointer; transition: transform 0.15s; }
+  .avatar:hover { transform: scale(1.15); }
+  .avatar-circle {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 11px; font-weight: bold;
+    border: 2.5px solid transparent; transition: all 0.3s;
+  }
+  .avatar:hover .avatar-circle { border-color: rgba(255,255,255,0.25); }
+  .avatar-role {
+    position: absolute; bottom: -1px; right: -1px;
+    width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid #0d1117;
+  }
+  .avatar.idle .avatar-circle { opacity: 0.35; }
+  .avatar.requesting .avatar-circle { border-color: rgba(240, 198, 116, 0.7); }
+
+  /* Owner pulsing border — pure CSS, no emoji */
+  .avatar.owner .avatar-circle {
+    animation: ownerPulse 2s ease-in-out infinite;
+  }
+  .avatar.owner.idle-warning .avatar-circle {
+    animation: ownerFade 2s ease-in-out infinite;
+  }
+  @keyframes ownerPulse {
+    0%, 100% { box-shadow: 0 0 4px var(--owner-color-dim); border-color: var(--owner-color-dim); }
+    50% { box-shadow: 0 0 12px var(--owner-color); border-color: var(--owner-color); }
+  }
+  @keyframes ownerFade {
+    0%, 100% { box-shadow: 0 0 2px var(--owner-color-dim); border-color: var(--owner-color-dim); opacity: 0.5; }
+    50% { box-shadow: 0 0 6px var(--owner-color-dim); border-color: var(--owner-color-dim); opacity: 0.7; }
+  }
+
+  /* Typing dot on avatar */
+  .typing-dot {
+    position: absolute; top: -2px; right: -2px;
+    width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid #0d1117;
+    animation: typePulse 1s infinite;
+    display: none;
+  }
+  .avatar.typing .typing-dot { display: block; }
+  @keyframes typePulse { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+  .avatar-count { color: #6e7681; font-size: 12px; margin-left: 4px; font-family: system-ui, sans-serif; }
+  .avatar-spacer { flex: 1; }
+
+  .toggle-btn {
+    background: #161b22; border: 1px solid #30363d; color: #8b949e;
+    padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer;
+    font-family: system-ui, sans-serif; transition: all 0.15s; margin-left: 4px;
+    user-select: none;
+  }
+  .toggle-btn:hover { background: #1c2128; color: #c9d1d9; }
+  .toggle-btn.active { background: #1f6feb22; border-color: #1f6feb88; color: #58a6ff; }
+
+  /* Context menu */
+  .ctx-menu {
+    display: none; position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 4px; width: 210px; z-index: 30;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  }
+  .ctx-menu.open { display: block; }
+  .ctx-header { padding: 8px 12px; }
+  .ctx-name { color: #e6edf3; font-weight: 600; font-size: 13px; font-family: system-ui, sans-serif; }
+  .ctx-role { color: #6e7681; font-size: 11px; font-family: system-ui, sans-serif; }
+  .ctx-status { color: #f0c674; font-size: 11px; font-family: system-ui, sans-serif; }
+  .ctx-div { height: 1px; background: #21262d; margin: 4px 0; }
+  .ctx-item {
+    padding: 7px 12px; border-radius: 4px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    transition: background 0.1s; font-family: system-ui, sans-serif;
+  }
+  .ctx-item:hover { background: #1c2128; }
+  .ctx-icon { font-size: 13px; width: 18px; text-align: center; }
+  .ctx-text { color: #e6edf3; font-size: 12px; }
+  .ctx-sub { color: #6e7681; font-size: 10px; }
+  .ctx-item.danger .ctx-text { color: #f85149; }
+
+  /* ===== TERMINAL ===== */
+  .terminal-wrap { position: relative; border-left: 1px solid #30363d; border-right: 1px solid #30363d; }
+  .terminal {
+    background: #161b22; padding: 10px 30px 10px 12px; font-size: 13px;
+    line-height: 1.55; min-height: 400px; position: relative;
+  }
+  .line { position: relative; white-space: pre; height: 20px; cursor: default; }
+  .line:hover { background: rgba(255,255,255,0.02); }
+  .ln { color: #3b424a; display: inline-block; width: 24px; text-align: right; margin-right: 10px; user-select: none; }
+  .g { color: #3fb950; } .r { color: #f85149; } .d { color: #6e7681; } .w { color: #e6edf3; } .h { color: #8b949e; }
+
+  /* Edge track + bars */
+  .edge-track {
+    position: absolute; right: 4px; top: 10px; bottom: 10px; width: 8px;
+    background: #0d1117; border-radius: 4px; z-index: 5;
+  }
+  .edge-bar {
+    position: absolute; right: 4px; width: 8px; border-radius: 3px;
+    transition: opacity 0.3s; cursor: pointer; z-index: 6;
+  }
+  .edge-bar:hover { opacity: 0.8 !important; }
+  .edge-sel {
+    position: absolute; right: 4px; width: 8px; border-radius: 2px;
+    z-index: 7; transition: opacity 0.3s;
+  }
+  .edge-owner-dot {
+    position: absolute; right: 2px; width: 12px; border-radius: 3px;
+    z-index: 8; transition: opacity 0.3s;
+    box-shadow: 0 0 6px var(--owner-color-dim);
+  }
+  .edge-name {
+    position: absolute; right: 18px; font-size: 9px; font-weight: 600;
+    padding: 2px 6px; border-radius: 3px; color: white; white-space: nowrap;
+    font-family: system-ui, sans-serif; transition: opacity 0.2s;
+    pointer-events: none; z-index: 9;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  .edge-name.hidden { opacity: 0; }
+
+  /* Selection highlight */
+  .sel-hl {
+    position: absolute; left: 34px; right: 30px; height: 20px;
+    border-radius: 2px; pointer-events: none; transition: opacity 0.3s;
+  }
+
+  /* Pinned cursor */
+  .pin {
+    position: absolute; display: flex; align-items: center; height: 20px;
+    pointer-events: none; z-index: 10; transition: opacity 0.3s;
+  }
+  .pin-bar { width: 2px; height: 100%; border-radius: 1px; }
+  .pin-lbl {
+    font-size: 10px; font-weight: 600; padding: 1px 6px;
+    border-radius: 3px; color: white; white-space: nowrap;
+    font-family: system-ui, sans-serif;
+    box-shadow: 0 0 6px rgba(255,255,255,0.1), 0 1px 4px rgba(0,0,0,0.4);
+  }
+
+  /* ===== STATUS BAR ===== */
+  .status-bar {
+    padding: 6px 12px; background: #0d1117;
+    border: 1px solid #30363d; border-top: none; border-radius: 0 0 8px 8px;
+    font-family: system-ui, sans-serif; font-size: 11px; color: #6e7681;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .status-bar > span { display: flex; align-items: center; gap: 4px; }
+  .owner-pill {
+    display: inline-flex; align-items: center; gap: 3px;
+    border-radius: 4px; padding: 2px 8px; font-weight: 600;
+    font-size: 11px; transition: all 0.3s;
+  }
+  .owner-pill.active { background: var(--owner-bg); border: 1px solid var(--owner-border); color: var(--owner-text); }
+  .owner-pill.idle-warn { background: #f0c67422; border: 1px solid #f0c67444; color: #f0c674; }
+
+  /* Toast */
+  .toast-area { padding: 0 12px; }
+  .toast {
+    display: none; background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 8px 14px; align-items: center; gap: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6); margin: 6px 0;
+    font-family: system-ui, sans-serif; font-size: 12px;
+  }
+  .toast.show { display: flex; }
+  .toast-text { flex: 1; color: #e6edf3; }
+  .toast-btn {
+    padding: 4px 12px; border-radius: 4px; font-size: 11px;
+    cursor: pointer; font-weight: 600; border: none; font-family: system-ui, sans-serif;
+  }
+  .toast-accept { background: #238636; color: white; }
+  .toast-deny { background: #21262d; color: #8b949e; border: 1px solid #30363d; }
+
+  /* Auto-transfer countdown bar */
+  .countdown-bar {
+    height: 2px; background: #f0c674; border-radius: 1px;
+    transition: width 1s linear; margin-top: 4px;
+  }
+
+  /* ===== CONTROLS PANEL ===== */
+  .controls {
+    margin-top: 16px; padding: 14px 16px; background: #0d1117;
+    border: 1px solid #30363d; border-radius: 8px;
+    font-family: system-ui, sans-serif;
+  }
+  .controls h4 { color: #e6edf3; font-size: 13px; margin-bottom: 10px; }
+  .ctrl-row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .ctrl-btn {
+    padding: 6px 14px; border-radius: 6px; font-size: 12px;
+    cursor: pointer; font-weight: 600; border: 1px solid #30363d;
+    background: #161b22; color: #e6edf3; font-family: system-ui, sans-serif;
+    transition: all 0.15s;
+  }
+  .ctrl-btn:hover { background: #1c2128; border-color: #484f58; }
+  .ctrl-btn.primary { background: #238636; border-color: #238636; color: white; }
+  .ctrl-btn.primary:hover { background: #2ea043; }
+  .ctrl-btn.danger { background: #da3633; border-color: #da3633; color: white; }
+  .ctrl-btn.danger:hover { background: #f85149; }
+  .ctrl-btn.active { background: #1f6feb; border-color: #1f6feb; color: white; }
+  .ctrl-desc { color: #6e7681; font-size: 11px; margin-top: 4px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="scene-label" id="scene-label">Multi Player · Interactive Demo · Click the buttons below to simulate</div>
+
+  <!-- Avatar Bar -->
+  <div class="avatar-bar" id="avatar-bar">
+    <div class="avatar owner" id="av-tim" data-user="tim" onclick="showCtxMenu('tim')" style="--owner-color:rgba(231,76,60,0.7);--owner-color-dim:rgba(231,76,60,0.35);">
+      <div class="avatar-circle" style="background:#e74c3c;" id="ac-tim">TM</div>
+      <div class="avatar-role" style="background:#e74c3c;"></div>
+      <div class="typing-dot" style="background:#e74c3c;" id="td-tim"></div>
+      <div class="ctx-menu" id="ctx-tim">
+        <div class="ctx-header">
+          <div class="ctx-name">Tim M.</div>
+          <div class="ctx-role">admin</div>
+          <div class="ctx-status" id="ctx-tim-status">⌨️ controlling</div>
+        </div>
+        <div class="ctx-div"></div>
+        <div class="ctx-item" onclick="jumpTo('tim')"><div class="ctx-icon">👁</div><div><div class="ctx-text">Jump to view</div></div></div>
+        <div class="ctx-item" id="ctx-tim-request" onclick="requestControl('tim')" style="display:none;"><div class="ctx-icon">⌨️</div><div><div class="ctx-text">Request control</div></div></div>
+      </div>
+    </div>
+
+    <div class="avatar" id="av-jane" data-user="jane" onclick="showCtxMenu('jane')" style="--owner-color:rgba(52,152,219,0.7);--owner-color-dim:rgba(52,152,219,0.35);">
+      <div class="avatar-circle" style="background:#3498db;" id="ac-jane">JD</div>
+      <div class="avatar-role" style="background:#3498db;"></div>
+      <div class="typing-dot" style="background:#3498db;" id="td-jane"></div>
+      <div class="ctx-menu" id="ctx-jane">
+        <div class="ctx-header">
+          <div class="ctx-name">Jane D.</div>
+          <div class="ctx-role">operator</div>
+          <div class="ctx-status" id="ctx-jane-status">viewing</div>
+        </div>
+        <div class="ctx-div"></div>
+        <div class="ctx-item" onclick="jumpTo('jane')"><div class="ctx-icon">👁</div><div><div class="ctx-text">Jump to view</div></div></div>
+        <div class="ctx-item" id="ctx-jane-request" onclick="requestControl('jane')"><div class="ctx-icon">⌨️</div><div><div class="ctx-text">Request control</div></div></div>
+      </div>
+    </div>
+
+    <div class="avatar" id="av-rh" data-user="rh" onclick="showCtxMenu('rh')">
+      <div class="avatar-circle" style="background:#2ecc71;" id="ac-rh">RH</div>
+      <div class="avatar-role" style="background:#6e7681;"></div>
+      <div class="ctx-menu" id="ctx-rh">
+        <div class="ctx-header">
+          <div class="ctx-name">Red Hawk</div>
+          <div class="ctx-role">viewer</div>
+        </div>
+        <div class="ctx-div"></div>
+        <div class="ctx-item" onclick="jumpTo('rh')"><div class="ctx-icon">👁</div><div><div class="ctx-text">Jump to view</div></div></div>
+      </div>
+    </div>
+
+    <div class="avatar idle" id="av-sc">
+      <div class="avatar-circle" style="background:#9b59b6;">SC</div>
+      <div class="avatar-role" style="background:#6e7681;"></div>
+    </div>
+
+    <div class="avatar-count" id="watch-count">4 watching</div>
+    <div class="avatar-spacer"></div>
+    <button class="toggle-btn active" id="btn-names" onclick="toggleNames()">Names</button>
+    <button class="toggle-btn active" id="btn-cursors" onclick="toggleCursors()">Cursors</button>
+  </div>
+
+  <!-- Terminal -->
+  <div class="terminal-wrap">
+    <div class="terminal" id="terminal">
+      <div class="edge-track"></div>
+
+      <!-- Edge bars -->
+      <div class="edge-bar" id="edge-rh" style="background:#2ecc71; top:calc(10px + 0%); height:35%; opacity:0.45;"></div>
+      <div class="edge-name" id="ename-rh" style="background:#2ecc71; top:calc(10px + 12%);">Red Hawk</div>
+
+      <div class="edge-bar" id="edge-jane" style="background:#3498db; top:calc(10px + 20%); height:35%; opacity:0.45;"></div>
+      <div class="edge-sel" id="esel-jane" style="background:#3498db; top:calc(10px + 35%); height:10%; opacity:0.8;"></div>
+      <div class="edge-name" id="ename-jane" style="background:#3498db; top:calc(10px + 32%);">Jane</div>
+
+      <div class="edge-bar" id="edge-sc" style="background:#9b59b6; top:calc(10px + 45%); height:35%; opacity:0.2;"></div>
+      <div class="edge-name" id="ename-sc" style="background:#9b59b6; top:calc(10px + 58%); opacity:0.4;">Silver Crane</div>
+
+      <div class="edge-owner-dot" id="edge-tim" style="background:#e74c3c; top:calc(10px + 72%); height:6px; --owner-color-dim:rgba(231,76,60,0.3);"></div>
+      <div class="edge-name" id="ename-tim" style="background:#e74c3c; top:calc(10px + 69%);">⌨️ Tim</div>
+
+      <!-- Selection highlights -->
+      <div class="sel-hl" id="sel7" style="top:calc(6*20px + 10px); background:#3498db; opacity:0.10;"></div>
+      <div class="sel-hl" id="sel8" style="top:calc(7*20px + 10px); background:#3498db; opacity:0.10;"></div>
+
+      <!-- Pin -->
+      <div class="pin" id="pin-tim" style="left:520px; top:calc(12*20px + 10px);">
+        <div class="pin-bar" style="background:#e74c3c;"></div>
+        <div class="pin-lbl" id="pin-tim-lbl" style="background:#e74c3c;">⌨️ Tim</div>
+      </div>
+
+      <!-- Lines -->
+      <div class="line"><span class="ln">1</span><span class="g">$</span> <span class="w">kubectl get pods -n production --sort-by=.status.startTime</span></div>
+      <div class="line"><span class="ln">2</span><span class="h">NAME                          READY   STATUS             RESTARTS   AGE</span></div>
+      <div class="line"><span class="ln">3</span><span class="w">api-gateway-7d4f8b6c9-x2k    1/1     </span><span class="g">Running</span><span class="w">            0          4d</span></div>
+      <div class="line"><span class="ln">4</span><span class="w">auth-service-5c9d8e7f-m3j    1/1     </span><span class="g">Running</span><span class="w">            0          4d</span></div>
+      <div class="line"><span class="ln">5</span><span class="w">cache-redis-0                 1/1     </span><span class="g">Running</span><span class="w">            0          12d</span></div>
+      <div class="line"><span class="ln">6</span><span class="w">db-postgres-0                 1/1     </span><span class="g">Running</span><span class="w">            0          12d</span></div>
+      <div class="line"><span class="ln">7</span><span class="w">worker-batch-9c3a1-k8p       0/1     </span><span class="r">CrashLoopBackOff</span><span class="w">   5          8m</span></div>
+      <div class="line"><span class="ln">8</span><span class="w">worker-batch-9c3a1-q7n       0/1     </span><span class="r">CrashLoopBackOff</span><span class="w">   3          4m</span></div>
+      <div class="line"><span class="ln">9</span><span class="w">worker-stream-4b2d-r5t       1/1     </span><span class="g">Running</span><span class="w">            0          4d</span></div>
+      <div class="line"><span class="ln">10</span><span class="w">metrics-collector-6f8e-v2    1/1     </span><span class="g">Running</span><span class="w">            0          4d</span></div>
+      <div class="line"><span class="ln">11</span></div>
+      <div class="line"><span class="ln">12</span><span class="g">$</span> <span class="w">kubectl logs worker-batch-9c3a1-k8p --tail=5</span></div>
+      <div class="line"><span class="ln">13</span><span class="r">panic: runtime error: index out of range [3] with length 3</span></div>
+      <div class="line"><span class="ln">14</span><span class="d">goroutine 1 [running]:</span></div>
+      <div class="line"><span class="ln">15</span><span class="d">main.processBatch(0xc0001a4000, 0x3, 0x4)</span></div>
+      <div class="line"><span class="ln">16</span><span class="d">	/app/cmd/worker/main.go:142 +0x1a8</span></div>
+      <div class="line"><span class="ln">17</span></div>
+      <div class="line"><span class="ln">18</span><span class="g">$</span> <span class="w" style="animation:blink 1s step-end infinite;">▌</span></div>
+    </div>
+  </div>
+
+  <!-- Toast area -->
+  <div class="toast-area">
+    <div class="toast" id="toast-request">
+      <span>⌨️</span>
+      <div class="toast-text"><strong id="toast-requester" style="color:#3498db;">Jane</strong> is requesting control</div>
+      <button class="toast-btn toast-accept" onclick="handOver()">Hand over</button>
+      <button class="toast-btn toast-deny" onclick="denyRequest()">Deny</button>
+    </div>
+    <div class="toast" id="toast-transfer">
+      <span>✓</span>
+      <div class="toast-text"><strong id="toast-new-owner">Jane</strong> now has control</div>
+    </div>
+    <div class="toast" id="toast-auto">
+      <span>⏱</span>
+      <div class="toast-text">Control auto-transferring to <strong id="toast-auto-name" style="color:#3498db;">Jane</strong> — Tim idle <span id="toast-auto-secs">30</span>s
+        <div class="countdown-bar" id="countdown-bar" style="width:100%;"></div>
+      </div>
+    </div>
+    <div class="toast" id="toast-auto-done">
+      <span>⌨️</span>
+      <div class="toast-text">Control auto-transferred to <strong id="toast-auto-done-name" style="color:#3498db;">Jane</strong> (Tim idle 30s)</div>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div class="status-bar" id="status-bar">
+    <span><span class="dot" style="background:#3fb950;"></span> <span id="active-count">3</span> active</span>
+    <span><span class="dot" style="background:#3b424a;"></span> 1 idle</span>
+    <span class="owner-pill active" id="owner-pill" style="--owner-bg:#e74c3c22;--owner-border:#e74c3c44;--owner-text:#e74c3c;">⌨️ <span id="owner-name">Tim</span> controlling</span>
+    <span id="status-extra" style="color:#3498db;">Jane selected 7-8</span>
+    <span style="flex:1;"></span>
+    <span>tap avatar to jump · click to pin</span>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <h4>Simulate scenarios</h4>
+    <div class="ctrl-row">
+      <button class="ctrl-btn primary" onclick="simTimTyping()">Tim types</button>
+      <button class="ctrl-btn" onclick="simJaneTyping()">Jane tries to type</button>
+      <button class="ctrl-btn" onclick="simRequestControl()">Jane requests control</button>
+      <button class="ctrl-btn primary" onclick="simHandOver()">Tim hands over</button>
+      <button class="ctrl-btn danger" onclick="simAutoTransfer()">Tim goes idle (auto-transfer)</button>
+      <button class="ctrl-btn" onclick="simReset()">Reset</button>
+    </div>
+    <div class="ctrl-desc" id="ctrl-desc">Click a button to see the Multi Player presence system in action. Toggles above control name labels and cursor visibility.</div>
+  </div>
+</div>
+
+<script>
+  // State
+  let owner = 'tim';
+  let namesVisible = true;
+  let cursorsVisible = true;
+  let openMenuId = null;
+  let autoTimer = null;
+
+  const users = {
+    tim: { name: 'Tim', color: '#e74c3c', colorDim: 'rgba(231,76,60,0.35)', colorMid: 'rgba(231,76,60,0.7)' },
+    jane: { name: 'Jane', color: '#3498db', colorDim: 'rgba(52,152,219,0.35)', colorMid: 'rgba(52,152,219,0.7)' },
+    rh: { name: 'Red Hawk', color: '#2ecc71' },
+    sc: { name: 'Silver Crane', color: '#9b59b6' }
+  };
+
+  function closeMenus() {
+    document.querySelectorAll('.ctx-menu').forEach(m => m.classList.remove('open'));
+    openMenuId = null;
+  }
+
+  function showCtxMenu(userId) {
+    const menu = document.getElementById('ctx-' + userId);
+    if (!menu) return;
+    if (openMenuId === userId) { closeMenus(); return; }
+    closeMenus();
+    menu.classList.add('open');
+    openMenuId = userId;
+    // Update request button visibility
+    if (userId === owner) {
+      const reqBtn = document.getElementById('ctx-' + userId + '-request');
+      if (reqBtn) reqBtn.style.display = 'none';
+    }
+    event.stopPropagation();
+  }
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.ctx-menu') && !e.target.closest('.avatar')) closeMenus();
+  });
+
+  function toggleNames() {
+    namesVisible = !namesVisible;
+    document.getElementById('btn-names').classList.toggle('active', namesVisible);
+    document.querySelectorAll('.edge-name').forEach(n => {
+      n.classList.toggle('hidden', !namesVisible);
+      if (namesVisible) n.style.opacity = '';
+      else n.style.opacity = '0';
+    });
+  }
+
+  function toggleCursors() {
+    cursorsVisible = !cursorsVisible;
+    document.getElementById('btn-cursors').classList.toggle('active', cursorsVisible);
+    document.querySelectorAll('.edge-bar,.edge-sel,.edge-owner-dot,.sel-hl,.pin').forEach(el => {
+      el.style.opacity = cursorsVisible ? '' : '0';
+    });
+  }
+
+  function jumpTo(userId) {
+    closeMenus();
+    setDesc('Scrolled to ' + users[userId].name + "'s position");
+  }
+
+  function setOwner(userId) {
+    // Remove owner from old
+    document.querySelectorAll('.avatar').forEach(a => {
+      a.classList.remove('owner', 'idle-warning', 'requesting');
+    });
+    // Set new owner
+    owner = userId;
+    const av = document.getElementById('av-' + userId);
+    av.classList.add('owner');
+    av.style.setProperty('--owner-color', users[userId].colorMid || users[userId].color);
+    av.style.setProperty('--owner-color-dim', users[userId].colorDim || users[userId].color);
+
+    // Update status bar
+    const pill = document.getElementById('owner-pill');
+    pill.style.setProperty('--owner-bg', users[userId].color + '22');
+    pill.style.setProperty('--owner-border', users[userId].color + '44');
+    pill.style.setProperty('--owner-text', users[userId].color);
+    pill.className = 'owner-pill active';
+    document.getElementById('owner-name').textContent = users[userId].name;
+
+    // Update edge indicator
+    document.getElementById('edge-tim').style.background = users[owner === 'tim' ? 'tim' : 'jane'].color;
+    document.getElementById('ename-tim').textContent = '⌨️ ' + users[owner === 'tim' ? 'tim' : 'jane'].name;
+    document.getElementById('ename-tim').style.background = users[owner === 'tim' ? 'tim' : 'jane'].color;
+
+    // Update pin
+    document.getElementById('pin-tim-lbl').textContent = '⌨️ ' + users[userId].name;
+    document.getElementById('pin-tim-lbl').style.background = users[userId].color;
+    document.querySelector('#pin-tim .pin-bar').style.background = users[userId].color;
+
+    // Update ctx menus
+    ['tim', 'jane'].forEach(id => {
+      const status = document.getElementById('ctx-' + id + '-status');
+      const reqBtn = document.getElementById('ctx-' + id + '-request');
+      if (id === owner) {
+        if (status) status.textContent = '⌨️ controlling';
+        if (reqBtn) reqBtn.style.display = 'none';
+      } else {
+        if (status) status.textContent = 'viewing';
+        if (reqBtn) reqBtn.style.display = '';
+      }
+    });
+  }
+
+  function hideAllToasts() {
+    document.querySelectorAll('.toast').forEach(t => t.classList.remove('show'));
+  }
+
+  function showToast(id, duration) {
+    hideAllToasts();
+    document.getElementById(id).classList.add('show');
+    if (duration) setTimeout(() => document.getElementById(id).classList.remove('show'), duration);
+  }
+
+  function setDesc(text) {
+    document.getElementById('ctrl-desc').textContent = text;
+  }
+
+  // Simulations
+  function simTimTyping() {
+    hideAllToasts();
+    if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
+    document.getElementById('av-tim').classList.remove('idle-warning');
+    document.getElementById('av-tim').classList.add('typing');
+    document.getElementById('owner-pill').className = 'owner-pill active';
+    setDesc('Tim is typing — owner indicator pulses, typing dot visible on avatar.');
+    setTimeout(() => document.getElementById('av-tim').classList.remove('typing'), 2000);
+  }
+
+  function simJaneTyping() {
+    hideAllToasts();
+    document.getElementById('av-jane').classList.add('typing');
+    setDesc("Jane is trying to type but doesn't have control. Her keystrokes are dropped. Typing dot shows she's attempting input.");
+    setTimeout(() => document.getElementById('av-jane').classList.remove('typing'), 2000);
+  }
+
+  function simRequestControl() {
+    hideAllToasts();
+    document.getElementById('av-jane').classList.add('requesting');
+    showToast('toast-request');
+    setDesc("Jane clicked 'Request control'. Tim sees a toast with Hand over / Deny. Jane's avatar gets a yellow ring.");
+  }
+
+  function simHandOver() {
+    hideAllToasts();
+    document.getElementById('av-jane').classList.remove('requesting');
+    setOwner('jane');
+    showToast('toast-transfer', 3000);
+    setDesc("Tim handed over control. Pulsing border moves to Jane. Status bar updates. Everyone sees the transition.");
+  }
+
+  function simAutoTransfer() {
+    hideAllToasts();
+    if (owner !== 'tim') { setDesc('Tim is not the current owner. Reset first.'); return; }
+
+    // Phase 1: Tim goes idle, warning state
+    document.getElementById('av-tim').classList.add('idle-warning');
+    document.getElementById('owner-pill').className = 'owner-pill idle-warn';
+    document.getElementById('owner-pill').innerHTML = '⏱ <span id="owner-name">Tim</span> idle...';
+
+    // Jane starts typing
+    document.getElementById('av-jane').classList.add('typing');
+
+    // Show countdown toast
+    showToast('toast-auto');
+    document.getElementById('countdown-bar').style.width = '100%';
+    setTimeout(() => document.getElementById('countdown-bar').style.width = '0%', 50);
+
+    setDesc("Tim idle 30s while Jane is typing. Auto-transfer countdown starts. Tim's border dims. If Tim types, it resets.");
+
+    // Phase 2: After countdown, transfer
+    autoTimer = setTimeout(() => {
+      document.getElementById('av-jane').classList.remove('typing');
+      hideAllToasts();
+      setOwner('jane');
+      showToast('toast-auto-done', 4000);
+      setDesc("Auto-transfer complete. Jane now controls. No interruption — she was already typing.");
+    }, 3000); // 3s for demo, represents 30s real
+  }
+
+  function simReset() {
+    hideAllToasts();
+    if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
+    document.querySelectorAll('.avatar').forEach(a => {
+      a.classList.remove('typing', 'requesting', 'idle-warning');
+    });
+    setOwner('tim');
+    setDesc('Reset to initial state. Tim controls.');
+  }
+
+  // Init
+  function init() {
+    setOwner('tim');
+  }
+  init();
+</script>
+<style>
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+</body>
+</html>

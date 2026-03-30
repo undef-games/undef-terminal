@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Multi Player — Final v2</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #010409; color: #ccc; font-family: 'Fira Code', 'Consolas', monospace; font-size: 13px; }
+  .container { max-width: 1020px; margin: 20px auto; }
+  .scene-label { color: #484f58; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; padding-left: 4px; font-family: system-ui, sans-serif; }
+
+  /* ===== AVATAR BAR ===== */
+  .avatar-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; background: #0d1117;
+    border: 1px solid #30363d; border-bottom: none; border-radius: 8px 8px 0 0;
+  }
+  .avatar { position: relative; cursor: pointer; transition: transform 0.15s; }
+  .avatar:hover { transform: scale(1.15); }
+  .avatar-circle {
+    width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 11px; font-weight: bold;
+    border: 2px solid transparent; transition: all 0.2s;
+  }
+  .avatar:hover .avatar-circle { border-color: rgba(255,255,255,0.3); }
+  .avatar-role {
+    position: absolute; bottom: -2px; right: -2px;
+    width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid #0d1117;
+  }
+  .avatar.idle .avatar-circle { opacity: 0.35; }
+
+  /* Hijack owner: pulsing glow border + crown */
+  .avatar.owner .avatar-circle {
+    border-color: rgba(231, 76, 60, 0.6);
+    animation: ownerPulse 2s ease-in-out infinite;
+  }
+  @keyframes ownerPulse {
+    0%, 100% { box-shadow: 0 0 4px rgba(231, 76, 60, 0.3); border-color: rgba(231, 76, 60, 0.4); }
+    50% { box-shadow: 0 0 12px rgba(231, 76, 60, 0.6); border-color: rgba(231, 76, 60, 0.8); }
+  }
+  .owner-crown {
+    position: absolute; top: -8px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+    z-index: 10;
+  }
+
+  /* Typing indicator dot on avatar */
+  .typing-dot {
+    position: absolute; top: -3px; right: -3px;
+    width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid #0d1117;
+    animation: typingPulse 1s infinite;
+  }
+  @keyframes typingPulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+  .avatar-count { color: #6e7681; font-size: 12px; margin-left: 4px; font-family: system-ui, sans-serif; }
+  .avatar-spacer { flex: 1; }
+  .toggle-btn {
+    background: #161b22; border: 1px solid #30363d; color: #8b949e;
+    padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer;
+    font-family: system-ui, sans-serif; transition: all 0.15s; margin-left: 4px;
+  }
+  .toggle-btn:hover { background: #1c2128; color: #c9d1d9; }
+  .toggle-btn.active { background: #1f6feb22; border-color: #1f6feb88; color: #58a6ff; }
+
+  /* Tooltip */
+  .avatar-tip {
+    display: none; position: absolute; bottom: 44px; left: 50%; transform: translateX(-50%);
+    background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+    padding: 8px 12px; white-space: nowrap; z-index: 20;
+    font-family: system-ui, sans-serif; font-size: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  }
+  .avatar:hover .avatar-tip { display: block; }
+  .tip-name { color: #e6edf3; font-weight: 600; }
+  .tip-detail { color: #6e7681; font-size: 11px; margin-top: 2px; }
+  .tip-action { color: #58a6ff; font-size: 10px; margin-top: 4px; }
+  .tip-owner { color: #f0c674; font-size: 11px; font-weight: 600; }
+
+  /* ===== TERMINAL ===== */
+  .terminal-wrap { position: relative; border-left: 1px solid #30363d; border-right: 1px solid #30363d; }
+  .terminal {
+    background: #161b22; padding: 10px 28px 10px 12px; font-size: 13px;
+    line-height: 1.55; min-height: 400px; position: relative;
+  }
+  .line { position: relative; white-space: pre; height: 20px; }
+  .ln { color: #3b424a; display: inline-block; width: 24px; text-align: right; margin-right: 10px; user-select: none; }
+  .g { color: #3fb950; } .r { color: #f85149; } .d { color: #6e7681; } .w { color: #e6edf3; } .h { color: #8b949e; }
+
+  /* ===== EDGE BARS ===== */
+  .edge-track {
+    position: absolute; right: 4px; top: 10px; bottom: 10px; width: 8px;
+    background: #0d1117; border-radius: 4px; z-index: 5;
+  }
+  .edge-bar {
+    position: absolute; right: 4px; width: 8px; border-radius: 3px;
+    opacity: 0.45; transition: opacity 0.2s; cursor: pointer; z-index: 6;
+  }
+  .edge-bar:hover { opacity: 0.75; }
+  .edge-name {
+    position: absolute; right: 18px; font-size: 9px; font-weight: 600;
+    padding: 2px 6px; border-radius: 3px; color: white; white-space: nowrap;
+    font-family: system-ui, sans-serif; opacity: 0; transition: opacity 0.15s;
+    pointer-events: none; z-index: 7;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  .edge-name.show { opacity: 1; }
+  .edge-selection {
+    position: absolute; right: 4px; width: 8px; border-radius: 2px;
+    opacity: 0.8; z-index: 7;
+  }
+  /* Owner's edge indicator: keyboard icon + thicker */
+  .edge-owner {
+    position: absolute; right: 2px; width: 12px; border-radius: 3px;
+    opacity: 0.9; z-index: 8;
+    box-shadow: 0 0 6px rgba(231, 76, 60, 0.3);
+  }
+
+  /* ===== SELECTION HIGHLIGHT ===== */
+  .sel-highlight {
+    position: absolute; left: 34px; right: 28px; height: 20px;
+    opacity: 0.10; border-radius: 2px; pointer-events: none;
+  }
+
+  /* ===== PINNED CURSOR ===== */
+  .pin-cursor {
+    position: absolute; display: flex; align-items: center; height: 20px;
+    pointer-events: none; z-index: 10;
+  }
+  .pin-bar { width: 2px; height: 100%; border-radius: 1px; }
+  .pin-label {
+    font-size: 10px; font-weight: 600; padding: 1px 6px;
+    border-radius: 3px; color: white; white-space: nowrap;
+    font-family: system-ui, sans-serif;
+    box-shadow: 0 0 6px rgba(255,255,255,0.12), 0 1px 4px rgba(0,0,0,0.4);
+  }
+  .pin-icon { font-size: 9px; margin-right: 2px; }
+  /* Owner's pin has keyboard icon instead of pin */
+  .pin-label.owner-pin {
+    box-shadow: 0 0 8px rgba(231, 76, 60, 0.3), 0 1px 4px rgba(0,0,0,0.4);
+  }
+
+  /* ===== STATUS BAR ===== */
+  .status-bar {
+    padding: 6px 12px; background: #0d1117;
+    border: 1px solid #30363d; border-top: none; border-radius: 0 0 8px 8px;
+    font-family: system-ui, sans-serif; font-size: 11px; color: #6e7681;
+    display: flex; gap: 12px; align-items: center;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .status-bar span { display: flex; align-items: center; gap: 4px; }
+  .owner-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    background: #e74c3c22; border: 1px solid #e74c3c55; border-radius: 4px;
+    padding: 1px 8px; color: #e74c3c; font-weight: 600;
+  }
+
+  /* ===== SCENARIO CARDS ===== */
+  .scenarios { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+  .scenario { padding: 12px 16px; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; font-family: system-ui, sans-serif; font-size: 12px; color: #8b949e; }
+  .scenario h4 { color: #e6edf3; margin-bottom: 8px; font-size: 13px; }
+  .scenario-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; line-height: 1.5; }
+  .scenario-row:last-child { margin-bottom: 0; }
+  .sc { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+  .su { color: #e6edf3; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="scene-label">Multi Player · hijack mode · Tim has the keyboard</div>
+
+  <!-- Avatar Bar -->
+  <div class="avatar-bar">
+    <!-- Tim: OWNER — crown + pulsing border + typing dot -->
+    <div class="avatar owner">
+      <div class="owner-crown">👑</div>
+      <div class="avatar-circle" style="background:#e74c3c;">TM</div>
+      <div class="avatar-role" style="background:#e74c3c;"></div>
+      <div class="typing-dot" style="background:#e74c3c;"></div>
+      <div class="avatar-tip">
+        <div class="tip-name">Tim M.</div>
+        <div class="tip-owner">⌨️ controlling session</div>
+        <div class="tip-detail">admin · typing · 📌 line 13</div>
+        <div class="tip-action">click to jump to Tim's view</div>
+      </div>
+    </div>
+    <!-- Jane: operator, selecting text -->
+    <div class="avatar">
+      <div class="avatar-circle" style="background:#3498db;">JD</div>
+      <div class="avatar-role" style="background:#3498db;"></div>
+      <div class="avatar-tip">
+        <div class="tip-name">Jane D.</div>
+        <div class="tip-detail">operator · selected lines 7-8</div>
+        <div class="tip-action">click to jump to Jane's view</div>
+      </div>
+    </div>
+    <!-- Red Hawk: viewer -->
+    <div class="avatar">
+      <div class="avatar-circle" style="background:#2ecc71;">RH</div>
+      <div class="avatar-role" style="background:#6e7681;"></div>
+      <div class="avatar-tip">
+        <div class="tip-name">Red Hawk</div>
+        <div class="tip-detail">viewer · scrolled to top</div>
+        <div class="tip-action">click to jump to Red Hawk's view</div>
+      </div>
+    </div>
+    <!-- Silver Crane: viewer -->
+    <div class="avatar">
+      <div class="avatar-circle" style="background:#9b59b6;">SC</div>
+      <div class="avatar-role" style="background:#6e7681;"></div>
+      <div class="avatar-tip">
+        <div class="tip-name">Silver Crane</div>
+        <div class="tip-detail">viewer · scrolled to bottom</div>
+        <div class="tip-action">click to jump to Silver Crane's view</div>
+      </div>
+    </div>
+    <!-- Coral Otter: idle -->
+    <div class="avatar idle">
+      <div class="avatar-circle" style="background:#e67e22;">CO</div>
+      <div class="avatar-role" style="background:#6e7681;"></div>
+      <div class="avatar-tip">
+        <div class="tip-name">Coral Otter</div>
+        <div class="tip-detail">viewer · idle 3m</div>
+        <div class="tip-action">click to jump to Coral Otter's view</div>
+      </div>
+    </div>
+    <div class="avatar-count">5 watching</div>
+    <div class="avatar-spacer"></div>
+    <button class="toggle-btn active">Names</button>
+    <button class="toggle-btn active">Cursors</button>
+  </div>
+
+  <!-- Terminal -->
+  <div class="terminal-wrap">
+    <div class="terminal">
+      <div class="edge-track"></div>
+
+      <!-- Red Hawk viewport lines 1-7 -->
+      <div class="edge-bar" style="background:#2ecc71; top: calc(10px + 0%); height: 35%;"></div>
+      <div class="edge-name show" style="background:#2ecc71; top: calc(10px + 12%);">Red Hawk</div>
+
+      <!-- Jane viewport lines 4-10 + selection segment lines 7-8 -->
+      <div class="edge-bar" style="background:#3498db; top: calc(10px + 20%); height: 35%;"></div>
+      <div class="edge-selection" style="background:#3498db; top: calc(10px + 35%); height: 10%;"></div>
+      <div class="edge-name show" style="background:#3498db; top: calc(10px + 32%);">Jane</div>
+
+      <!-- Silver Crane viewport lines 8-15 -->
+      <div class="edge-bar" style="background:#9b59b6; top: calc(10px + 45%); height: 40%;"></div>
+      <div class="edge-name show" style="background:#9b59b6; top: calc(10px + 60%);">Silver Crane</div>
+
+      <!-- Coral Otter viewport (idle, dimmed) -->
+      <div class="edge-bar" style="background:#e67e22; top: calc(10px + 55%); height: 30%; opacity: 0.15;"></div>
+      <div class="edge-name show" style="background:#e67e22; top: calc(10px + 66%); opacity: 0.35;">Coral Otter</div>
+
+      <!-- Tim: OWNER — thicker edge indicator with glow at pin location -->
+      <div class="edge-owner" style="background:#e74c3c; top: calc(10px + 72%); height: 6px;"></div>
+      <div class="edge-name show" style="background:#e74c3c; top: calc(10px + 70%);">⌨️ Tim</div>
+
+      <!-- Jane's selection highlight on lines 7-8 -->
+      <div class="sel-highlight" style="top: calc(6 * 20px + 10px); background: #3498db;"></div>
+      <div class="sel-highlight" style="top: calc(7 * 20px + 10px); background: #3498db;"></div>
+
+      <!-- Terminal lines -->
+      <div class="line"><span class="ln">1</span><span class="g">$</span> <span class="w">kubectl get pods -n production --sort-by=.status.startTime</span></div>
+      <div class="line"><span class="ln">2</span><span class="h">NAME                          READY   STATUS             RESTARTS   AGE</span></div>
+      <div class="line"><span class="ln">3</span><span class="w">api-gateway-7d4f8b6c9-x2k    1/1     </span><span class="g">Running</span><span class="w">            0          4d</span></div>
+      <div class="line"><span class="ln">4</span><span class="w">auth-service-5c9d8e7f-m3j    1/1     </span><span class="g">Running</span><span class="w">            0          4d</span></div>
+      <div class="line"><span class="ln">5</span><span class="w">cache-redis-0                 1/1     </span><span class="g">Running</span><span class="w">            0          12d</span></div>
+      <div class="line"><span class="ln">6</span><span class="w">db-postgres-0                 1/1     </span><span class="g">Running</span><span class="w">            0          12d</span></div>
+      <div class="line"><span class="ln">7</span><span class="w">worker-batch-9c3a1-k8p       0/1     </span><span class="r">CrashLoopBackOff</span><span class="w">   5          8m</span></div>
+      <div class="line"><span class="ln">8</span><span class="w">worker-batch-9c3a1-q7n       0/1     </span><span class="r">CrashLoopBackOff</span><span class="w">   3          4m</span></div>
+      <div class="line"><span class="ln">9</span><span class="w">worker-stream-4b2d-r5t       1/1     </span><span class="g">Running</span><span class="w">            0          4d</span></div>
+      <div class="line"><span class="ln">10</span><span class="w">metrics-collector-6f8e-v2    1/1     </span><span class="g">Running</span><span class="w">            0          4d</span></div>
+      <div class="line"><span class="ln">11</span></div>
+      <div class="line"><span class="ln">12</span><span class="g">$</span> <span class="w">kubectl logs worker-batch-9c3a1-k8p --tail=5</span></div>
+      <div class="line" style="position:relative;"><span class="ln">13</span><span class="r">panic: runtime error: index out of range [3] with length 3</span>
+        <div class="pin-cursor" style="left: 520px; top: 0;">
+          <div class="pin-bar" style="background:#e74c3c;"></div>
+          <div class="pin-label owner-pin" style="background:#e74c3c;">⌨️ Tim</div>
+        </div>
+      </div>
+      <div class="line"><span class="ln">14</span><span class="d">goroutine 1 [running]:</span></div>
+      <div class="line"><span class="ln">15</span><span class="d">main.processBatch(0xc0001a4000, 0x3, 0x4)</span></div>
+      <div class="line"><span class="ln">16</span><span class="d">	/app/cmd/worker/main.go:142 +0x1a8</span></div>
+      <div class="line"><span class="ln">17</span></div>
+      <div class="line"><span class="ln">18</span><span class="g">$</span> <span class="w" style="animation: blink 1s step-end infinite;">▌</span></div>
+    </div>
+  </div>
+
+  <!-- Status bar with owner badge -->
+  <div class="status-bar">
+    <span><span class="dot" style="background:#3fb950;"></span> 4 active</span>
+    <span><span class="dot" style="background:#3b424a;"></span> 1 idle</span>
+    <span class="owner-badge">⌨️ <span style="color:#e74c3c;">Tim</span> controlling</span>
+    <span style="color:#3498db;">Jane</span> selected 7-8 ·
+    <span style="color:#e74c3c;">Tim</span> 📌 13
+    <span style="flex:1;"></span>
+    <span>tap avatar to jump · click to pin</span>
+  </div>
+
+  <!-- Explanation cards -->
+  <div class="scenarios">
+    <div class="scenario">
+      <h4>Hijack Mode (shown above)</h4>
+      <div class="scenario-row">
+        <span class="sc" style="background:#e74c3c;"></span>
+        <div><span class="su">Owner gets 3 indicators:</span><br>
+          👑 Crown above avatar<br>
+          Pulsing glow border on avatar<br>
+          <span style="background:#e74c3c22;border:1px solid #e74c3c55;border-radius:3px;padding:0 4px;color:#e74c3c;">⌨️ Tim controlling</span> badge in status bar</div>
+      </div>
+      <div class="scenario-row">
+        <span class="sc" style="background:#6e7681;"></span>
+        <div><span class="su">Owner's pin label:</span> shows ⌨️ instead of 📌, thicker edge dot with glow. Unmistakable.</div>
+      </div>
+      <div class="scenario-row">
+        <span class="sc" style="background:#6e7681;"></span>
+        <div><span class="su">Non-owners:</span> can view, select text, pin lines — but can't type. Their indicators are normal (no crown, no pulse, no ⌨️).</div>
+      </div>
+    </div>
+    <div class="scenario">
+      <h4>Open Mode (alternative)</h4>
+      <div class="scenario-row">
+        <span class="sc" style="background:#6e7681;"></span>
+        <div><span class="su">No single owner.</span> Multiple operators/admins can type simultaneously.</div>
+      </div>
+      <div class="scenario-row">
+        <span class="sc" style="background:#6e7681;"></span>
+        <div><span class="su">Each active typer</span> gets a pulsing dot on their avatar (no crown). Status bar shows "Jane, Tim typing" instead of "controlling".</div>
+      </div>
+      <div class="scenario-row">
+        <span class="sc" style="background:#6e7681;"></span>
+        <div><span class="su">Edge bars</span> show a pulsing segment at cursor position for each typer. No special ⌨️ treatment since no exclusive owner.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+</body>
+</html>

@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Transient Cursor Options</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #010409; color: #ccc; font-family: 'Fira Code', 'Consolas', monospace; font-size: 13px; }
+  .container { max-width: 1100px; margin: 20px auto; }
+  h2 { color: #e6edf3; font-family: system-ui, sans-serif; font-size: 18px; margin-bottom: 6px; }
+  .subtitle { color: #6e7681; font-family: system-ui, sans-serif; font-size: 13px; margin-bottom: 24px; }
+
+  .option-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  .option-card {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+    overflow: hidden; cursor: pointer; transition: border-color 0.2s;
+  }
+  .option-card:hover { border-color: #58a6ff; }
+  .option-header {
+    padding: 10px 12px; background: #161b22; border-bottom: 1px solid #30363d;
+    font-family: system-ui, sans-serif;
+  }
+  .option-header h3 { color: #e6edf3; font-size: 13px; margin-bottom: 2px; }
+  .option-header p { color: #8b949e; font-size: 11px; }
+  .option-letter {
+    display: inline-block; width: 20px; height: 20px; border-radius: 50%;
+    background: #30363d; color: #e6edf3; font-size: 11px; font-weight: bold;
+    text-align: center; line-height: 20px; margin-right: 6px; font-family: system-ui, sans-serif;
+  }
+
+  /* Shared terminal styles */
+  .term {
+    padding: 8px 0; line-height: 1.55; position: relative; font-size: 12px;
+  }
+  .term .line { white-space: pre; padding: 0 10px; position: relative; }
+  .term .ln { color: #3b424a; display: inline-block; width: 22px; text-align: right; margin-right: 8px; user-select: none; }
+  .g { color: #3fb950; } .r { color: #f85149; } .d { color: #6e7681; } .w { color: #e6edf3; }
+
+  /* ===== OPTION A: Gutter markers ===== */
+  .gutter-marker {
+    position: absolute; left: 2px; width: 4px; height: 14px;
+    border-radius: 2px; top: 2px;
+  }
+  .gutter-dot {
+    position: absolute; left: 4px; width: 6px; height: 6px;
+    border-radius: 50%; top: 6px;
+  }
+  /* Jane's viewport: lines 5-9, dot on center line 7 */
+  .a-jane-range .line:nth-child(n+5):nth-child(-n+9) { background: rgba(52, 152, 219, 0.04); }
+
+  /* ===== OPTION B: Edge indicators ===== */
+  .edge-track {
+    position: absolute; right: 6px; top: 8px; bottom: 8px; width: 6px;
+    background: #161b22; border-radius: 3px;
+  }
+  .edge-marker {
+    position: absolute; right: 6px; width: 6px; border-radius: 3px;
+  }
+  .edge-label {
+    position: absolute; right: 16px; font-size: 9px; font-weight: 600;
+    padding: 1px 5px; border-radius: 3px; color: white; white-space: nowrap;
+    font-family: system-ui, sans-serif; display: none;
+  }
+  .edge-marker:hover + .edge-label, .edge-label.show { display: block; }
+
+  /* ===== OPTION C: Row highlight ===== */
+  .row-hl {
+    position: absolute; left: 0; right: 0; height: 19px; pointer-events: none;
+    border-radius: 0;
+  }
+  .row-label {
+    position: absolute; right: 10px; font-size: 9px; font-weight: 600;
+    padding: 1px 5px; border-radius: 3px; color: white; white-space: nowrap;
+    font-family: system-ui, sans-serif; opacity: 0.7;
+  }
+
+  /* Pinned cursor (same in all options) */
+  .pinned-cursor {
+    position: absolute; display: flex; align-items: center; gap: 0;
+    pointer-events: none; height: 19px;
+  }
+  .pin-bar { width: 2px; height: 100%; border-radius: 1px; }
+  .pin-label {
+    font-size: 10px; font-weight: 600; padding: 1px 6px;
+    border-radius: 3px; color: white; white-space: nowrap;
+    font-family: system-ui, sans-serif;
+    box-shadow: 0 0 6px rgba(255,255,255,0.12), 0 1px 4px rgba(0,0,0,0.4);
+  }
+  .pin-icon { font-size: 9px; margin-right: 2px; }
+
+  /* Note under each */
+  .option-note {
+    padding: 8px 12px; font-family: system-ui, sans-serif; font-size: 11px;
+    color: #6e7681; border-top: 1px solid #21262d; background: #0d1117;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h2>Transient cursor: how to show "where someone is scrolled to"</h2>
+  <p class="subtitle">Pinned cursors (📌) stay the same in all options — only the transient/scroll indicator changes</p>
+
+  <div class="option-grid">
+
+    <!-- OPTION A: Gutter Markers -->
+    <div class="option-card">
+      <div class="option-header">
+        <h3><span class="option-letter">A</span> Gutter Markers</h3>
+        <p>Colored dots/bars in the left margin</p>
+      </div>
+      <div class="term a-jane-range">
+        <div class="line"><span class="ln">1</span><span class="g">$</span> <span class="w">kubectl get pods -n prod</span></div>
+        <div class="line"><span class="ln">2</span><span class="d">NAME              READY  STATUS</span></div>
+        <div class="line"><span class="ln">3</span><span class="w">api-gw-7d4f      1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">4</span><span class="w">auth-svc-5c9d    1/1    </span><span class="g">Running</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#3498db;"></span><span class="ln">5</span><span class="w">cache-redis-0    1/1    </span><span class="g">Running</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#3498db;"></span><span class="ln">6</span><span class="w">db-postgres-0    1/1    </span><span class="g">Running</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-marker" style="background:#3498db;"></span><span class="ln">7</span><span class="w">worker-k8p       0/1    </span><span class="r">CrashLoop</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#3498db;"></span><span class="ln">8</span><span class="w">worker-q7n       0/1    </span><span class="r">CrashLoop</span></div>
+        <div class="line" style="position:relative;"><span class="gutter-dot" style="background:#3498db;"></span><span class="ln">9</span><span class="w">stream-4b2d      1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">10</span></div>
+        <div class="line"><span class="ln">11</span><span class="g">$</span> <span class="w">kubectl logs worker-k8p</span></div>
+        <div class="line"><span class="ln">12</span><span class="r">panic: index out of range</span></div>
+        <div class="line" style="position:relative;"><span class="ln">13</span><span class="d">goroutine 1 [running]:</span>
+          <div class="pinned-cursor" style="left: 260px; top: 0;">
+            <div class="pin-bar" style="background:#e74c3c;"></div>
+            <div class="pin-label" style="background:#e74c3c;"><span class="pin-icon">📌</span>Tim</div>
+          </div>
+        </div>
+        <div class="line"><span class="ln">14</span><span class="d">main.processBatch(...)</span></div>
+      </div>
+      <div class="option-note">
+        ● Jane's viewport (lines 5-9) shown as dots in gutter<br>
+        ● Center line (7) gets a taller bar<br>
+        ● Zero clutter on terminal text
+      </div>
+    </div>
+
+    <!-- OPTION B: Edge Indicators -->
+    <div class="option-card">
+      <div class="option-header">
+        <h3><span class="option-letter">B</span> Edge Indicators</h3>
+        <p>Colored bars on right edge (minimap style)</p>
+      </div>
+      <div class="term" style="padding-right: 20px;">
+        <div class="edge-track"></div>
+        <!-- Jane viewport: ~lines 5-9 out of 14 total, so top ~30%, height ~35% -->
+        <div class="edge-marker" style="background:#3498db; opacity:0.6; top: calc(8px + 30%); height: 35%;"></div>
+        <div class="edge-label show" style="background:#3498db; top: calc(8px + 42%);">Jane</div>
+        <!-- Tim pinned at line 13/14 ≈ 85% -->
+        <div class="edge-marker" style="background:#e74c3c; opacity:0.9; top: calc(8px + 82%); height: 4px;"></div>
+        <div class="edge-label show" style="background:#e74c3c; top: calc(8px + 80%);">📌 Tim</div>
+
+        <div class="line"><span class="ln">1</span><span class="g">$</span> <span class="w">kubectl get pods -n prod</span></div>
+        <div class="line"><span class="ln">2</span><span class="d">NAME              READY  STATUS</span></div>
+        <div class="line"><span class="ln">3</span><span class="w">api-gw-7d4f      1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">4</span><span class="w">auth-svc-5c9d    1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">5</span><span class="w">cache-redis-0    1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">6</span><span class="w">db-postgres-0    1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">7</span><span class="w">worker-k8p       0/1    </span><span class="r">CrashLoop</span></div>
+        <div class="line"><span class="ln">8</span><span class="w">worker-q7n       0/1    </span><span class="r">CrashLoop</span></div>
+        <div class="line"><span class="ln">9</span><span class="w">stream-4b2d      1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">10</span></div>
+        <div class="line"><span class="ln">11</span><span class="g">$</span> <span class="w">kubectl logs worker-k8p</span></div>
+        <div class="line"><span class="ln">12</span><span class="r">panic: index out of range</span></div>
+        <div class="line" style="position:relative;"><span class="ln">13</span><span class="d">goroutine 1 [running]:</span>
+          <div class="pinned-cursor" style="left: 260px; top: 0;">
+            <div class="pin-bar" style="background:#e74c3c;"></div>
+            <div class="pin-label" style="background:#e74c3c;"><span class="pin-icon">📌</span>Tim</div>
+          </div>
+        </div>
+        <div class="line"><span class="ln">14</span><span class="d">main.processBatch(...)</span></div>
+      </div>
+      <div class="option-note">
+        ● Jane's viewport shown as a blue range bar on right<br>
+        ● Tim's pin shown as a red dot on right<br>
+        ● Labels visible on hover (shown here for demo)<br>
+        ● Terminal text completely untouched
+      </div>
+    </div>
+
+    <!-- OPTION C: Row Highlight -->
+    <div class="option-card">
+      <div class="option-header">
+        <h3><span class="option-letter">C</span> Row Highlight</h3>
+        <p>Subtle colored stripe on center line</p>
+      </div>
+      <div class="term">
+        <!-- Jane's center line = 7 -->
+        <div class="row-hl" style="top: calc(6 * 19px + 8px); background: rgba(52, 152, 219, 0.08);"></div>
+        <div class="row-label" style="top: calc(6 * 19px + 8px); background: rgba(52, 152, 219, 0.5);">Jane</div>
+
+        <div class="line"><span class="ln">1</span><span class="g">$</span> <span class="w">kubectl get pods -n prod</span></div>
+        <div class="line"><span class="ln">2</span><span class="d">NAME              READY  STATUS</span></div>
+        <div class="line"><span class="ln">3</span><span class="w">api-gw-7d4f      1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">4</span><span class="w">auth-svc-5c9d    1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">5</span><span class="w">cache-redis-0    1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">6</span><span class="w">db-postgres-0    1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">7</span><span class="w">worker-k8p       0/1    </span><span class="r">CrashLoop</span></div>
+        <div class="line"><span class="ln">8</span><span class="w">worker-q7n       0/1    </span><span class="r">CrashLoop</span></div>
+        <div class="line"><span class="ln">9</span><span class="w">stream-4b2d      1/1    </span><span class="g">Running</span></div>
+        <div class="line"><span class="ln">10</span></div>
+        <div class="line"><span class="ln">11</span><span class="g">$</span> <span class="w">kubectl logs worker-k8p</span></div>
+        <div class="line"><span class="ln">12</span><span class="r">panic: index out of range</span></div>
+        <div class="line" style="position:relative;"><span class="ln">13</span><span class="d">goroutine 1 [running]:</span>
+          <div class="pinned-cursor" style="left: 260px; top: 0;">
+            <div class="pin-bar" style="background:#e74c3c;"></div>
+            <div class="pin-label" style="background:#e74c3c;"><span class="pin-icon">📌</span>Tim</div>
+          </div>
+        </div>
+        <div class="line"><span class="ln">14</span><span class="d">main.processBatch(...)</span></div>
+      </div>
+      <div class="option-note">
+        ● Jane's center line (7) gets a faint blue stripe<br>
+        ● Name label floats at right edge of the stripe<br>
+        ● Very subtle — won't interfere with reading<br>
+        ● Multiple users = stacked stripes (could get busy)
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

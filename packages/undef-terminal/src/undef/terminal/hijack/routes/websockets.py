@@ -280,28 +280,33 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         initial_snapshot = browser_state["initial_snapshot"]
 
         _resume_token = browser_state.get("resume_token")
-        await websocket.send_text(
-            encode_control(
-                make_hello_frame(
-                    worker_id=worker_id,
-                    can_hijack=can_hijack,
-                    hijacked=is_hijacked,
-                    hijacked_by_me=hijacked_by_me,
-                    worker_online=worker_online,
-                    input_mode=input_mode,
-                    role=role,
-                    hijack_control="ws",
-                    hijack_step_supported=True,
-                    capabilities={
-                        "hijack_control": "ws",
-                        "hijack_step_supported": True,
-                    },
-                    resume_supported=hub._resume_store is not None,
-                    resume_token=_resume_token,
-                )
-            )
-        )
+        _hello_kwargs: dict[str, Any] = {
+            "worker_id": worker_id,
+            "can_hijack": can_hijack,
+            "hijacked": is_hijacked,
+            "hijacked_by_me": hijacked_by_me,
+            "worker_online": worker_online,
+            "input_mode": input_mode,
+            "role": role,
+            "hijack_control": "ws",
+            "hijack_step_supported": True,
+            "capabilities": {
+                "hijack_control": "ws",
+                "hijack_step_supported": True,
+            },
+            "resume_supported": hub._resume_store is not None,
+            "resume_token": _resume_token,
+        }
+        if hasattr(hub, "deckmux_on_browser_connect"):
+            _hello_kwargs["presence_enabled"] = True
+        await websocket.send_text(encode_control(make_hello_frame(**_hello_kwargs)))
         await websocket.send_text(encode_control(await hub.hijack_state_msg_for(worker_id, websocket)))
+
+        _dm_connect: Any = getattr(hub, "deckmux_on_browser_connect", None)
+        if _dm_connect is not None:
+            sync_msg = await _dm_connect(worker_id, websocket, role)
+            if sync_msg:
+                await websocket.send_text(encode_control(sync_msg))
 
         if initial_snapshot is not None:
             await websocket.send_text(encode_control(initial_snapshot))
@@ -348,6 +353,12 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         can_hijack = role == "admin"
                         continue
 
+                    if mtype in ("presence_update", "queued_input", "control_request"):
+                        _dm_handle: Any = getattr(hub, "deckmux_handle_message", None)
+                        if _dm_handle is not None:
+                            await _dm_handle(worker_id, websocket, msg_b)
+                        continue
+
                     if mtype in ("input", "hijack_request", "hijack_release"):
                         await hub.touch_activity(worker_id)
                     owned_hijack = await handle_browser_message(hub, websocket, worker_id, role, msg_b, owned_hijack)
@@ -360,6 +371,9 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
             hub.metric("ws_disconnect_total")
             hub.metric("ws_disconnect_browser_total")
             await hub.touch_activity(worker_id)
+            _dm_disconnect: Any = getattr(hub, "deckmux_on_browser_disconnect", None)
+            if _dm_disconnect is not None:
+                await _dm_disconnect(worker_id, websocket)
             cleanup_task.cancel()
             with suppress(asyncio.CancelledError):
                 await cleanup_task

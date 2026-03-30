@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Presence Mockup</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0b0f14; color: #ccc; font-family: 'Fira Code', 'Consolas', monospace; }
+
+  .container { max-width: 1000px; margin: 20px auto; }
+  .label { color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; padding-left: 4px; font-family: system-ui, sans-serif; }
+
+  /* Avatar bar */
+  .avatar-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; background: #161b22; border-radius: 8px 8px 0 0;
+    border-bottom: 1px solid #21262d;
+  }
+  .avatar {
+    position: relative; cursor: pointer; transition: transform 0.15s;
+  }
+  .avatar:hover { transform: scale(1.15); }
+  .avatar-circle {
+    width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 11px; font-weight: bold;
+    border: 2px solid transparent; transition: border-color 0.2s;
+  }
+  .avatar:hover .avatar-circle { border-color: rgba(255,255,255,0.3); }
+  .avatar-role {
+    position: absolute; bottom: -2px; right: -2px;
+    width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid #161b22;
+  }
+  .avatar.idle .avatar-circle { opacity: 0.4; }
+  .avatar-count {
+    color: #8b949e; font-size: 12px; margin-left: 4px;
+    font-family: system-ui, sans-serif;
+  }
+  .avatar-spacer { flex: 1; }
+  .cursor-toggle {
+    background: #21262d; border: 1px solid #30363d; color: #8b949e;
+    padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer;
+    font-family: system-ui, sans-serif; transition: all 0.15s;
+  }
+  .cursor-toggle:hover { background: #30363d; color: #c9d1d9; }
+  .cursor-toggle.active { background: #1f6feb33; border-color: #1f6feb; color: #58a6ff; }
+
+  /* Tooltip */
+  .tooltip {
+    display: none; position: absolute; bottom: 42px; left: 50%; transform: translateX(-50%);
+    background: #1c2028; border: 1px solid #30363d; border-radius: 6px;
+    padding: 8px 12px; white-space: nowrap; z-index: 10;
+    font-family: system-ui, sans-serif; font-size: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  .avatar:hover .tooltip { display: block; }
+  .tooltip-name { color: #e6edf3; font-weight: 600; }
+  .tooltip-role { color: #8b949e; font-size: 11px; }
+  .tooltip-line { color: #8b949e; font-size: 11px; margin-top: 2px; }
+
+  /* Terminal area */
+  .terminal {
+    background: #0d1117; padding: 12px 16px; font-size: 13px;
+    line-height: 1.6; position: relative; min-height: 380px;
+    border-radius: 0 0 8px 8px;
+  }
+  .line { position: relative; white-space: pre; }
+  .line-num { color: #484f58; display: inline-block; width: 30px; text-align: right; margin-right: 12px; user-select: none; }
+  .prompt { color: #3fb950; }
+  .cmd { color: #e6edf3; }
+  .header-text { color: #8b949e; }
+  .status-ok { color: #3fb950; }
+  .status-err { color: #f85149; }
+  .dim { color: #484f58; }
+
+  /* Cursor overlays */
+  .cursor-overlay {
+    position: absolute; left: 0; right: 0; pointer-events: none;
+  }
+  .cursor-line {
+    position: absolute; left: 42px; height: 21px;
+    display: flex; align-items: center; gap: 0;
+    animation: cursorFadeIn 0.2s ease-out;
+  }
+  @keyframes cursorFadeIn { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: translateX(0); } }
+
+  .cursor-bar {
+    width: 2px; height: 100%; border-radius: 1px;
+  }
+  .cursor-label {
+    font-size: 10px; font-weight: 600; padding: 1px 6px;
+    border-radius: 3px; color: white; white-space: nowrap;
+    font-family: system-ui, sans-serif;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  }
+  .cursor-typing {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    margin-left: 4px; animation: typingPulse 1s infinite;
+  }
+  @keyframes typingPulse { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+  /* Selection highlight */
+  .selection-highlight {
+    position: absolute; left: 42px; height: 21px;
+    opacity: 0.15; border-radius: 2px; pointer-events: none;
+  }
+
+  /* Presence info line */
+  .presence-info {
+    margin-top: 12px; padding: 8px 12px;
+    background: #161b22; border-radius: 6px;
+    font-family: system-ui, sans-serif; font-size: 12px; color: #8b949e;
+    display: flex; gap: 16px;
+  }
+  .presence-info span { display: flex; align-items: center; gap: 4px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="label">Session: prod-debug-2026-03-30 &nbsp;·&nbsp; presence enabled</div>
+
+  <!-- Avatar Bar -->
+  <div class="avatar-bar">
+    <div class="avatar">
+      <div class="avatar-circle" style="background:#e74c3c;">TM</div>
+      <div class="avatar-role" style="background:#e74c3c;" title="admin"></div>
+      <div class="tooltip">
+        <div class="tooltip-name">Tim M.</div>
+        <div class="tooltip-role">admin · operator</div>
+        <div class="tooltip-line">viewing line 14</div>
+      </div>
+    </div>
+    <div class="avatar">
+      <div class="avatar-circle" style="background:#3498db;">JD</div>
+      <div class="avatar-role" style="background:#3498db;" title="operator"></div>
+      <div class="tooltip">
+        <div class="tooltip-name">Jane D.</div>
+        <div class="tooltip-role">operator</div>
+        <div class="tooltip-line">viewing line 8 · typing</div>
+      </div>
+    </div>
+    <div class="avatar">
+      <div class="avatar-circle" style="background:#2ecc71;">RH</div>
+      <div class="avatar-role" style="background:#666;" title="viewer"></div>
+      <div class="tooltip">
+        <div class="tooltip-name">Red Hawk</div>
+        <div class="tooltip-role">viewer</div>
+        <div class="tooltip-line">viewing line 3</div>
+      </div>
+    </div>
+    <div class="avatar idle">
+      <div class="avatar-circle" style="background:#9b59b6;">SC</div>
+      <div class="avatar-role" style="background:#666;" title="viewer"></div>
+      <div class="tooltip">
+        <div class="tooltip-name">Silver Crane</div>
+        <div class="tooltip-role">viewer · idle 2m</div>
+        <div class="tooltip-line">last seen line 1</div>
+      </div>
+    </div>
+    <div class="avatar-count">4 watching</div>
+    <div class="avatar-spacer"></div>
+    <button class="cursor-toggle active" onclick="this.classList.toggle('active')">👁 Cursors</button>
+  </div>
+
+  <!-- Terminal with cursor overlays -->
+  <div class="terminal">
+    <!-- Selection highlight for Jane on line 8 -->
+    <div class="selection-highlight" style="top: calc(7 * 21px); width: 280px; background: #3498db;"></div>
+
+    <!-- Cursor overlays -->
+    <div class="cursor-overlay">
+      <!-- Red Hawk on line 3 -->
+      <div class="cursor-line" style="top: calc(2 * 21px); left: 520px;">
+        <div class="cursor-bar" style="background:#2ecc71;"></div>
+        <div class="cursor-label" style="background:#2ecc71;">Red Hawk</div>
+      </div>
+
+      <!-- Jane on line 8 (typing) -->
+      <div class="cursor-line" style="top: calc(7 * 21px); left: 320px;">
+        <div class="cursor-bar" style="background:#3498db;"></div>
+        <div class="cursor-label" style="background:#3498db;">Jane <span class="cursor-typing" style="background:white;"></span></div>
+      </div>
+
+      <!-- Tim on line 14 -->
+      <div class="cursor-line" style="top: calc(13 * 21px); left: 380px;">
+        <div class="cursor-bar" style="background:#e74c3c;"></div>
+        <div class="cursor-label" style="background:#e74c3c;">Tim</div>
+      </div>
+    </div>
+
+    <div class="line"><span class="line-num">1</span><span class="prompt">$</span> <span class="cmd">kubectl get pods -n production --sort-by=.status.startTime</span></div>
+    <div class="line"><span class="line-num">2</span><span class="header-text">NAME                          READY   STATUS             RESTARTS   AGE</span></div>
+    <div class="line"><span class="line-num">3</span><span class="cmd">api-gateway-7d4f8b6c9-x2k    1/1     </span><span class="status-ok">Running</span><span class="cmd">            0          4d</span></div>
+    <div class="line"><span class="line-num">4</span><span class="cmd">auth-service-5c9d8e7f-m3j    1/1     </span><span class="status-ok">Running</span><span class="cmd">            0          4d</span></div>
+    <div class="line"><span class="line-num">5</span><span class="cmd">cache-redis-0                 1/1     </span><span class="status-ok">Running</span><span class="cmd">            0          12d</span></div>
+    <div class="line"><span class="line-num">6</span><span class="cmd">db-postgres-0                 1/1     </span><span class="status-ok">Running</span><span class="cmd">            0          12d</span></div>
+    <div class="line"><span class="line-num">7</span><span class="cmd">worker-batch-9c3a1-k8p       0/1     </span><span class="status-err">CrashLoopBackOff</span><span class="cmd">   5          8m</span></div>
+    <div class="line"><span class="line-num">8</span><span class="cmd">worker-batch-9c3a1-q7n       0/1     </span><span class="status-err">CrashLoopBackOff</span><span class="cmd">   3          4m</span></div>
+    <div class="line"><span class="line-num">9</span><span class="cmd">worker-stream-4b2d-r5t       1/1     </span><span class="status-ok">Running</span><span class="cmd">            0          4d</span></div>
+    <div class="line"><span class="line-num">10</span><span class="cmd">metrics-collector-6f8e-v2    1/1     </span><span class="status-ok">Running</span><span class="cmd">            0          4d</span></div>
+    <div class="line"><span class="line-num">11</span></div>
+    <div class="line"><span class="line-num">12</span><span class="prompt">$</span> <span class="cmd">kubectl logs worker-batch-9c3a1-k8p --tail=5</span></div>
+    <div class="line"><span class="line-num">13</span><span class="status-err">panic: runtime error: index out of range [3] with length 3</span></div>
+    <div class="line"><span class="line-num">14</span><span class="dim">goroutine 1 [running]:</span></div>
+    <div class="line"><span class="line-num">15</span><span class="dim">main.processBatch(0xc0001a4000, 0x3, 0x4)</span></div>
+    <div class="line"><span class="line-num">16</span><span class="dim">	/app/cmd/worker/main.go:142 +0x1a8</span></div>
+    <div class="line"><span class="line-num">17</span></div>
+    <div class="line"><span class="line-num">18</span><span class="prompt">$</span> <span class="cmd" style="animation: blink 1s step-end infinite;">▌</span></div>
+  </div>
+
+  <!-- Presence status bar -->
+  <div class="presence-info">
+    <span><span class="dot" style="background:#3fb950;"></span> 3 active</span>
+    <span><span class="dot" style="background:#484f58;"></span> 1 idle</span>
+    <span style="color:#58a6ff;">Jane</span> is selecting text on line 8
+    <span style="flex:1;"></span>
+    <span style="color:#484f58;">presence · 200ms debounce · per-session</span>
+  </div>
+</div>
+
+<style>
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+</body>
+</html>

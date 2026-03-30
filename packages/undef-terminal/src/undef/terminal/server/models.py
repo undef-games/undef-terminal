@@ -169,6 +169,9 @@ class SessionDefinition(ServerBaseModel):
     owner: str | None = None
     visibility: Visibility = "public"
     ephemeral: bool = False
+    presence: bool = False
+    auto_transfer_idle_s: int = 30
+    keystroke_queue: Literal["display", "replay"] = "display"
 
     @model_validator(mode="before")
     @classmethod

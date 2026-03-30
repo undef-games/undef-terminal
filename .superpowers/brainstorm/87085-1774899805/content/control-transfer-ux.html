@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Control Transfer UX</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #010409; color: #ccc; font-family: system-ui, -apple-system, sans-serif; font-size: 13px; }
+  .container { max-width: 1020px; margin: 20px auto; }
+  h2 { color: #e6edf3; font-size: 18px; margin-bottom: 4px; }
+  .subtitle { color: #6e7681; font-size: 13px; margin-bottom: 24px; }
+
+  /* Flow steps */
+  .flow { display: flex; gap: 12px; margin-bottom: 32px; }
+  .step {
+    flex: 1; background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+    overflow: hidden;
+  }
+  .step-header {
+    padding: 8px 12px; background: #161b22; border-bottom: 1px solid #30363d;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .step-num {
+    width: 22px; height: 22px; border-radius: 50%; background: #30363d;
+    color: #e6edf3; font-size: 11px; font-weight: bold;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .step-num.active { background: #1f6feb; }
+  .step-title { color: #e6edf3; font-size: 12px; font-weight: 600; }
+  .step-body { padding: 12px; }
+  .step-arrow { display: flex; align-items: center; color: #30363d; font-size: 20px; padding: 0 4px; }
+
+  /* Mini avatar bar */
+  .mini-bar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 10px; background: #161b22; border-radius: 6px;
+    margin-bottom: 8px; border: 1px solid #21262d;
+  }
+  .mini-avatar {
+    width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 9px; font-weight: bold;
+    position: relative;
+  }
+  .mini-avatar.owner {
+    border: 2px solid rgba(231,76,60,0.6);
+    box-shadow: 0 0 8px rgba(231,76,60,0.3);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 4px rgba(231,76,60,0.2); }
+    50% { box-shadow: 0 0 10px rgba(231,76,60,0.5); }
+  }
+  .mini-avatar.new-owner {
+    border: 2px solid rgba(52,152,219,0.6);
+    box-shadow: 0 0 8px rgba(52,152,219,0.3);
+    animation: pulse-blue 2s ease-in-out infinite;
+  }
+  @keyframes pulse-blue {
+    0%,100% { box-shadow: 0 0 4px rgba(52,152,219,0.2); }
+    50% { box-shadow: 0 0 10px rgba(52,152,219,0.5); }
+  }
+  .mini-count { color: #6e7681; font-size: 10px; }
+
+  /* Context menu */
+  .ctx-menu {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 4px; width: 200px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  }
+  .ctx-item {
+    padding: 8px 12px; border-radius: 4px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    transition: background 0.1s;
+  }
+  .ctx-item:hover { background: #1c2128; }
+  .ctx-item-icon { font-size: 14px; width: 20px; text-align: center; }
+  .ctx-item-text { color: #e6edf3; font-size: 12px; }
+  .ctx-item-sub { color: #6e7681; font-size: 10px; }
+  .ctx-item.danger .ctx-item-text { color: #f85149; }
+  .ctx-divider { height: 1px; background: #21262d; margin: 4px 0; }
+  .ctx-header { padding: 8px 12px; }
+  .ctx-header-name { color: #e6edf3; font-weight: 600; font-size: 13px; }
+  .ctx-header-role { color: #6e7681; font-size: 11px; }
+  .ctx-header-status { color: #f0c674; font-size: 11px; }
+
+  /* Toast notification */
+  .toast {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 10px 16px; display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6); margin-top: 8px;
+  }
+  .toast-icon { font-size: 16px; }
+  .toast-text { color: #e6edf3; font-size: 12px; }
+  .toast-text span { font-weight: 600; }
+  .toast-btn {
+    padding: 4px 12px; border-radius: 4px; font-size: 11px;
+    cursor: pointer; font-weight: 600; border: none;
+  }
+  .toast-accept { background: #238636; color: white; }
+  .toast-deny { background: #21262d; color: #8b949e; border: 1px solid #30363d; }
+
+  /* Status bar mini */
+  .mini-status {
+    padding: 5px 10px; background: #0d1117; border-radius: 0 0 6px 6px;
+    font-size: 10px; color: #6e7681; border: 1px solid #21262d; border-top: none;
+    display: flex; gap: 8px; align-items: center;
+  }
+  .owner-pill {
+    display: inline-flex; align-items: center; gap: 3px;
+    background: #e74c3c22; border: 1px solid #e74c3c44;
+    border-radius: 3px; padding: 1px 6px; font-weight: 600;
+  }
+  .owner-pill.blue {
+    background: #3498db22; border-color: #3498db44;
+  }
+
+  .desc { color: #8b949e; font-size: 11px; margin-top: 6px; line-height: 1.5; }
+
+  /* Comparison section */
+  .compare { margin-top: 32px; }
+  .compare h3 { color: #e6edf3; font-size: 15px; margin-bottom: 12px; }
+  .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .compare-card {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+    padding: 16px;
+  }
+  .compare-card h4 { color: #e6edf3; font-size: 13px; margin-bottom: 8px; }
+  .compare-card p { color: #8b949e; font-size: 12px; line-height: 1.5; margin-bottom: 6px; }
+  .pro { color: #3fb950; } .con { color: #f85149; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h2>Control Transfer — how does Jane take over from Tim?</h2>
+  <p class="subtitle">Two approaches shown: avatar context menu (recommended) vs inline toolbar</p>
+
+  <!-- FLOW: Context menu approach -->
+  <div class="flow">
+    <!-- Step 1: Current state -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num active">1</div>
+        <div class="step-title">Tim is controlling</div>
+      </div>
+      <div class="step-body">
+        <div class="mini-bar">
+          <div class="mini-avatar owner" style="background:#e74c3c;">TM</div>
+          <div class="mini-avatar" style="background:#3498db;">JD</div>
+          <div class="mini-avatar" style="background:#2ecc71;">RH</div>
+          <div class="mini-count">3 watching</div>
+        </div>
+        <div class="mini-status">
+          <span class="owner-pill" style="color:#e74c3c;">⌨️ Tim controlling</span>
+        </div>
+        <div class="desc">Tim has the hijack lease. His avatar has the pulsing border. Jane wants control.</div>
+      </div>
+    </div>
+
+    <div class="step-arrow">→</div>
+
+    <!-- Step 2: Jane clicks Tim's avatar -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num active">2</div>
+        <div class="step-title">Jane clicks Tim's avatar</div>
+      </div>
+      <div class="step-body">
+        <div class="ctx-menu">
+          <div class="ctx-header">
+            <div class="ctx-header-name">Tim M.</div>
+            <div class="ctx-header-role">admin</div>
+            <div class="ctx-header-status">⌨️ controlling session</div>
+          </div>
+          <div class="ctx-divider"></div>
+          <div class="ctx-item">
+            <div class="ctx-item-icon">👁</div>
+            <div>
+              <div class="ctx-item-text">Jump to view</div>
+              <div class="ctx-item-sub">Scroll to Tim's position</div>
+            </div>
+          </div>
+          <div class="ctx-item">
+            <div class="ctx-item-icon">⌨️</div>
+            <div>
+              <div class="ctx-item-text">Request control</div>
+              <div class="ctx-item-sub">Ask Tim to hand over</div>
+            </div>
+          </div>
+          <div class="ctx-divider"></div>
+          <div class="ctx-item danger">
+            <div class="ctx-item-icon">⚡</div>
+            <div>
+              <div class="ctx-item-text">Take control</div>
+              <div class="ctx-item-sub">Admin only — immediate takeover</div>
+            </div>
+          </div>
+        </div>
+        <div class="desc">Context menu shows who they are, what they're doing, and actions based on Jane's role.</div>
+      </div>
+    </div>
+
+    <div class="step-arrow">→</div>
+
+    <!-- Step 3: Tim sees the request -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num active">3</div>
+        <div class="step-title">Tim sees the request</div>
+      </div>
+      <div class="step-body">
+        <div class="mini-bar">
+          <div class="mini-avatar owner" style="background:#e74c3c;">TM</div>
+          <div class="mini-avatar" style="background:#3498db; border: 2px solid #f0c674;">JD</div>
+          <div class="mini-avatar" style="background:#2ecc71;">RH</div>
+          <div class="mini-count">3 watching</div>
+        </div>
+        <div class="toast">
+          <div class="toast-icon">⌨️</div>
+          <div class="toast-text" style="flex:1;"><span style="color:#3498db;">Jane</span> is requesting control</div>
+          <button class="toast-btn toast-accept">Hand over</button>
+          <button class="toast-btn toast-deny">Deny</button>
+        </div>
+        <div class="desc">Toast notification with accept/deny. Jane's avatar gets a yellow "requesting" ring. Tim can keep working while deciding.</div>
+      </div>
+    </div>
+
+    <div class="step-arrow">→</div>
+
+    <!-- Step 4: Control transferred -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num active">4</div>
+        <div class="step-title">Jane now controls</div>
+      </div>
+      <div class="step-body">
+        <div class="mini-bar">
+          <div class="mini-avatar" style="background:#e74c3c;">TM</div>
+          <div class="mini-avatar new-owner" style="background:#3498db;">JD</div>
+          <div class="mini-avatar" style="background:#2ecc71;">RH</div>
+          <div class="mini-count">3 watching</div>
+        </div>
+        <div class="mini-status">
+          <span class="owner-pill blue" style="color:#3498db;">⌨️ Jane controlling</span>
+        </div>
+        <div class="toast" style="border-color:#238636;">
+          <div class="toast-icon">✓</div>
+          <div class="toast-text"><span style="color:#3498db;">Jane</span> now has control</div>
+        </div>
+        <div class="desc">Pulsing border moves to Jane. Status bar updates. Tim's avatar returns to normal. Everyone sees the transition.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comparison -->
+  <div class="compare">
+    <h3>Owner indicator options (instead of crown emoji)</h3>
+    <div class="compare-grid">
+      <div class="compare-card">
+        <h4>A — Pulsing border only (recommended)</h4>
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;">
+          <div class="mini-avatar owner" style="background:#e74c3c;width:36px;height:36px;font-size:12px;">TM</div>
+          <div style="color:#6e7681;font-size:11px;">Animated glow ring in user's color<br>No emoji — pure CSS, renders identically everywhere</div>
+        </div>
+        <p><span class="pro">+</span> Cross-platform consistent</p>
+        <p><span class="pro">+</span> Scales to any avatar size</p>
+        <p><span class="pro">+</span> Color matches the user's theme color</p>
+        <p><span class="pro">+</span> Subtle enough to not distract</p>
+      </div>
+      <div class="compare-card">
+        <h4>B — Pulsing border + ⌨️ badge</h4>
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;">
+          <div style="position:relative;">
+            <div class="mini-avatar owner" style="background:#e74c3c;width:36px;height:36px;font-size:12px;">TM</div>
+            <div style="position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);background:#161b22;border:1px solid #30363d;border-radius:3px;padding:0 3px;font-size:10px;">⌨️</div>
+          </div>
+          <div style="color:#6e7681;font-size:11px;">Animated ring + small keyboard badge<br>Badge below avatar, like a status icon</div>
+        </div>
+        <p><span class="pro">+</span> Unmistakable — two signals</p>
+        <p><span class="pro">+</span> Badge visible even if animation subtle</p>
+        <p><span class="con">-</span> Badge adds visual weight</p>
+        <p><span class="con">-</span> ⌨️ emoji renders differently per OS</p>
+      </div>
+      <div class="compare-card">
+        <h4>C — Solid ring + dot indicator</h4>
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;">
+          <div style="position:relative;">
+            <div style="width:36px;height:36px;border-radius:50%;background:#e74c3c;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:bold;border:3px solid #e6edf3;">TM</div>
+            <div style="position:absolute;top:-2px;right:-2px;width:12px;height:12px;border-radius:50%;background:#3fb950;border:2px solid #0d1117;"></div>
+          </div>
+          <div style="color:#6e7681;font-size:11px;">Thick white/bright ring + green "active" dot<br>Green dot = "has control", same position as role dot</div>
+        </div>
+        <p><span class="pro">+</span> No emoji at all</p>
+        <p><span class="pro">+</span> Green dot is universally "active/live"</p>
+        <p><span class="con">-</span> White ring might clash with light themes</p>
+        <p><span class="con">-</span> Could confuse with "selected" state</p>
+      </div>
+      <div class="compare-card">
+        <h4>D — Glow ring + status bar only</h4>
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;">
+          <div class="mini-avatar owner" style="background:#e74c3c;width:36px;height:36px;font-size:12px;">TM</div>
+          <div style="color:#6e7681;font-size:11px;">Subtle animated ring on avatar<br>Primary indicator is the status bar badge</div>
+        </div>
+        <p><span class="pro">+</span> Cleanest avatar area</p>
+        <p><span class="pro">+</span> Status bar is always visible</p>
+        <p><span class="con">-</span> Easy to miss which avatar is the owner</p>
+        <p><span class="con">-</span> Need to read the bar to know who controls</p>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

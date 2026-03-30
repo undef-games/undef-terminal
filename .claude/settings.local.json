@@ -43,7 +43,11 @@
       "Bash(pre-commit clean:*)",
       "Bash(.venv/bin/uterm --help)",
       "Bash(uterm:*)",
-      "Bash(cd /Users/tim/code/gh/undef-games/undef-terminal __NEW_LINE_a6b402b646a5c289__ echo \"\" echo \"[9] Tunnel code coverage \\(0 missed statements?\\)\" uv run pytest packages/undef-terminal/tests/tunnel/ packages/undef-terminal/tests/cli/ --cov=undef.terminal.tunnel --cov=undef.terminal.cli.inspect --cov=undef.terminal.cli.share --cov=undef.terminal.cli.tunnel --cov=undef.terminal.cli.watch --cov=undef.terminal.cli._watch_app --cov-report=term-missing --cov-branch -q)"
+      "Bash(cd /Users/tim/code/gh/undef-games/undef-terminal __NEW_LINE_a6b402b646a5c289__ echo \"\" echo \"[9] Tunnel code coverage \\(0 missed statements?\\)\" uv run pytest packages/undef-terminal/tests/tunnel/ packages/undef-terminal/tests/cli/ --cov=undef.terminal.tunnel --cov=undef.terminal.cli.inspect --cov=undef.terminal.cli.share --cov=undef.terminal.cli.tunnel --cov=undef.terminal.cli.watch --cov=undef.terminal.cli._watch_app --cov-report=term-missing --cov-branch -q)",
+      "Bash(java -jar /opt/homebrew/Cellar/plantuml/*/libexec/plantuml.jar -version)",
+      "Bash(do echo:*)",
+      "Bash(plantuml -tsvg \"$f\")",
+      "Bash(do plantuml:*)"
     ],
     "additionalDirectories": [
       "/Users/tim/code/gh/undef-games"

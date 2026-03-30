@@ -4,14 +4,14 @@
 @startuml auto-transfer
 title DeckMux — Auto-Transfer (Owner Idle + Active Requester)
 
-skinparam backgroundColor #0d1117
-skinparam defaultFontColor #c9d1d9
-skinparam sequenceArrowColor #58a6ff
-skinparam sequenceLifeLineBorderColor #30363d
-skinparam sequenceParticipantBorderColor #30363d
-skinparam sequenceParticipantBackgroundColor #161b22
-skinparam noteBorderColor #30363d
-skinparam noteBackgroundColor #161b22
+skinparam backgroundColor #ffffff
+skinparam defaultFontColor #333333
+skinparam sequenceArrowColor #2563eb
+skinparam sequenceLifeLineBorderColor #d1d5db
+skinparam sequenceParticipantBorderColor #d1d5db
+skinparam sequenceParticipantBackgroundColor #f3f4f6
+skinparam noteBorderColor #d1d5db
+skinparam noteBackgroundColor #f9fafb
 
 participant "Jane\n(typing)" as J
 participant "Server" as S
