@@ -80,7 +80,8 @@ show_missing = true
 skip_covered = false
 
 [tool.uv.sources]
-undef-shell = { path = "../../packages/undef-shell", editable = true }
+undef-shell = { workspace = true }
+undef-terminal = { workspace = true }
 
 [tool.mutmut]
 paths_to_mutate = ["src/"]
