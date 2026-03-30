@@ -62,6 +62,8 @@ class CloudflareConfig:
     security_x_content_type_options: str | None = None
     security_referrer_policy: str | None = None
     security_permissions_policy: str | None = None
+    deckmux_auto_transfer_idle_s: int = 30
+    deckmux_keystroke_queue: str = "display"
 
     @classmethod
     def from_env(cls, env: Any) -> CloudflareConfig:
@@ -163,4 +165,6 @@ class CloudflareConfig:
             security_x_content_type_options=_get_optional("SECURITY_X_CONTENT_TYPE_OPTIONS"),
             security_referrer_policy=_get_optional("SECURITY_REFERRER_POLICY"),
             security_permissions_policy=_get_optional("SECURITY_PERMISSIONS_POLICY"),
+            deckmux_auto_transfer_idle_s=max(1, int(_get("DECKMUX_AUTO_TRANSFER_IDLE_S", "30"))),
+            deckmux_keystroke_queue=_get("DECKMUX_KEYSTROKE_QUEUE", "display") or "display",
         )
