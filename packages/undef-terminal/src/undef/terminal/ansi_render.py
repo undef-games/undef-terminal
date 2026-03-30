@@ -100,7 +100,7 @@ class AnsiBuffer:
         self._stream = pyte.Stream(self._screen)
 
     def resize(self, cols: int, rows: int) -> None:
-        self._screen.resize(cols, rows)
+        self._screen.resize(rows, cols)
 
     def reset(self) -> None:
         self._screen.reset()
