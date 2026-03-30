@@ -169,14 +169,9 @@ max_modules = "B"
 max_average = "A"
 
 [tool.mutmut]
-paths_to_mutate = ["src/undef/shell/terminal/_connector.py", "src/undef/terminal/server/connectors/__init__.py", "src/undef/terminal/server/connectors/registry.py", "src/undef/terminal/hijack/hub/event_bus.py"]
+paths_to_mutate = ["src/undef/shell/_render.py"]
 tests_dir = [
-    "packages/undef-terminal/tests/shell/test_shell_connector.py",
-    "packages/undef-terminal/tests/server/test_app_ushell.py",
-    "packages/undef-terminal/tests/server/test_connectors_websocket.py",
-    "packages/undef-terminal/tests/server/test_connectors.py",
-    "packages/undef-terminal/tests/hijack/test_event_bus.py",
-    "packages/undef-terminal/tests/hijack/test_event_bus_integration.py",
+    "packages/undef-shell/tests/shell/test_shell_render.py",
 ]
 also_copy = [
     "src",

@@ -275,8 +275,10 @@ def test_pillow_import_error_raises_helpful_message() -> None:
         sys.modules[key] = None  # type: ignore[assignment]
     try:
         importlib.reload(render_mod)
-        with pytest.raises(ImportError, match="Pillow"):
+        with pytest.raises(ImportError, match="Pillow") as exc_info:
             render_mod.image_to_ansi_frames(b"data")
+        # mutmut_6 prepends 'XX' to the error message; verify message starts with 'missing'
+        assert str(exc_info.value).startswith("missing dependency")
     finally:
         # Restore original PIL modules
         for key in pil_modules:
@@ -492,6 +494,17 @@ def test_nearest_16_second_entry_is_best() -> None:
     fg, bg = _nearest_16(160, 0, 0)
     assert fg == 31
     assert bg == 41
+
+
+def test_nearest_16_tie_broken_by_strict_less_than() -> None:
+    # (85, 0, 0) is equidistant from index 0 (black, dist=85²=7225)
+    # and index 1 (dark red (170,0,0), dist=(85-170)²=7225).
+    # With strict '<' (original), index 0 wins → fg=30 (black fg).
+    # With '<=' (mutmut_28), index 1 wins on the tie → fg=31 (red fg).
+    # The correct behavior is to return index 0 (first encountered best).
+    fg, bg = _nearest_16(85, 0, 0)
+    assert fg == 30  # black fg wins the tie with strict '<'
+    assert bg == 40  # black bg
 
 
 # ---------------------------------------------------------------------------
@@ -813,28 +826,6 @@ def test_fps_calculation_10ms_duration() -> None:
     data = _make_gif_with_duration(10, n_frames=2)
     _, fps = image_to_ansi_frames(data)
     assert fps == pytest.approx(100.0)
-
-
-def test_pillow_import_error_message_starts_with_missing() -> None:
-    # mutmut_6 prepends 'XX' to the error message making it start with 'XXmissing'
-    # Check that the message starts exactly with 'missing'
-    import undef.shell._render as render_mod
-
-    pil_modules = {k: v for k, v in sys.modules.items() if k == "PIL" or k.startswith("PIL.")}
-    for key in pil_modules:
-        sys.modules[key] = None  # type: ignore[assignment]
-    try:
-        importlib.reload(render_mod)
-        with pytest.raises(ImportError) as exc_info:
-            render_mod.image_to_ansi_frames(b"data")
-        assert str(exc_info.value).startswith("missing dependency")
-    finally:
-        for key in pil_modules:
-            if pil_modules[key] is None:
-                sys.modules.pop(key, None)
-            else:
-                sys.modules[key] = pil_modules[key]
-        importlib.reload(render_mod)
 
 
 def test_lanczos_produces_expected_pixel_values() -> None:

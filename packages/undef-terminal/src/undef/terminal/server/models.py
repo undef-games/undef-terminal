@@ -273,6 +273,7 @@ class ServerConfig(ServerBaseModel):
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     tunnel: TunnelConfig = Field(default_factory=TunnelConfig)
     sessions: list[SessionDefinition] = Field(default_factory=list)
+    session_idle_timeout_s: int = 0  # 0 = disabled, >0 = seconds of inactivity before auto-cleanup
 
 
 ServerModel: TypeAlias = (

@@ -88,6 +88,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         # overwritten worker_ws, so stale REST clients cannot send keystrokes under
         # a dead session.
         prev_was_hijacked = await hub.register_worker(worker_id, websocket)
+        await hub.touch_activity(worker_id)
         logger.info("term_worker_connected worker_id=%s", worker_id)
         if prev_was_hijacked:
             hub.notify_hijack_changed(worker_id, enabled=False, owner=None)
@@ -117,6 +118,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                 for event in events:
                     if isinstance(event, DataChunk):
                         if event.data:  # pragma: no branch
+                            await hub.touch_activity(worker_id)
                             await hub.broadcast(
                                 worker_id,
                                 cast("dict[str, Any]", make_term_frame(event.data, ts=time.time())),
@@ -254,6 +256,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         owned_hijack = False
         # Capture all startup state atomically while registering the browser.
         browser_state = await hub.register_browser(worker_id, websocket, role)
+        await hub.touch_activity(worker_id)
         is_hijacked = browser_state["is_hijacked"]
         hijacked_by_me = browser_state["hijacked_by_me"]
         worker_online = browser_state["worker_online"]
@@ -329,6 +332,8 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
                         can_hijack = role == "admin"
                         continue
 
+                    if mtype in ("input", "hijack_request", "hijack_release"):
+                        await hub.touch_activity(worker_id)
                     owned_hijack = await handle_browser_message(hub, websocket, worker_id, role, msg_b, owned_hijack)
 
         except WebSocketDisconnect:
@@ -338,6 +343,7 @@ def register_ws_routes(hub: TermHub, router: APIRouter) -> None:
         finally:
             hub.metric("ws_disconnect_total")
             hub.metric("ws_disconnect_browser_total")
+            await hub.touch_activity(worker_id)
             cleanup_task.cancel()
             with suppress(asyncio.CancelledError):
                 await cleanup_task

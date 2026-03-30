@@ -291,6 +291,31 @@ def create_server_app(config: ServerConfig) -> FastAPI:
     )
     profile_store = FileProfileStore(config.profiles.directory)
 
+    async def _sweep_idle_sessions() -> None:
+        """Periodically disconnect sessions with no activity beyond the configured timeout."""
+        timeout_s = config.session_idle_timeout_s
+        while True:
+            await asyncio.sleep(60)
+            if timeout_s <= 0:
+                continue
+            now = time.time()
+            async with hub._lock:
+                candidates = [
+                    (wid, st.last_activity_at)
+                    for wid, st in hub._workers.items()
+                    if not st.browsers and (now - st.last_activity_at) > timeout_s
+                ]
+            for worker_id, last_at in candidates:
+                try:
+                    logger.info(
+                        "session_idle_timeout worker_id=%s idle_s=%d",
+                        worker_id,
+                        int(now - last_at),
+                    )
+                    await hub.disconnect_worker(worker_id)
+                except Exception:
+                    logger.exception("session_idle_timeout_error worker_id=%s", worker_id)
+
     async def _sweep_expired_tunnel_tokens() -> None:
         """Periodically remove expired tunnel tokens from the in-memory map."""
         while True:
@@ -322,15 +347,19 @@ def create_server_app(config: ServerConfig) -> FastAPI:
             )
         )
         sweep_task = asyncio.create_task(_sweep_expired_tunnel_tokens())
+        idle_sweep_task = asyncio.create_task(_sweep_idle_sessions())
         try:
             yield
         finally:
+            idle_sweep_task.cancel()
             sweep_task.cancel()
             boot_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await boot_task
             with contextlib.suppress(asyncio.CancelledError):
                 await sweep_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await idle_sweep_task
             await webhook_manager.shutdown()
             await registry.shutdown()
 
