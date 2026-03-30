@@ -102,16 +102,16 @@ uterm watch (Textual TUI)
 
 ## Key Bindings
 
-| Key | Action |
-|-----|--------|
-| `j` / `↓` | Next request |
-| `k` / `↑` | Previous request |
-| `Enter` | Open detail (modal) or select (split) |
-| `Esc` | Close modal / clear filter |
-| `Tab` | Cycle layout: horizontal → vertical → modal |
-| `/` | Focus filter input |
-| `f` | Cycle method filter (All → GET → POST → ...) |
-| `q` | Quit |
+| Key | Action | Status |
+|-----|--------|--------|
+| `q` | Quit | Implemented |
+| `l` | Cycle layout: horizontal → vertical → modal | Implemented |
+| `f` | Cycle method filter (All → GET → POST → ...) | Implemented |
+| `Enter` | Select row → show detail (split) or open modal | Implemented |
+| `↑` / `↓` | Navigate request list | Implemented (DataTable cursor) |
+| `Esc` | Close modal overlay | Implemented (DetailScreen) |
+| `j` / `k` | Vim-style navigation | Planned |
+| `/` | Focus filter input | Planned |
 
 ## Data Flow
 

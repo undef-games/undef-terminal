@@ -40,7 +40,10 @@
       "Bash(node_modules/.bin/biome ci:*)",
       "Bash(node_modules/.bin/biome check:*)",
       "Bash(uv pip:*)",
-      "Bash(pre-commit clean:*)"
+      "Bash(pre-commit clean:*)",
+      "Bash(.venv/bin/uterm --help)",
+      "Bash(uterm:*)",
+      "Bash(cd /Users/tim/code/gh/undef-games/undef-terminal __NEW_LINE_a6b402b646a5c289__ echo \"\" echo \"[9] Tunnel code coverage \\(0 missed statements?\\)\" uv run pytest packages/undef-terminal/tests/tunnel/ packages/undef-terminal/tests/cli/ --cov=undef.terminal.tunnel --cov=undef.terminal.cli.inspect --cov=undef.terminal.cli.share --cov=undef.terminal.cli.tunnel --cov=undef.terminal.cli.watch --cov=undef.terminal.cli._watch_app --cov-report=term-missing --cov-branch -q)"
     ],
     "additionalDirectories": [
       "/Users/tim/code/gh/undef-games"
