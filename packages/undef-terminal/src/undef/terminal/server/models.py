@@ -61,6 +61,7 @@ class AuthConfig(ServerBaseModel):
     jwt_roles_claim: str = "roles"
     jwt_scopes_claim: str = "scope"
     worker_bearer_token: str | None = None
+    api_keys_enabled: bool = False  # Opt-in API key authentication
 
 
 class UiConfig(ServerBaseModel):
@@ -259,6 +260,7 @@ class SessionRuntimeStatus(ServerBaseModel):
     recording_available: bool = False
     owner: str | None = None
     visibility: Visibility = "public"
+    stopped_at: float | None = None
     last_error: str | None = None
 
 
@@ -274,6 +276,7 @@ class ServerConfig(ServerBaseModel):
     tunnel: TunnelConfig = Field(default_factory=TunnelConfig)
     sessions: list[SessionDefinition] = Field(default_factory=list)
     session_idle_timeout_s: int = 0  # 0 = disabled, >0 = seconds of inactivity before auto-cleanup
+    session_retention_s: int = 0  # 0 = disabled, >0 = auto-delete stopped sessions older than N seconds
 
 
 ServerModel: TypeAlias = (

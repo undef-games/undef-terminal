@@ -22,14 +22,16 @@ from fastapi import Request as FastAPIRequest
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import HTTPConnection  # noqa: TC002
 from starlette.staticfiles import StaticFiles
-from undef.telemetry import get_logger
+from undef.telemetry import TelemetryMiddleware, get_logger
 
 from undef.terminal.hijack.hub import InMemoryResumeStore, ResumeSession, TermHub
+from undef.terminal.server.api_keys import ApiKeyStore
 from undef.terminal.server.auth import (
     Principal,
     extract_bearer_token,
     resolve_http_principal,
     resolve_ws_principal,
+    set_api_key_store_hook,
 )
 from undef.terminal.server.authorization import AuthorizationService
 from undef.terminal.server.policy import SessionPolicyResolver
@@ -316,6 +318,31 @@ def create_server_app(config: ServerConfig) -> FastAPI:
                 except Exception:
                     logger.exception("session_idle_timeout_error worker_id=%s", worker_id)
 
+    async def _sweep_expired_sessions() -> None:
+        """Remove stopped sessions older than session_retention_s."""
+        retention_s = config.session_retention_s
+        while True:
+            await asyncio.sleep(300)
+            if retention_s <= 0:
+                continue
+            now = time.time()
+            pairs = await registry.list_sessions_with_definitions()
+            for sess_status, _definition in pairs:
+                if sess_status.lifecycle_state != "stopped":
+                    continue
+                if sess_status.stopped_at is None:
+                    continue
+                if (now - sess_status.stopped_at) >= retention_s:
+                    try:
+                        await registry.delete_session(sess_status.session_id)
+                        logger.info(
+                            "session_retention_sweep session_id=%s age_s=%d",
+                            sess_status.session_id,
+                            int(now - sess_status.stopped_at),
+                        )
+                    except Exception:
+                        logger.exception("session_retention_sweep_error session_id=%s", sess_status.session_id)
+
     async def _sweep_expired_tunnel_tokens() -> None:
         """Periodically remove expired tunnel tokens from the in-memory map."""
         while True:
@@ -348,9 +375,11 @@ def create_server_app(config: ServerConfig) -> FastAPI:
         )
         sweep_task = asyncio.create_task(_sweep_expired_tunnel_tokens())
         idle_sweep_task = asyncio.create_task(_sweep_idle_sessions())
+        retention_sweep_task = asyncio.create_task(_sweep_expired_sessions())
         try:
             yield
         finally:
+            retention_sweep_task.cancel()
             idle_sweep_task.cancel()
             sweep_task.cancel()
             boot_task.cancel()
@@ -360,6 +389,8 @@ def create_server_app(config: ServerConfig) -> FastAPI:
                 await sweep_task
             with contextlib.suppress(asyncio.CancelledError):
                 await idle_sweep_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await retention_sweep_task
             await webhook_manager.shutdown()
             await registry.shutdown()
 
@@ -373,6 +404,9 @@ def create_server_app(config: ServerConfig) -> FastAPI:
     app.state.uterm_webhooks = webhook_manager
     app.state.uterm_profile_store = profile_store
     app.state.uterm_tunnel_tokens = tunnel_tokens
+    api_key_store = ApiKeyStore()
+    app.state.uterm_api_key_store = api_key_store
+    set_api_key_store_hook(lambda: api_key_store)
 
     @app.middleware("http")
     async def _request_logging_middleware(request: Request, call_next: RequestResponseEndpoint) -> Response:
@@ -433,6 +467,7 @@ def create_server_app(config: ServerConfig) -> FastAPI:
         )
 
     app.add_middleware(SecurityHeadersMiddleware, config=config.security)
+    app.add_middleware(TelemetryMiddleware)
 
     frontend_path = importlib.resources.files("undef.terminal") / "frontend"
     app.mount(config.ui.assets_path, StaticFiles(directory=str(frontend_path), html=False), name="uterm-assets")
