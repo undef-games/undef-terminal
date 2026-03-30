@@ -193,7 +193,7 @@ class WatchApp(App[None]):
         self._connect_ws()
 
     @work(thread=True)
-    def _connect_ws(self) -> None:
+    def _connect_ws(self) -> None:  # pragma: no cover — requires real WebSocket server
         import websockets.sync.client as wsc
 
         try:
@@ -255,7 +255,7 @@ class WatchApp(App[None]):
     def _update_table_row(self, ex: Exchange) -> None:
         table = self.query_one("#request-table", DataTable)
         for i, rk in enumerate(table.rows):
-            if str(rk) == ex.req_id:
+            if rk.value == ex.req_id:
                 table.update_cell_at(Coordinate(i, 2), str(ex.status or "..."))
                 table.update_cell_at(Coordinate(i, 3), f"{ex.duration_ms:.0f}ms" if ex.duration_ms else "-")
                 table.update_cell_at(Coordinate(i, 4), human_size(ex.res_body_size))

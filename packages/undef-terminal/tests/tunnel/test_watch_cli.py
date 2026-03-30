@@ -154,3 +154,54 @@ class TestDecodeBody:
 
     def test_empty(self) -> None:
         assert _decode_body(None, False, False, 0) == ""
+
+    def test_invalid_b64(self) -> None:
+        assert _decode_body("!!!not-valid-base64!!!", False, False, 10) == "(decode error)"
+
+
+class TestParseHttpFramesEdge:
+    def test_malformed_json_in_control(self) -> None:
+        """Line 84-85: invalid JSON inside a valid control frame envelope."""
+        raw = "\x10\x0200000010:not valid json"
+        frames = parse_http_frames(raw)
+        assert frames == []
+
+    def test_dle_not_followed_by_stx(self) -> None:
+        """Line 88: DLE followed by non-STX char (data chunk)."""
+        raw = "\x10Xsome data"
+        frames = parse_http_frames(raw)
+        assert frames == []
+
+    def test_dle_at_end(self) -> None:
+        raw = "data\x10"
+        frames = parse_http_frames(raw)
+        assert frames == []
+
+
+class TestReadToken:
+    def test_explicit_token(self) -> None:
+        from unittest.mock import MagicMock
+
+        from undef.terminal.cli.watch import _read_token
+
+        args = MagicMock(token="my-tok", token_file=None)
+        assert _read_token(args) == "my-tok"
+
+    def test_from_file(self, tmp_path: object) -> None:
+        from pathlib import Path
+        from unittest.mock import MagicMock
+
+        from undef.terminal.cli.watch import _read_token
+
+        token_file = Path(str(tmp_path)) / "token"
+        token_file.write_text("file-token-123\n")
+        args = MagicMock(token=None, token_file=str(token_file))
+        assert _read_token(args) == "file-token-123"
+
+    def test_no_token(self) -> None:
+        from unittest.mock import MagicMock
+
+        from undef.terminal.cli.watch import _read_token
+
+        args = MagicMock(token=None, token_file="/nonexistent")
+        assert _read_token(args) is None

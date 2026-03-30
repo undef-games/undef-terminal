@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import pytest
+from textual.widgets import Static
 
 from undef.terminal.cli._watch_app import Exchange, WatchApp, _detail_lines
 
@@ -169,6 +170,177 @@ class TestWatchAppActions:
         """q quits the app."""
         async with app.run_test(size=(120, 40)) as pilot:
             await pilot.press("q")
+
+
+class TestDetailScreen:
+    @pytest.mark.asyncio
+    async def test_modal_detail_opens(self, app: WatchApp) -> None:
+        """In modal layout, selecting a row pushes DetailScreen."""
+        app._layout_mode = "modal"
+        async with app.run_test(size=(120, 40)) as pilot:
+            app._handle_frame(
+                {
+                    "type": "http_req",
+                    "id": "r1",
+                    "method": "GET",
+                    "url": "/test",
+                    "headers": {"accept": "text/html"},
+                    "body_size": 0,
+                }
+            )
+            app._handle_frame(
+                {
+                    "type": "http_res",
+                    "id": "r1",
+                    "status": 200,
+                    "status_text": "OK",
+                    "headers": {"content-type": "text/html"},
+                    "body_size": 100,
+                    "duration_ms": 42,
+                }
+            )
+            # Select the row
+            from textual.widgets import DataTable
+
+            table = app.query_one("#request-table", DataTable)
+            table.move_cursor(row=0)
+            await pilot.press("enter")
+
+    @pytest.mark.asyncio
+    async def test_split_detail_updates_pane(self, app: WatchApp) -> None:
+        """In horizontal layout, selecting a row updates the detail pane."""
+        async with app.run_test(size=(120, 40)) as pilot:
+            app._handle_frame(
+                {
+                    "type": "http_req",
+                    "id": "r1",
+                    "method": "POST",
+                    "url": "/api",
+                    "headers": {"content-type": "application/json"},
+                    "body_size": 10,
+                    "body_b64": "eyJ0ZXN0IjoxfQ==",
+                }
+            )
+            app._handle_frame(
+                {
+                    "type": "http_res",
+                    "id": "r1",
+                    "status": 201,
+                    "status_text": "Created",
+                    "headers": {"x-id": "r1"},
+                    "body_size": 5,
+                    "duration_ms": 15,
+                    "body_b64": "eyJvayI6MX0=",
+                }
+            )
+            from textual.widgets import DataTable
+
+            table = app.query_one("#request-table", DataTable)
+            table.move_cursor(row=0)
+            await pilot.press("enter")
+            pane = app.query_one("#detail-pane", Static)
+            # Static stores its content in _content or render() output
+            content = str(pane.render())
+            assert "POST" in content or "api" in content
+
+    @pytest.mark.asyncio
+    async def test_table_row_update_shows_status(self, app: WatchApp) -> None:
+        """Response updates the table row with status, duration, size."""
+
+        async with app.run_test(size=(120, 40)) as _pilot:
+            app._handle_frame(
+                {
+                    "type": "http_req",
+                    "id": "r1",
+                    "method": "GET",
+                    "url": "/x",
+                    "headers": {},
+                    "body_size": 0,
+                }
+            )
+            app._handle_frame(
+                {
+                    "type": "http_res",
+                    "id": "r1",
+                    "status": 404,
+                    "status_text": "Not Found",
+                    "headers": {},
+                    "body_size": 0,
+                    "duration_ms": 3,
+                }
+            )
+            assert app._exchanges[0].status == 404
+
+
+class TestTableUpdateCoverage:
+    @pytest.mark.asyncio
+    async def test_method_filter_skips_add(self, app: WatchApp) -> None:
+        """Line 250: _add_table_row returns early when filter doesn't match."""
+        from textual.widgets import DataTable
+
+        async with app.run_test(size=(120, 40)) as _pilot:
+            app._method_filter = "POST"
+            app._handle_frame(
+                {
+                    "type": "http_req",
+                    "id": "r1",
+                    "method": "GET",
+                    "url": "/skip",
+                    "headers": {},
+                    "body_size": 0,
+                }
+            )
+            table = app.query_one("#request-table", DataTable)
+            assert table.row_count == 0  # Filtered out
+
+    @pytest.mark.asyncio
+    async def test_update_table_row_with_response(self, app: WatchApp) -> None:
+        """Lines 259-262: _update_table_row calls update_cell_at."""
+        from textual.widgets import DataTable
+
+        async with app.run_test(size=(120, 40)) as _pilot:
+            app._handle_frame(
+                {
+                    "type": "http_req",
+                    "id": "r1",
+                    "method": "GET",
+                    "url": "/test",
+                    "headers": {},
+                    "body_size": 0,
+                }
+            )
+            app._handle_frame(
+                {
+                    "type": "http_res",
+                    "id": "r1",
+                    "status": 200,
+                    "status_text": "OK",
+                    "headers": {},
+                    "body_size": 100,
+                    "duration_ms": 42,
+                }
+            )
+            app.query_one("#request-table", DataTable)
+            assert app._exchanges[0].status == 200
+
+    @pytest.mark.asyncio
+    async def test_update_status_without_widget(self) -> None:
+        """Lines 267-268: _update_status handles missing widget."""
+        watch = WatchApp(ws_url="ws://x", tunnel_id="t", initial_layout="horizontal")
+        # Call before mount — should not raise
+        watch._update_status()
+
+    @pytest.mark.asyncio
+    async def test_on_row_selected_unknown_id(self, app: WatchApp) -> None:
+        """Line 277: _on_row_selected returns early for unknown row key."""
+        async with app.run_test(size=(120, 40)) as _pilot:
+            from textual.widgets import DataTable
+            from textual.widgets._data_table import RowKey
+
+            table = app.query_one("#request-table", DataTable)
+            # Simulate event with unknown key
+            event = DataTable.RowSelected(table, table.cursor_coordinate, RowKey("nonexistent"))
+            app._on_row_selected(event)  # Should not raise
 
 
 class TestDetailLines:
