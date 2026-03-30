@@ -1,48 +1,172 @@
-name: Release Governance
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Publish all workspace packages to TestPyPI (staging) then PyPI (production),
+# with Sigstore signing and GitHub Release asset upload.
+
+name: Release
 
 on:
   push:
-    branches:
-      - main
-      - "rc/**"
-  pull_request:
-    branches:
-      - main
-      - "rc/**"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+# Restrict permissions globally; jobs opt-in as needed.
+permissions:
+  contents: read
 
 jobs:
-  governance:
+  # ── Build ──────────────────────────────────────────────────────────────
+  build:
+    name: Build ${{ matrix.package }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      id-token: write   # required for Sigstore keyless signing
-      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        package:
+          - undef-shell
+          - undef-terminal
+          - undef-terminal-cloudflare
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Build sdist + wheel
+        run: uv build --package ${{ matrix.package }}
+
+      - name: Upload dists
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.package }}
+          path: dist/*
+
+  # ── Publish to TestPyPI ────────────────────────────────────────────────
+  publish-testpypi:
+    name: TestPyPI · ${{ matrix.package }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write          # OIDC for trusted publishing
+    strategy:
+      fail-fast: true
+      matrix:
+        package:
+          - undef-shell
+          - undef-terminal
+          - undef-terminal-cloudflare
+    steps:
+      - name: Download dists
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ matrix.package }}
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  # ── Verify TestPyPI installs ──────────────────────────────────────────
+  verify-testpypi:
+    name: Verify TestPyPI · ${{ matrix.package }}
+    needs: publish-testpypi
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        package:
+          - undef-shell
+          - undef-terminal
+          - undef-terminal-cloudflare
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v5
+      - name: Read expected version
+        id: ver
+        run: |
+          version=$(cat "packages/${{ matrix.package }}/VERSION")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Setup Cosign
-        uses: sigstore/cosign-installer@v3
+      - name: Install from TestPyPI (with retries)
+        run: |
+          for i in 1 2 3 4 5; do
+            if pip install \
+                 --index-url https://test.pypi.org/simple/ \
+                 --extra-index-url https://pypi.org/simple/ \
+                 "${{ matrix.package }}==${{ steps.ver.outputs.version }}"; then
+              break
+            fi
+            echo "Attempt $i failed — waiting 30s for index propagation…"
+            sleep 30
+          done
 
-      - name: Sync dependencies
-        run: uv sync --group dev
+      - name: Verify installed version
+        run: |
+          installed=$(pip show "${{ matrix.package }}" | grep '^Version:' | awk '{print $2}')
+          expected="${{ steps.ver.outputs.version }}"
+          echo "Installed: $installed  Expected: $expected"
+          [ "$installed" = "$expected" ]
 
-      - name: Install governance tools
-        run: uv pip install pip-audit cyclonedx-bom
-
-      - name: Run release governance checks
-        run: ./scripts/release_governance_check.sh artifacts/release-governance
-
-      - name: Upload governance artifacts
-        uses: actions/upload-artifact@v4
+  # ── Publish to production PyPI ─────────────────────────────────────────
+  publish-pypi:
+    name: PyPI · ${{ matrix.package }}
+    needs: verify-testpypi
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write          # OIDC for trusted publishing
+    strategy:
+      fail-fast: true
+      matrix:
+        package:
+          - undef-shell
+          - undef-terminal
+          - undef-terminal-cloudflare
+    steps:
+      - name: Download dists
+        uses: actions/download-artifact@v4
         with:
-          name: release-governance
-          path: artifacts/release-governance
+          name: dist-${{ matrix.package }}
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  # ── Sigstore signing + GitHub Release upload ───────────────────────────
+  sign-and-release:
+    name: Sign & upload to GitHub Release
+    needs: publish-pypi
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write          # Sigstore OIDC
+      contents: write          # upload release assets
+    steps:
+      - name: Download all dists
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist/
+          merge-multiple: true
+
+      - name: Sign with Sigstore
+        uses: sigstore/gh-action-sigstore-python@v3.0.0
+        with:
+          inputs: >-
+            dist/*.tar.gz
+            dist/*.whl
+
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release upload "$GITHUB_REF_NAME"
+          dist/**
+          --repo "$GITHUB_REPOSITORY"
