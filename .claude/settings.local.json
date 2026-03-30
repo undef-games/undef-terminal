@@ -39,7 +39,8 @@
       "mcp__playwright__browser_fill_form",
       "Bash(node_modules/.bin/biome ci:*)",
       "Bash(node_modules/.bin/biome check:*)",
-      "Bash(uv pip:*)"
+      "Bash(uv pip:*)",
+      "Bash(pre-commit clean:*)"
     ],
     "additionalDirectories": [
       "/Users/tim/code/gh/undef-games"

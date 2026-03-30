@@ -42,7 +42,7 @@ def _read_token(args: argparse.Namespace) -> str | None:
 def _cmd_watch(args: argparse.Namespace) -> None:  # pragma: no cover — TUI entry point
     """Launch the Textual TUI traffic viewer."""
     try:
-        from textual.app import App  # type: ignore[import-not-found]  # noqa: F401
+        from textual.app import App  # noqa: F401
     except ImportError:
         import sys
 

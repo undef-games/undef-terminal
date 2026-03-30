@@ -11,11 +11,12 @@ from base64 import b64decode
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
-from textual import on, work  # type: ignore[import-not-found]
-from textual.app import App, ComposeResult  # type: ignore[import-not-found]
-from textual.binding import Binding  # type: ignore[import-not-found]
-from textual.screen import ModalScreen  # type: ignore[import-not-found]
-from textual.widgets import DataTable, Footer, Header, Static  # type: ignore[import-not-found]
+from textual import on, work
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.coordinate import Coordinate
+from textual.screen import ModalScreen
+from textual.widgets import DataTable, Footer, Header, Static
 
 _DLE = "\x10"
 _STX = "\x02"
@@ -101,10 +102,10 @@ def _decode_body(b64: str | None, truncated: bool, binary: bool, size: int) -> s
     return ""
 
 
-class DetailScreen(ModalScreen[None]):  # type: ignore[misc]
+class DetailScreen(ModalScreen[None]):
     """Modal overlay showing request/response detail."""
 
-    BINDINGS: ClassVar[list[object]] = [Binding("escape", "dismiss", "Close")]
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [Binding("escape", "dismiss", "Close")]
 
     def __init__(self, exchange: Exchange) -> None:
         super().__init__()
@@ -151,11 +152,11 @@ def _detail_lines(ex: Exchange) -> list[str]:
     return lines
 
 
-class WatchApp(App[None]):  # type: ignore[misc]
+class WatchApp(App[None]):
     """Textual TUI for watching HTTP tunnel traffic."""
 
     TITLE = "uterm watch"
-    BINDINGS: ClassVar[list[object]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("q", "quit", "Quit"),
         Binding("tab", "cycle_layout", "Layout"),
         Binding("f", "cycle_method", "Method"),
@@ -191,7 +192,7 @@ class WatchApp(App[None]):  # type: ignore[misc]
         self._update_status()
         self._connect_ws()
 
-    @work(thread=True)  # type: ignore[untyped-decorator]
+    @work(thread=True)
     def _connect_ws(self) -> None:
         import websockets.sync.client as wsc
 
@@ -255,9 +256,9 @@ class WatchApp(App[None]):  # type: ignore[misc]
         table = self.query_one("#request-table", DataTable)
         for i, rk in enumerate(table.rows):
             if str(rk) == ex.req_id:
-                table.update_cell_at((i, 2), str(ex.status or "..."))
-                table.update_cell_at((i, 3), f"{ex.duration_ms:.0f}ms" if ex.duration_ms else "-")
-                table.update_cell_at((i, 4), human_size(ex.res_body_size))
+                table.update_cell_at(Coordinate(i, 2), str(ex.status or "..."))
+                table.update_cell_at(Coordinate(i, 3), f"{ex.duration_ms:.0f}ms" if ex.duration_ms else "-")
+                table.update_cell_at(Coordinate(i, 4), human_size(ex.res_body_size))
                 break
 
     def _update_status(self) -> None:
@@ -265,7 +266,7 @@ class WatchApp(App[None]):  # type: ignore[misc]
         conn = "Connected" if self._connected else "Disconnected"
         bar.update(f" {self._tunnel_id}  {conn}  {self._request_count} requests  [Tab] Layout  [f] Method  [q] Quit")
 
-    @on(DataTable.RowSelected)  # type: ignore[untyped-decorator]
+    @on(DataTable.RowSelected)
     def _on_row_selected(self, event: DataTable.RowSelected) -> None:
         rid = str(event.row_key.value)
         ex = next((e for e in self._exchanges if e.req_id == rid), None)
