@@ -315,7 +315,6 @@ export class UndefHijack {
       allowTransparency: true,
       scrollback: 10000,
       scrollOnUserInput: true,
-      overviewRulerWidth: 15,
     });
     this._term.open(termDiv);
     this._term.focus();
