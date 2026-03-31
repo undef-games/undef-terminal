@@ -62,7 +62,7 @@ def test_context_manager_calls_close_on_exit() -> None:
     assert closed == [True]
 
 
-@pytest.mark.requires_pam
+@pytest.mark.requires_pam_auth
 def test_bad_credentials_raises_pam_error() -> None:
     """Requires /etc/pam.d/undef-terminal and a 'testuser' OS account."""
     session = PamSession()

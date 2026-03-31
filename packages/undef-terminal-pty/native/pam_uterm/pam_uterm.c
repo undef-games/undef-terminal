@@ -51,6 +51,7 @@
 #define DEFAULT_CAP_DIR "/run"
 #define MAX_JSON        768
 #define MAX_PATH        256
+#define MAX_ENV         512  /* "KEY=value" — must hold prefix + MAX_PATH */
 
 /* ── arg parsing ────────────────────────────────────────────────────────── */
 
@@ -81,7 +82,8 @@ static void _notify(const char *socket_path, const char *json) {
     strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
 
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
-        (void)write(fd, json, strlen(json));
+        ssize_t n = write(fd, json, strlen(json));
+        (void)n;  /* best-effort notify — partial/failed writes are acceptable */
     }
     close(fd);
 }
@@ -96,10 +98,15 @@ PAM_EXTERN int pam_sm_open_session(pam_handle_t *pamh, int flags __attribute__((
     int capture             = _is_capture_mode(argc, argv);
     int pid                 = (int)getpid();
 
+    /* pam_get_user() is the safe API for retrieving the username from within a
+     * module — it avoids the internal PAM lock that pam_get_item(PAM_USER) can
+     * deadlock on in some libpam implementations (e.g. Debian Linux-PAM). */
     const char *username = NULL;
-    const char *tty      = NULL;
-    pam_get_item(pamh, PAM_USER, (const void **)&username);
-    pam_get_item(pamh, PAM_TTY,  (const void **)&tty);
+    pam_get_user(pamh, &username, NULL);
+
+    /* PAM_TTY is safe to read via pam_get_item from a session module. */
+    const char *tty = NULL;
+    pam_get_item(pamh, PAM_TTY, (const void **)&tty);
 
     char json[MAX_JSON];
     if (capture) {
@@ -116,11 +123,11 @@ PAM_EXTERN int pam_sm_open_session(pam_handle_t *pamh, int flags __attribute__((
         /* Inject LD_PRELOAD and capture socket path into the PAM environment.
          * These are inherited by the child shell that sshd/login spawns.      */
         if (lib_path && *lib_path) {
-            char preload[MAX_PATH];
+            char preload[MAX_ENV];
             snprintf(preload, sizeof(preload), "LD_PRELOAD=%s", lib_path);
             pam_putenv(pamh, preload);
 
-            char cap_env[MAX_PATH];
+            char cap_env[MAX_ENV];
             snprintf(cap_env, sizeof(cap_env), "UTERM_CAPTURE_SOCKET=%s", cap_sock);
             pam_putenv(pamh, cap_env);
         }
@@ -146,9 +153,9 @@ PAM_EXTERN int pam_sm_close_session(pam_handle_t *pamh, int flags __attribute__(
     int pid                 = (int)getpid();
 
     const char *username = NULL;
-    const char *tty      = NULL;
-    pam_get_item(pamh, PAM_USER, (const void **)&username);
-    pam_get_item(pamh, PAM_TTY,  (const void **)&tty);
+    pam_get_user(pamh, &username, NULL);
+    const char *tty = NULL;
+    pam_get_item(pamh, PAM_TTY, (const void **)&tty);
 
     char json[MAX_JSON];
     snprintf(json, sizeof(json),

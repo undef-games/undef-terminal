@@ -59,9 +59,10 @@ static void send_frame(uint8_t channel, const void *data, size_t len) {
     header[2] = (n >> 16) & 0xff;
     header[3] = (n >>  8) & 0xff;
     header[4] = (n      ) & 0xff;
-    /* Write directly to capture_fd (fd > 2) — not intercepted by our write() */
-    (void)write(g_capture_fd, header, 5);
-    (void)write(g_capture_fd, data, len);
+    /* Write directly to capture_fd (fd > 2) — not intercepted by our write() below.
+     * Best-effort: partial/failed writes are acceptable for capture telemetry. */
+    ssize_t nh = write(g_capture_fd, header, 5);  (void)nh;
+    ssize_t nd = write(g_capture_fd, data, len);   (void)nd;
 }
 
 __attribute__((constructor))
