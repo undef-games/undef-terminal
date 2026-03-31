@@ -110,8 +110,14 @@ def _validate_auth_config(config: ServerConfig) -> None:
         raise ValueError("configure auth.jwt_public_key_pem or auth.jwt_jwks_url when auth.mode='jwt'")
 
 
-def create_server_app(config: ServerConfig) -> FastAPI:
-    """Create the standalone reference server application."""
+def create_server_app(config: ServerConfig, hub_class: type[TermHub] | None = None) -> FastAPI:
+    """Create the standalone reference server application.
+
+    Args:
+        config: Server configuration.
+        hub_class: Optional TermHub subclass to use instead of the default TermHub.
+                   Useful for injecting mixins such as DeckMuxMixin.
+    """
     _validate_auth_config(config)
     _validate_frontend_assets()
     authz = AuthorizationService()
@@ -275,7 +281,8 @@ def create_server_app(config: ServerConfig) -> FastAPI:
             raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="insufficient privileges")
         return policy.role_for(principal, session)
 
-    hub = TermHub(
+    _hub_class = hub_class if hub_class is not None else TermHub
+    hub = _hub_class(
         resolve_browser_role=_resolve_browser_role,
         on_metric=_inc_metric,
         worker_token=config.auth.worker_bearer_token,

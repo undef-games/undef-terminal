@@ -171,9 +171,23 @@ max_modules = "B"
 max_average = "A"
 
 [tool.mutmut]
-paths_to_mutate = ["src/undef/terminal/shell/_render.py"]
+paths_to_mutate = [
+    "src/undef/terminal/shell/_render.py",
+    "src/undef/terminal/deckmux/_presence.py",
+    "src/undef/terminal/deckmux/_hub_mixin.py",
+    "src/undef/terminal/deckmux/_transfer.py",
+    "src/undef/terminal/deckmux/_protocol.py",
+    "src/undef/terminal/deckmux/_names.py",
+    "src/undef/terminal/deckmux/_edge.py",
+]
 tests_dir = [
     "packages/undef-terminal-shell/tests/shell/test_shell_render.py",
+    "packages/undef-terminal-deckmux/tests/deckmux/test_presence.py",
+    "packages/undef-terminal-deckmux/tests/deckmux/test_hub_mixin.py",
+    "packages/undef-terminal-deckmux/tests/deckmux/test_transfer.py",
+    "packages/undef-terminal-deckmux/tests/deckmux/test_protocol.py",
+    "packages/undef-terminal-deckmux/tests/deckmux/test_names.py",
+    "packages/undef-terminal-deckmux/tests/deckmux/test_edge.py",
 ]
 also_copy = [
     "src",
@@ -181,6 +195,8 @@ also_copy = [
     "packages/undef-terminal/src",
     "packages/undef-terminal/tests",
     "packages/undef-terminal-shell/tests",
+    "packages/undef-terminal-deckmux/src",
+    "packages/undef-terminal-deckmux/tests",
     "conftest.py",
 ]
 pytest_add_cli_args = ["--timeout=30", "-p", "no:randomly", "-p", "no:hypothesis"]
