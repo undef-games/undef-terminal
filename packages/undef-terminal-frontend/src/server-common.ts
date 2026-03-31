@@ -45,10 +45,16 @@ export interface UndefHijackConfig {
   showAnalysis?: boolean;
   mobileKeys?: boolean;
   authToken?: string;
+  onPresenceMessage?: (msg: Record<string, unknown>) => void;
+}
+
+export interface UndefHijackInstance {
+  sendControlMessage(msg: Record<string, unknown>): void;
+  readonly terminalElement: HTMLElement | null;
 }
 
 export interface UndefHijackConstructor {
-  new (container: HTMLElement, config: UndefHijackConfig): unknown;
+  new (container: HTMLElement, config: UndefHijackConfig): UndefHijackInstance;
 }
 
 declare global {

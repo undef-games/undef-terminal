@@ -11,6 +11,9 @@ export interface DeckMuxUser {
   initials: string;
   scrollLine: number;
   scrollRange: [number, number];
+  cols: number; // terminal width (0 = unknown)
+  rows: number; // terminal height (0 = unknown)
+  joinTime: number; // Date.now() ms when first seen
   selection: { start: { line: number; col: number }; end: { line: number; col: number } } | null;
   pin: { line: number } | null;
   typing: boolean;
@@ -21,6 +24,7 @@ export interface DeckMuxUser {
 export interface DeckMuxConfig {
   autoTransferIdleS: number;
   keystrokeQueue: "display" | "replay";
+  ghostBox?: boolean; // default true — show ghost box overlay
 }
 
 export interface ContextAction {

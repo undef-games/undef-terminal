@@ -6,6 +6,7 @@
 import { DeckMuxControlPanel } from "./control-panel.js";
 import { DeckMuxCursorOverlay } from "./cursor-overlay.js";
 import { DeckMuxEdgeIndicators } from "./edge-indicators.js";
+import { DeckMuxGhostOverlay } from "./ghost-overlay.js";
 import { DeckMuxPresenceBar } from "./presence-bar.js";
 import type { ContextAction, DeckMuxConfig, DeckMuxUser } from "./types.js";
 
@@ -25,11 +26,14 @@ export class DeckMux {
   private _presenceBar: DeckMuxPresenceBar | null = null;
   private _edgeIndicators: DeckMuxEdgeIndicators | null = null;
   private _cursorOverlay: DeckMuxCursorOverlay | null = null;
+  private _ghostOverlay: DeckMuxGhostOverlay | null = null;
   private _controlPanel: DeckMuxControlPanel | null = null;
   private _enabled = false;
   private _users = new Map<string, DeckMuxUser>();
   private _myUserId: string | null = null;
   private _barContainer: HTMLElement | null = null;
+  private _ownCols = 0;
+  private _ownRows = 0;
 
   // wsConnection is reserved for future direct WS dispatch; coordination currently
   // uses CustomEvent bubbling on the terminal container.
@@ -54,15 +58,28 @@ export class DeckMux {
     this._cursorOverlay = new DeckMuxCursorOverlay(this._terminalContainer);
     this._controlPanel = new DeckMuxControlPanel(this._terminalContainer);
 
+    if (config.ghostBox !== false) {
+      this._ghostOverlay = new DeckMuxGhostOverlay(this._terminalContainer);
+    }
+
     this._presenceBar.onAvatarClick = (userId) => this._handleAvatarClick(userId);
     this._presenceBar.onToggleNames = (visible) => this._edgeIndicators?.setNamesVisible(visible);
     this._presenceBar.onToggleCursors = (visible) => this._cursorOverlay?.setVisible(visible);
+    this._presenceBar.onToggleGhostBox = (visible) => this._ghostOverlay?.setVisible(visible);
+    this._presenceBar.onAvatarHover = (userId) => this._handleAvatarHover(userId);
+    this._presenceBar.onAvatarHoverOut = (userId) => this._handleAvatarHoverOut(userId);
   }
 
   disable(): void {
     if (!this._enabled) return;
     this._enabled = false;
     this._teardown();
+  }
+
+  setOwnDimensions(cols: number, rows: number): void {
+    this._ownCols = cols;
+    this._ownRows = rows;
+    this._ghostOverlay?.setOwnDimensions(cols, rows);
   }
 
   handleMessage(msg: Record<string, unknown>): void {
@@ -113,12 +130,24 @@ export class DeckMux {
     this._presenceBar?.destroy();
     this._edgeIndicators?.destroy();
     this._cursorOverlay?.destroy();
+    this._ghostOverlay?.destroy();
     this._controlPanel?.destroy();
     this._presenceBar = null;
     this._edgeIndicators = null;
     this._cursorOverlay = null;
+    this._ghostOverlay = null;
     this._controlPanel = null;
     this._users.clear();
+  }
+
+  private _handleAvatarHover(userId: string): void {
+    const user = this._users.get(userId);
+    if (!user || user.cols === 0 || user.rows === 0) return;
+    this._ghostOverlay?.showUser(userId, user.color, user.cols, user.rows);
+  }
+
+  private _handleAvatarHoverOut(userId: string): void {
+    this._ghostOverlay?.hideUser(userId);
   }
 
   private _handleHello(msg: Record<string, unknown>): void {
@@ -142,6 +171,7 @@ export class DeckMux {
     this._edgeIndicators?.removeUser(userId);
     this._cursorOverlay?.removePin(userId);
     this._cursorOverlay?.removeSelection(userId);
+    this._ghostOverlay?.removeUser(userId);
   }
 
   private _handlePresence(msg: Record<string, unknown>): void {
@@ -151,9 +181,15 @@ export class DeckMux {
     if (!existing) return;
 
     const fields = this._extractPartialUser(msg);
+    const prevCols = existing.cols;
+    const prevRows = existing.rows;
     Object.assign(existing, fields);
     this._presenceBar?.updateUser(userId, fields);
     this._updateEdge(existing);
+
+    if (existing.cols > 0 && existing.rows > 0 && (existing.cols !== prevCols || existing.rows !== prevRows)) {
+      this._ghostOverlay?.flashUser(existing.userId, existing.color, existing.cols, existing.rows);
+    }
 
     if (existing.typing !== undefined) {
       this._presenceBar?.setUserTyping(userId, existing.typing);
@@ -278,6 +314,9 @@ export class DeckMux {
       initials: this._initials(name),
       scrollLine: typeof msg.scroll_line === "number" ? (msg.scroll_line as number) : 0,
       scrollRange: Array.isArray(msg.scroll_range) ? (msg.scroll_range as [number, number]) : [0, 1],
+      cols: typeof msg.cols === "number" ? (msg.cols as number) : 0,
+      rows: typeof msg.rows === "number" ? (msg.rows as number) : 0,
+      joinTime: Date.now(),
       selection: this._extractSelection(msg.selection),
       pin: this._extractPin(msg.pin),
       typing: msg.typing === true,
@@ -298,6 +337,8 @@ export class DeckMux {
     if (typeof msg.typing === "boolean") fields.typing = msg.typing as boolean;
     if (typeof msg.queued_keys === "string") fields.queuedKeys = msg.queued_keys as string;
     if (typeof msg.is_owner === "boolean") fields.isOwner = msg.is_owner as boolean;
+    if (typeof msg.cols === "number") fields.cols = msg.cols as number;
+    if (typeof msg.rows === "number") fields.rows = msg.rows as number;
     if (fields.name) fields.initials = this._initials(fields.name);
     return fields;
   }
@@ -399,6 +440,18 @@ export class DeckMux {
       actions.push({
         icon: "⚡",
         label: "Request control",
+        onClick: () => {
+          const event = new CustomEvent("deckmux:request_control", { bubbles: true, detail: {} });
+          this._terminalContainer.dispatchEvent(event);
+        },
+      });
+    }
+
+    const noOwner = !Array.from(this._users.values()).some((u) => u.isOwner);
+    if (noOwner && userId === this._myUserId) {
+      actions.push({
+        icon: "👑",
+        label: "Claim control",
         onClick: () => {
           const event = new CustomEvent("deckmux:request_control", { bubbles: true, detail: {} });
           this._terminalContainer.dispatchEvent(event);

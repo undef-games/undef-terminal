@@ -15,11 +15,20 @@ interface UserRange {
   };
 }
 
+const MAX_USERS = 7;
+const BAR_WIDTH = 4; // px — bar width
+const BAR_GAP = 1; // px — gap between bars
+const SLOT_STEP = BAR_WIDTH + BAR_GAP; // 5px per slot
+
 export class DeckMuxEdgeIndicators {
   private readonly _terminalContainer: HTMLElement;
   private _track: HTMLElement | null = null;
   private _namesVisible = false;
-  private _users = new Map<string, { state: UserRange; barEl: HTMLElement; nameEl: HTMLElement | null }>();
+  private _slots: (string | null)[] = Array(MAX_USERS).fill(null) as (string | null)[];
+  private _users = new Map<
+    string,
+    { state: UserRange; slot: number; barEl: HTMLElement; nameEl: HTMLElement | null }
+  >();
 
   constructor(terminalContainer: HTMLElement) {
     this._terminalContainer = terminalContainer;
@@ -31,6 +40,22 @@ export class DeckMuxEdgeIndicators {
     track.className = "dm-edge-track";
     this._track = track;
     this._terminalContainer.appendChild(track);
+  }
+
+  private _assignSlot(userId: string): number {
+    const existing = this._slots.indexOf(userId);
+    if (existing !== -1) return existing;
+    const free = this._slots.indexOf(null);
+    if (free !== -1) {
+      this._slots[free] = userId;
+      return free;
+    }
+    return -1; // at capacity
+  }
+
+  private _freeSlot(userId: string): void {
+    const idx = this._slots.indexOf(userId);
+    if (idx !== -1) this._slots[idx] = null;
   }
 
   setUser(
@@ -50,11 +75,15 @@ export class DeckMuxEdgeIndicators {
 
     if (existing) {
       existing.state = state;
-      this._syncBar(userId, existing.barEl, existing.nameEl, state);
+      this._syncBar(existing.slot, existing.barEl, existing.nameEl, state);
     } else {
+      const slot = this._assignSlot(userId);
+      if (slot === -1) return; // over capacity
+
       const barEl = document.createElement("div");
       barEl.className = "dm-edge-bar";
       barEl.dataset.userId = userId;
+      barEl.style.left = `${slot * SLOT_STEP}px`;
 
       let nameEl: HTMLElement | null = null;
       if (options.name) {
@@ -66,8 +95,8 @@ export class DeckMuxEdgeIndicators {
       }
 
       this._track?.appendChild(barEl);
-      this._users.set(userId, { state, barEl, nameEl });
-      this._syncBar(userId, barEl, nameEl, state);
+      this._users.set(userId, { state, slot, barEl, nameEl });
+      this._syncBar(slot, barEl, nameEl, state);
     }
   }
 
@@ -75,6 +104,7 @@ export class DeckMuxEdgeIndicators {
     const entry = this._users.get(userId);
     if (!entry) return;
     entry.barEl.remove();
+    this._freeSlot(userId);
     this._users.delete(userId);
   }
 
@@ -90,10 +120,11 @@ export class DeckMuxEdgeIndicators {
   destroy(): void {
     this._track?.remove();
     this._track = null;
+    this._slots.fill(null);
     this._users.clear();
   }
 
-  private _syncBar(_userId: string, barEl: HTMLElement, nameEl: HTMLElement | null, state: UserRange): void {
+  private _syncBar(_slot: number, barEl: HTMLElement, nameEl: HTMLElement | null, state: UserRange): void {
     const { color, range, options } = state;
     const isOwner = options.isOwner ?? false;
 

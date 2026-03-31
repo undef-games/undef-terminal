@@ -25,12 +25,16 @@ export class DeckMuxPresenceBar {
   private _countBadge: HTMLElement | null = null;
   private _namesVisible = false;
   private _cursorsVisible = true;
+  private _ghostBoxVisible = true;
   private _ownerId: string | null = null;
   private _entries = new Map<string, AvatarEntry>();
 
   onAvatarClick: ((userId: string) => void) | null = null;
   onToggleNames: ((visible: boolean) => void) | null = null;
   onToggleCursors: ((visible: boolean) => void) | null = null;
+  onToggleGhostBox: ((visible: boolean) => void) | null = null;
+  onAvatarHover: ((userId: string) => void) | null = null;
+  onAvatarHoverOut: ((userId: string) => void) | null = null;
 
   // config is reserved for future feature flags (e.g. autoTransferIdleS display)
   constructor(container: HTMLElement, _config: DeckMuxConfig) {
@@ -77,8 +81,20 @@ export class DeckMuxPresenceBar {
       this.onToggleCursors?.(this._cursorsVisible);
     });
 
+    const dimsBtn = document.createElement("button");
+    dimsBtn.className = "dm-toggle-btn dm-toggle-btn--active";
+    dimsBtn.textContent = "Dims";
+    dimsBtn.setAttribute("aria-pressed", "true");
+    dimsBtn.addEventListener("click", () => {
+      this._ghostBoxVisible = !this._ghostBoxVisible;
+      dimsBtn.setAttribute("aria-pressed", String(this._ghostBoxVisible));
+      dimsBtn.classList.toggle("dm-toggle-btn--active", this._ghostBoxVisible);
+      this.onToggleGhostBox?.(this._ghostBoxVisible);
+    });
+
     togglesRow.appendChild(namesBtn);
     togglesRow.appendChild(cursorsBtn);
+    togglesRow.appendChild(dimsBtn);
 
     root.appendChild(avatarRow);
     root.appendChild(countBadge);
@@ -193,9 +209,16 @@ export class DeckMuxPresenceBar {
     nameLabel.textContent = user.name;
     nameLabel.style.display = this._namesVisible ? "" : "none";
 
+    const dimsBadge = document.createElement("span");
+    dimsBadge.className = "dm-avatar-dims";
+    dimsBadge.style.display = "none";
+
     wrap.appendChild(circle);
     wrap.appendChild(nameLabel);
+    wrap.appendChild(dimsBadge);
 
+    wrap.addEventListener("mouseenter", () => this.onAvatarHover?.(user.userId));
+    wrap.addEventListener("mouseleave", () => this.onAvatarHoverOut?.(user.userId));
     wrap.addEventListener("click", () => this.onAvatarClick?.(user.userId));
 
     this._applyAvatarState(wrap, user);
@@ -218,6 +241,14 @@ export class DeckMuxPresenceBar {
     if (nameLabel) {
       nameLabel.textContent = user.name;
       nameLabel.style.display = this._namesVisible ? "" : "none";
+    }
+
+    const dimsBadge = el.querySelector<HTMLElement>(".dm-avatar-dims");
+    if (dimsBadge && user.cols > 0 && user.rows > 0) {
+      dimsBadge.textContent = `${user.rows}×${user.cols}`;
+      dimsBadge.style.display = "";
+    } else if (dimsBadge) {
+      dimsBadge.style.display = "none";
     }
 
     this._applyAvatarState(el, user);
