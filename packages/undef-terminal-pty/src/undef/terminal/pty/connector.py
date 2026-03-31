@@ -44,12 +44,21 @@ _VALID_MODES = frozenset({"open", "hijack"})
 
 
 def _register() -> None:
+    import sys
+
     try:
         from undef.terminal.server.connectors.registry import register_connector
 
         register_connector("pty", PTYConnector)  # type: ignore[arg-type]
     except ImportError:
-        pass
+        return
+    # connectors/__init__.py computes KNOWN_CONNECTOR_TYPES at import time; if it
+    # ran before _register() completed (circular import), refresh it now.
+    connectors = sys.modules.get("undef.terminal.server.connectors")
+    if connectors is not None and hasattr(connectors, "KNOWN_CONNECTOR_TYPES"):
+        from undef.terminal.server.connectors.registry import registered_types
+
+        connectors.KNOWN_CONNECTOR_TYPES = registered_types()  # type: ignore[attr-defined]
 
 
 class PTYConnector:
