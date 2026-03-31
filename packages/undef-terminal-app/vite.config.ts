@@ -1,9 +1,15 @@
+import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react()],
   base: "",
+  resolve: {
+    alias: {
+      "@undef-terminal-frontend": path.resolve(__dirname, "../undef-terminal-frontend/src"),
+    },
+  },
   build: {
     outDir: "../../packages/undef-terminal/src/undef/terminal/frontend",
     emptyOutDir: false,
