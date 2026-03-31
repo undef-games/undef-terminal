@@ -8,15 +8,20 @@ from undef.terminal.pty._validate import (
     validate_username,
 )
 from undef.terminal.pty.capture import CaptureFrame, CaptureSocket
+from undef.terminal.pty.capture_connector import CaptureConnector
 from undef.terminal.pty.connector import PTYConnector
 from undef.terminal.pty.pam import PamError, PamSession
+from undef.terminal.pty.pam_listener import PamEvent, PamNotifyListener
 from undef.terminal.pty.uid_map import ResolvedUser, UidMap, UidMapError
 
 __all__ = [
+    "CaptureConnector",
     "CaptureFrame",
     "CaptureSocket",
     "PTYConnector",
     "PamError",
+    "PamEvent",
+    "PamNotifyListener",
     "PamSession",
     "ResolvedUser",
     "UidMap",

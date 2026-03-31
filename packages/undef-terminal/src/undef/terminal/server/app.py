@@ -383,9 +383,18 @@ def create_server_app(config: ServerConfig, hub_class: type[TermHub] | None = No
         sweep_task = asyncio.create_task(_sweep_expired_tunnel_tokens())
         idle_sweep_task = asyncio.create_task(_sweep_idle_sessions())
         retention_sweep_task = asyncio.create_task(_sweep_expired_sessions())
+        pam_task: asyncio.Task[None] | None = None
+        with contextlib.suppress(ImportError):
+            from undef.terminal.server.pam_integration import run_pam_integration
+
+            pam_task = asyncio.create_task(run_pam_integration(config, registry))
         try:
             yield
         finally:
+            if pam_task is not None:
+                pam_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await pam_task
             retention_sweep_task.cancel()
             idle_sweep_task.cancel()
             sweep_task.cancel()

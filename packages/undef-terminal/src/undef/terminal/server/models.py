@@ -267,6 +267,15 @@ class SessionRuntimeStatus(ServerBaseModel):
     last_error: str | None = None
 
 
+class PamConfig(ServerBaseModel):
+    """PAM session bridge settings (requires undef-terminal-pty)."""
+
+    notify_socket: str | None = None
+    mode: Literal["notify", "capture"] = "notify"
+    auto_session: bool = False
+    auto_session_command: str = "/bin/bash"
+
+
 class ServerConfig(ServerBaseModel):
     """Top-level application config for the standalone server."""
 
@@ -277,6 +286,7 @@ class ServerConfig(ServerBaseModel):
     profiles: ProfileStoreConfig = Field(default_factory=ProfileStoreConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     tunnel: TunnelConfig = Field(default_factory=TunnelConfig)
+    pam: PamConfig = Field(default_factory=PamConfig)
     sessions: list[SessionDefinition] = Field(default_factory=list)
     session_idle_timeout_s: int = 0  # 0 = disabled, >0 = seconds of inactivity before auto-cleanup
     session_retention_s: int = 0  # 0 = disabled, >0 = auto-delete stopped sessions older than N seconds
@@ -289,6 +299,7 @@ ServerModel: TypeAlias = (
     | ProfileStoreConfig
     | SecurityConfig
     | TunnelConfig
+    | PamConfig
     | ServerBindConfig
     | SessionDefinition
     | SessionRuntimeStatus
