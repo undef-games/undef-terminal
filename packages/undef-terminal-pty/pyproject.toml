@@ -31,7 +31,7 @@ version = {file = "VERSION"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-"undef.terminal.pty" = ["_native/*"]
+"undef.terminal.pty" = ["py.typed", "_native/*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -60,8 +60,12 @@ target-version = "py311"
 select = ["E", "F", "W", "I", "UP", "S", "B", "C4", "PTH"]
 ignore = [
     "S603",  # subprocess without shell — we use os.execve, not subprocess
+    "S604",  # shell= keyword — used in ResolvedUser dataclass field, not subprocess
     "S108",  # temp file — addressed via mkdtemp() in connector
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]  # assert statements are expected in pytest test files
 
 [tool.mypy]
 python_version = "3.11"

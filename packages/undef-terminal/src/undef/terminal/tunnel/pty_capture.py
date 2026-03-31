@@ -90,7 +90,7 @@ def spawn_pty(cmd: list[str] | None = None) -> SpawnedPty:
     if cmd is None:
         cmd = [os.environ.get("SHELL", "/bin/sh")]
 
-    child_pid, master_fd = pty.fork()  # type: ignore[attr-defined]
+    child_pid, master_fd = pty.fork()
     if child_pid == 0:  # pragma: no cover — runs in forked child
         os.execvp(cmd[0], cmd)  # noqa: S606
         sys.exit(1)

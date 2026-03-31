@@ -48,12 +48,11 @@ repos:
     hooks:
       - id: mypy
         name: mypy strict
-        entry: mypy packages/undef-terminal/src/ packages/undef-terminal-pty/src/
+        entry: mypy packages/undef-terminal/src/
         language: python
         language_version: python3.11
         additional_dependencies:
           - mypy==1.19.1
-          - pamela>=1.2
           - fastapi>=0.110
           - httpx>=0.27
           - pydantic>=2.0
@@ -91,6 +90,14 @@ repos:
           - structlog>=24.0
         pass_filenames: false
         always_run: true
+        types: [python]
+
+      - id: mypy-pty
+        name: mypy strict (undef-terminal-pty)
+        entry: bash -c 'MYPYPATH=packages/undef-terminal/src:packages/undef-terminal-pty/src mypy packages/undef-terminal-pty/src/undef/'
+        language: system
+        pass_filenames: false
+        always_run: false
         types: [python]
 
       - id: bandit
