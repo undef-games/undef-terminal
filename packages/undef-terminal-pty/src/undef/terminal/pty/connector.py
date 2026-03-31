@@ -11,6 +11,7 @@ import shutil
 import signal
 import sys
 import tempfile
+import termios
 import time
 from typing import Any
 
@@ -167,14 +168,18 @@ class PTYConnector:
         fl = fcntl.fcntl(master_fd, fcntl.F_GETFL)
         fcntl.fcntl(master_fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
+        # Disable local echo: input written by the server is not reflected back
+        # in the master's read stream (the frontend renders its own echo).
+        attrs = termios.tcgetattr(slave_fd)
+        attrs[3] &= ~termios.ECHO  # lflags: clear ECHO bit
+        termios.tcsetattr(slave_fd, termios.TCSANOW, attrs)
+
         pid = os.fork()  # nosec B110 — deliberate fork for PTY supervision
         if pid == 0:
             # ── child ──────────────────────────────────────────────────────
             os.close(master_fd)
             os.setsid()
-            import termios as _termios
-
-            fcntl.ioctl(slave_fd, _termios.TIOCSCTTY, 0)
+            fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
             os.dup2(slave_fd, 0)
             os.dup2(slave_fd, 1)
             os.dup2(slave_fd, 2)
