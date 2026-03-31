@@ -92,6 +92,39 @@ def test_line_to_edge_position_negative_total() -> None:
     assert line_to_edge_position(10, -5) == 0.0
 
 
+def test_line_to_edge_position_total_one_nonzero_line() -> None:
+    """total_lines=1 is valid; line=1 should return 1.0, not fall through guard."""
+    assert line_to_edge_position(1, 1) == 1.0
+
+
+def test_line_to_edge_position_rounds_to_4_decimal_places() -> None:
+    """Result is rounded to exactly 4 decimal places."""
+    result = line_to_edge_position(1, 3)  # 1/3 = 0.3333...
+    assert result == round(1 / 3, 4)
+    assert len(str(result).rstrip("0").split(".")[-1]) <= 4
+
+
+def test_viewport_to_edge_range_total_one_nonzero_top() -> None:
+    """total_lines=1 with scroll_top=1 → top=1.0, not (0.0, 1.0) from guard."""
+    top, height = viewport_to_edge_range(1, 24, 1)
+    assert top == 1.0
+    assert height == 0.0
+
+
+def test_viewport_to_edge_range_rounds_top_to_4_decimal_places() -> None:
+    """top_pct is rounded to exactly 4 decimal places, not 5."""
+    top, _ = viewport_to_edge_range(1, 24, 3)  # 1/3 = 0.3333...
+    assert top == round(1 / 3, 4)
+    assert top != round(1 / 3, 5)
+
+
+def test_viewport_to_edge_range_rounds_height_to_4_decimal_places() -> None:
+    """height_pct is rounded to exactly 4 decimal places, not 5."""
+    _, height = viewport_to_edge_range(0, 1, 3)  # 1/3 = 0.3333...
+    assert height == round(1 / 3, 4)
+    assert height != round(1 / 3, 5)
+
+
 # --- scroll_center_line ---
 
 

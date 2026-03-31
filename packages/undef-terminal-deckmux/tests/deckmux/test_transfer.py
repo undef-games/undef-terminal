@@ -246,3 +246,81 @@ def test_build_transfer_message_replay_empty_queue() -> None:
     tm = TransferManager(keystroke_queue_mode="replay")
     msg = tm.build_transfer_message("u1", "u2", "lease_expired")
     assert msg["queued_keys"] == ""
+
+
+# --- Default value killers ---
+
+
+def test_default_auto_transfer_idle_is_30() -> None:
+    """Default idle threshold is exactly 30.0, not 31.0."""
+    tm = TransferManager()
+    # At 30s idle with queued users, transfer should trigger
+    _, transfer = tm.check_auto_transfer(30.0, ["u2"])
+    assert transfer is True
+    # At 29s, should NOT trigger (would if threshold were 29 or less)
+    tm2 = TransferManager()
+    _, transfer2 = tm2.check_auto_transfer(29.0, ["u2"])
+    assert transfer2 is False
+
+
+def test_default_queue_mode_is_display_not_replay() -> None:
+    """Default queue mode is 'display'; flush_queue returns raw only in replay mode."""
+    tm = TransferManager()
+    tm.queue_keystroke("u1", "ls\r")
+    msg = tm.build_transfer_message("u2", "u1", "handover")
+    # display mode: queued_keys is encoded display, NOT raw bytes
+    assert msg["queued_keys"] == "ls↵"
+
+
+def test_warning_sent_initializes_as_false_not_none() -> None:
+    """_warning_sent must be False (bool), not None, for truthiness logic to work."""
+    tm = TransferManager()
+    assert tm._warning_sent is False
+    assert tm._warning_sent == False  # noqa: E712 — explicit not-None check
+
+
+def test_warn_threshold_max_uses_0_not_1() -> None:
+    """max(0, ...) not max(1, ...): at idle_s=5, warn threshold=0, idle=0.5 should warn."""
+    tm = TransferManager(auto_transfer_idle_s=5)
+    warn, _ = tm.check_auto_transfer(0.5, ["u2"])
+    # max(0, 5-10) = 0, 0.5 >= 0 → warn
+    # max(1, 5-10) = 1, 0.5 < 1 → would NOT warn
+    assert warn is True
+
+
+def test_warn_threshold_uses_minus_10_not_minus_11() -> None:
+    """warn_threshold = idle_s - 10; at idle=20, threshold=20, should warn."""
+    tm = TransferManager(auto_transfer_idle_s=30)
+    # 30 - 10 = 20: at exactly 20s idle, warn should fire
+    warn, _ = tm.check_auto_transfer(20.0, ["u2"])
+    assert warn is True
+    # But at 19s, should NOT warn (would if threshold were 19)
+    tm2 = TransferManager(auto_transfer_idle_s=30)
+    warn2, _ = tm2.check_auto_transfer(19.0, ["u2"])
+    assert warn2 is False
+
+
+def test_flush_queue_missing_returns_empty_string_not_none() -> None:
+    """flush_queue on unknown user returns '', not None."""
+    tm = TransferManager()
+    result = tm.flush_queue("nonexistent")
+    assert result == ""
+    assert result is not None
+
+
+def test_get_queue_display_missing_returns_empty_string_not_none() -> None:
+    """get_queue_display on unknown user returns '', not None."""
+    tm = TransferManager()
+    result = tm.get_queue_display("nonexistent")
+    assert result == ""
+    assert result is not None
+
+
+def test_queue_overflow_uses_strict_greater_than() -> None:
+    """Buffer truncates when len > MAX_QUEUE_LENGTH, not >= (i.e., MAX_QUEUE_LENGTH is allowed)."""
+    tm = TransferManager()
+    # Exactly MAX_QUEUE_LENGTH chars — should NOT be truncated
+    exact = "a" * MAX_QUEUE_LENGTH
+    tm.queue_keystroke("u1", exact)
+    raw = tm.flush_queue("u1")
+    assert len(raw) == MAX_QUEUE_LENGTH

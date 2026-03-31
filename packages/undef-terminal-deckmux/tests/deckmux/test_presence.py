@@ -230,3 +230,34 @@ def test_store_count() -> None:
     assert store.count == 2
     store.remove("u1")
     assert store.count == 1
+
+
+def test_store_prune_idle_removes_stale() -> None:
+    store = PresenceStore()
+    store.add("u1", "Alice", "#fff", "admin")
+    store.add("u2", "Bob", "#000", "viewer")
+    store.add("u3", "Carol", "#aaa", "operator")
+    # Backdate u3's activity to make it appear idle
+    store._users["u3"].last_activity_at = time.time() - 120
+    pruned = store.prune_idle(60.0)
+    assert pruned == ["u3"]
+    assert store.count == 2
+    assert store.get("u3") is None
+
+
+def test_store_prune_idle_no_stale() -> None:
+    store = PresenceStore()
+    store.add("u1", "Alice", "#fff", "admin")
+    pruned = store.prune_idle(60.0)
+    assert pruned == []
+    assert store.count == 1
+
+
+def test_add_default_initials_is_empty_string_not_xxxx() -> None:
+    """Default initials is '', not 'XXXX' or None."""
+    store = PresenceStore()
+    store.add("u1", "Alice", "#fff", "admin")
+    user = store.get("u1")
+    assert user is not None
+    assert user.initials == ""
+    assert user.initials is not None

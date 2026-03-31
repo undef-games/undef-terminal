@@ -83,6 +83,9 @@ class DeckMuxMixin:
         color = generate_color(user_id, store.taken_colors())
         initials = generate_initials(name)
 
+        # Prune users with no activity in the last 30 s (stale reconnect debris)
+        store.prune_idle(30.0)
+
         store.add(user_id, name, color, role, initials)
 
         # Build sync payload for the joining browser
@@ -123,6 +126,8 @@ class DeckMuxMixin:
                     "selection",
                     "pin",
                     "typing",
+                    "cols",
+                    "rows",
                 )
                 if k in msg
             }

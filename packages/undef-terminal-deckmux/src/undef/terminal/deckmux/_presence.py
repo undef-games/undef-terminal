@@ -26,6 +26,8 @@ class UserPresence:
     pin: dict[str, Any] | None = None
     typing: bool = False
     queued_keys: str = ""
+    cols: int = 0
+    rows: int = 0
     last_activity_at: float = field(default_factory=time.time)
     is_owner: bool = False
 
@@ -47,6 +49,8 @@ class UserPresence:
             "pin": self.pin,
             "typing": self.typing,
             "queued_keys": self.queued_keys,
+            "cols": self.cols,
+            "rows": self.rows,
             "is_owner": self.is_owner,
         }
 
@@ -102,6 +106,13 @@ class PresenceStore:
         """Clear the owner flag from all users."""
         for p in self._users.values():
             p.is_owner = False
+
+    def prune_idle(self, threshold_s: float) -> list[str]:
+        """Remove users idle longer than threshold_s. Returns removed user_ids."""
+        stale = [uid for uid, p in self._users.items() if p.is_idle(threshold_s)]
+        for uid in stale:
+            self._users.pop(uid)
+        return stale
 
     def get_sync_payload(self, config: dict[str, Any]) -> dict[str, Any]:
         """Build a presence_sync message with all current users."""

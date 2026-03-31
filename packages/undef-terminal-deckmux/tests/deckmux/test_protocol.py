@@ -187,3 +187,32 @@ def test_make_control_transfer_with_queued_keys() -> None:
     msg = make_control_transfer("u1", "u2", "auto_idle", queued_keys="ls\r")
     assert msg["queued_keys"] == "ls\r"
     assert msg["reason"] == "auto_idle"
+
+
+def test_make_control_transfer_default_queued_keys_is_empty_string() -> None:
+    """Default queued_keys must be '' not 'XXXX' or any other value."""
+    msg = make_control_transfer("u1", "u2", "handover")
+    assert msg["queued_keys"] == ""
+    assert msg["queued_keys"] is not None
+
+
+def test_encode_keys_3char_sequence_at_exact_boundary() -> None:
+    """3-char escape sequence that starts at position len-3 must be recognized.
+
+    i + 2 < len requires len > i + 2, i.e. len >= i + 3. For a 3-char sequence
+    at i=0, len must be exactly 3. If condition were i + 2 <= len (i.e., len >= i + 2),
+    it would match a 2-char prefix instead of requiring 3 chars.
+    """
+    # "\x1b[A" is exactly 3 chars; should decode to "↑"
+    assert encode_keys_display("\x1b[A") == "↑"
+
+
+def test_encode_keys_sequence_boundary_not_off_by_one() -> None:
+    """i + 2 < len (not <=): at i=0 with len=3, i+2=2 < 3 is True → correct.
+    If i + 2 <= len, then for i=0, len=2: i+2=2 <= 2 is True, but raw_keys[0:3]
+    would index out of a 2-char string — the correct guard is strict <.
+    """
+    # Two chars ending with printable — NOT an escape sequence
+    result = encode_keys_display("\x1b[")
+    # \x1b is in KEY_SYMBOLS as "⎋", "[" is printable
+    assert result == "⎋["

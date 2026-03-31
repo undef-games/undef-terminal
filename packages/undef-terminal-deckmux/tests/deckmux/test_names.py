@@ -135,3 +135,53 @@ def test_generate_initials_single_char_value() -> None:
     result = generate_initials("A")
     assert result == "A"
     assert result == result.upper()
+
+
+# --- Mutation killers ---
+
+
+def test_hash_int_uses_base_16_not_17() -> None:
+    """int(hexdigest, 16) — base 16, not 17 or any other base."""
+    import hashlib
+
+    val = _hash_int("hello")
+    expected = int(hashlib.sha256(b"hello").hexdigest(), 16)
+    assert val == expected
+
+
+def test_generate_color_avoidance_iterates_forward_not_backward() -> None:
+    """Color avoidance uses (h + offset), not (h - offset)."""
+    h = _hash_int("forward-test")
+    idx = h % len(_COLORS)
+    natural = _COLORS[idx]
+    forward_next = _COLORS[(h + 1) % len(_COLORS)]
+    backward_prev = _COLORS[(h - 1) % len(_COLORS)]
+    assert forward_next != backward_prev  # sanity: 12 colors means they must differ
+    result = generate_color("forward-test", taken=frozenset({natural}))
+    assert result == forward_next
+    assert result != backward_prev
+
+
+def test_generate_name_animal_variety_confirms_right_shift() -> None:
+    """(h << 8) % 32 always equals 0 (fox); variety proves >> 8 is used."""
+    names = [generate_name(f"shift-test-{i}") for i in range(20)]
+    animals = {n.split()[1].lower() for n in names}
+    # With (h << 8) % 32, ALL animals would be index 0 ("fox")
+    assert len(animals) > 1  # confirms right-shift, not left-shift
+
+
+def test_generate_name_animal_exact_formula() -> None:
+    """Animal is _ANIMALS[(h >> 8) % len] — shift 8 exactly, not 9."""
+    conn_id = "exact-shift-check"
+    h = _hash_int(conn_id)
+    expected_animal = _ANIMALS[(h >> 8) % len(_ANIMALS)]
+    wrong_shift9 = _ANIMALS[(h >> 9) % len(_ANIMALS)]
+    name = generate_name(conn_id)
+    actual_animal = name.split()[1].lower()
+    assert actual_animal == expected_animal
+    # Verify the two shifts give different results for this ID (otherwise test is vacuous)
+    if expected_animal == wrong_shift9:
+        # Try another ID
+        conn_id2 = "exact-shift-check-alt"
+        h2 = _hash_int(conn_id2)
+        assert _ANIMALS[(h2 >> 8) % len(_ANIMALS)] == generate_name(conn_id2).split()[1].lower()
