@@ -21,7 +21,8 @@
 .terminal {
   flex: 1;
   background: var(--bg-terminal);
-  min-height: 400px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .statusBar {

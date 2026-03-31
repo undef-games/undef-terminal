@@ -4,7 +4,7 @@ Shared terminal I/O primitives and WebSocket proxy infrastructure for the undef 
 
 **Highlights:** WebSocket ↔ telnet/SSH proxy · hijack/observe control plane · browser role system (viewer/operator/admin) · open/shared input mode · WS session resumption (role + hijack survive reconnect) · quick-connect ephemeral sessions (`GET /app/connect`, `POST /api/connect`) · `ShellSessionConnector` for in-process shell sessions · built-in Python REPL (`ushell`) · JWT auth · 4000+ tests at 100% branch coverage
 
-For Cloudflare Workers deployment, see [`undef-terminal-cloudflare`](packages/undef-terminal-cloudflare/README.md) — a companion package that runs the control plane on Durable Objects with CF Access JWT support.
+For Cloudflare Workers deployment, see [`undef-terminal-cloudflare`](https://github.com/undef-games/undef-terminal/blob/main/packages/undef-terminal-cloudflare/README.md) — a companion package that runs the control plane on Durable Objects with CF Access JWT support.
 
 ## Installation
 
@@ -194,10 +194,10 @@ Key endpoints:
 - `GET /app/connect` (quick-connect page)
 - `POST /api/connect` (create ephemeral session)
 
-The example TOML config in [`scripts/uterm-server.example.toml`](scripts/uterm-server.example.toml)
+The example TOML config in [`scripts/uterm-server.example.toml`](https://github.com/undef-games/undef-terminal/blob/main/scripts/uterm-server.example.toml)
 shows the intended reference-implementation structure for server config.
 For production JWT deployments, start from
-[`scripts/uterm-server.jwt.example.toml`](scripts/uterm-server.jwt.example.toml).
+[`scripts/uterm-server.jwt.example.toml`](https://github.com/undef-games/undef-terminal/blob/main/scripts/uterm-server.jwt.example.toml).
 
 ### Security Headers
 
@@ -288,7 +288,7 @@ predictable and fast in the hosted server. If you need key-based auth in config
 without a file path, prefer `client_key_data`.
 
 For `connector_type = "ushell"`, no external process is required. The session runs
-a built-in Python REPL powered by [`undef-terminal-shell`](packages/undef-terminal-shell/README.md).
+a built-in Python REPL powered by [`undef-terminal-shell`](https://github.com/undef-games/undef-terminal/blob/main/packages/undef-terminal-shell/README.md).
 Commands include `py <expr>`, `sessions`, `kv list/get/set/delete`, `fetch [-X METHOD] <url>`,
 `env`, `clear`, and `exit`. The REPL sandbox pre-imports `json`, `datetime`, `re`,
 `hashlib`, and `base64`.
@@ -313,8 +313,8 @@ keystroke_queue = "replay"
 
 DeckMux is a standalone package (`undef-terminal-deckmux`) with zero required dependencies,
 integrated into `undef-terminal` via a TermHub mixin. Both FastAPI and Cloudflare
-backends are supported at parity. See the [DeckMux README](packages/undef-terminal-deckmux/README.md)
-for full documentation and [PlantUML diagrams](packages/undef-terminal-deckmux/docs/diagrams/).
+backends are supported at parity. See the [DeckMux README](https://github.com/undef-games/undef-terminal/blob/main/packages/undef-terminal-deckmux/README.md)
+for full documentation and [PlantUML diagrams](https://github.com/undef-games/undef-terminal/tree/main/packages/undef-terminal-deckmux/docs/diagrams/).
 
 ### Frontend — UndefTerminal
 
