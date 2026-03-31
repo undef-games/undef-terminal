@@ -64,10 +64,17 @@ def test_context_manager_calls_close_on_exit() -> None:
 
 @pytest.mark.requires_pam
 def test_bad_credentials_raises_pam_error() -> None:
-    """Requires /etc/pam.d/undef-terminal service config."""
+    """Requires /etc/pam.d/undef-terminal and a 'testuser' OS account."""
     session = PamSession()
     with pytest.raises(PamError):
-        session.authenticate("root", "definitely_wrong_password_xyzzy")
+        session.authenticate("testuser", "definitely_wrong_password_xyzzy")
+
+
+@pytest.mark.requires_pam
+def test_good_credentials_succeed() -> None:
+    """Requires /etc/pam.d/undef-terminal and testuser:testpass123."""
+    session = PamSession()
+    session.authenticate("testuser", "testpass123")  # must not raise
 
 
 def test_authenticate_validates_username() -> None:
