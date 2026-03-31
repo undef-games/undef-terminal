@@ -40,6 +40,46 @@ logger = logging.getLogger(__name__)
 _TTY_SLUG_RE = re.compile(r"[^a-zA-Z0-9]+")
 
 
+async def _forward_to_cf(event_json: dict[str, object], cf_url: str, cf_token: str) -> None:
+    """POST PAM event to CF DO /api/pam-events. Best-effort — never raises."""
+    url = cf_url.rstrip("/") + "/api/pam-events"
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                url,
+                json=event_json,
+                headers={"Authorization": f"Bearer {cf_token}"},
+            )
+    except Exception as exc:
+        logger.warning("pam_cf_forward_failed url=%s error=%s", url, exc)
+
+
+async def _create_cf_tunnel(cf_url: str, cf_token: str, session_id: str, display_name: str) -> tuple[str, str] | None:
+    """POST /api/tunnels → (worker_token, ws_endpoint). Returns None on failure."""
+    url = cf_url.rstrip("/") + "/api/tunnels"
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(
+                url,
+                json={
+                    "session_id": session_id,
+                    "display_name": display_name,
+                    "tunnel_type": "terminal",
+                },
+                headers={"Authorization": f"Bearer {cf_token}"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return str(data["worker_token"]), str(data["ws_endpoint"])
+    except Exception as exc:
+        logger.warning("create_cf_tunnel_failed url=%s error=%s", url, exc)
+        return None
+
+
 def _tty_slug(tty: str) -> str:
     """'/dev/pts/3' → 'pts-3'."""
     basename = tty.split("/")[-1] if "/" in tty else tty
@@ -67,6 +107,8 @@ async def run_pam_integration(config: object, registry: object) -> None:
         logger.warning("pam_integration: undef-terminal-pty not installed — PAM listener disabled")
         return
 
+    _bridges: dict[str, object] = {}
+
     async def handle(event: object) -> None:
         ev = cast("PamEvent", event)
         logger.info(
@@ -78,9 +120,9 @@ async def run_pam_integration(config: object, registry: object) -> None:
             ev.mode,
         )
         if ev.event == "open":
-            await _on_open(ev, pam_cfg, registry)
+            await _on_open(ev, pam_cfg, registry, _bridges)
         elif ev.event == "close":
-            await _on_close(ev, registry)
+            await _on_close(ev, pam_cfg, registry, _bridges)
 
     listener = PamNotifyListener(pam_cfg.notify_socket)
     await listener.start(handle)
@@ -99,8 +141,14 @@ async def run_pam_integration(config: object, registry: object) -> None:
         logger.info("pam_integration stopped")
 
 
-async def _on_open(event: object, pam_cfg: object, registry: object) -> None:
+async def _on_open(
+    event: object,
+    pam_cfg: object,
+    registry: object,
+    bridges: dict[str, object] | None = None,
+) -> None:
     from undef.terminal.server.models import PamConfig  # noqa: TC001 — runtime cast needed
+    from undef.terminal.server.pam_tunnel import PamTunnelBridge
 
     ev = cast("PamEvent", event)
     cfg: PamConfig = pam_cfg  # type: ignore[assignment]
@@ -110,18 +158,72 @@ async def _on_open(event: object, pam_cfg: object, registry: object) -> None:
     elif cfg.auto_session:
         await _create_notify_session(ev, cfg, registry)
 
-
-async def _on_close(event: object, registry: object) -> None:
-    ev = cast("PamEvent", event)
     slug = _tty_slug(ev.tty)
     session_id = f"pam-{ev.username}-{slug}"
+    display_name = f"{ev.username} ({ev.tty or 'pam'})"
+
+    if cfg.cf_url and cfg.cf_token:
+        await _forward_to_cf(
+            {
+                "event": "open",
+                "username": ev.username,
+                "tty": ev.tty,
+                "pid": ev.pid,
+                "mode": ev.mode,
+            },
+            cfg.cf_url,
+            cfg.cf_token,
+        )
+        result = await _create_cf_tunnel(cfg.cf_url, cfg.cf_token, session_id, display_name)
+        if result is not None and bridges is not None:
+            worker_token, ws_endpoint = result
+            connector = _get_connector(registry, session_id)
+            if connector is not None:
+                bridge = PamTunnelBridge(ws_endpoint, worker_token, connector)
+                try:
+                    await bridge.start()
+                    bridges[session_id] = bridge
+                except Exception as exc:
+                    logger.warning("pam_tunnel_start_failed session_id=%s error=%s", session_id, exc)
+
+
+async def _on_close(
+    event: object,
+    pam_cfg: object,
+    registry: object,
+    bridges: dict[str, object] | None = None,
+) -> None:
+    from undef.terminal.server.models import PamConfig  # noqa: TC001 — runtime cast needed
+
+    ev = cast("PamEvent", event)
+    cfg: PamConfig = pam_cfg  # type: ignore[assignment]
+    slug = _tty_slug(ev.tty)
+    session_id = f"pam-{ev.username}-{slug}"
+
+    # Stop tunnel bridge first
+    bridge = bridges.pop(session_id, None) if bridges is not None else None
+    if bridge is not None:
+        try:
+            stop = getattr(bridge, "stop", None)
+            if callable(stop):
+                await stop()
+        except Exception as exc:
+            logger.debug("pam_bridge_stop_failed session_id=%s error=%s", session_id, exc)
+
+    if cfg.cf_url and cfg.cf_token:
+        await _forward_to_cf(
+            {"event": "close", "username": ev.username, "tty": ev.tty, "pid": ev.pid},
+            cfg.cf_url,
+            cfg.cf_token,
+        )
+
     try:
         # get_session raises if not found; runtime exposes stop()
         runtime = _get_runtime(registry, session_id)
         if runtime is not None:
-            stop = getattr(runtime, "stop", None)
-            if callable(stop):
-                await stop()
+            stop_fn = getattr(runtime, "stop", None)
+            if callable(stop_fn):
+                await stop_fn()
             logger.info("pam_session_stopped session_id=%s", session_id)
     except Exception as exc:
         logger.debug("pam_session_stop_failed session_id=%s error=%s", session_id, exc)
@@ -203,5 +305,16 @@ def _get_runtime(registry: object, session_id: str) -> object | None:
     try:
         runtimes: dict[str, object] = registry._runtimes  # type: ignore[attr-defined]
         return runtimes.get(session_id)
+    except Exception:
+        return None
+
+
+def _get_connector(registry: object, session_id: str) -> object | None:
+    """Return the connector for a session if present, else None."""
+    try:
+        runtime = _get_runtime(registry, session_id)
+        if runtime is None:
+            return None
+        return getattr(runtime, "connector", None)
     except Exception:
         return None
