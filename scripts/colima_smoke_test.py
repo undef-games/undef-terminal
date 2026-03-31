@@ -3,12 +3,14 @@
 """
 Colima PAM end-to-end smoke test.
 
-Proves that pam_uterm.so fires real PAM events into PamNotifyListener
-when a user SSHes into (and exits from) the Colima VM.
+Proves that pam_uterm.so fires real PAM events into run_pam_integration()
+(the production integration path) when a user SSHes into (and exits from)
+the Colima VM.
 
 Unix domain sockets can't cross the virtiofs boundary (EOPNOTSUPP), so the
-listener runs inside Colima using the virtiofs-mounted venv Python, and
-writes events to a JSON file on the shared filesystem for the Mac to read.
+integration runs inside Colima using the virtiofs-mounted venv Python, and
+writes session lifecycle events to a JSON file on the shared filesystem for
+the Mac to read.
 
 Usage (from repo root, Colima running with pam_uterm.so installed):
     uv run python scripts/colima_smoke_test.py
@@ -26,10 +28,17 @@ COLIMA_PYTHON = "/usr/bin/python3"  # system Python inside Colima VM (Linux)
 NOTIFY_SOCKET = Path("/tmp/uterm-notify.sock")  # noqa: S108 — inside Colima VM (/run is root-owned)
 EVENT_LOG = Path.home() / ".colima" / "uterm-smoke-events.json"  # virtiofs shared
 
+# Listener script that runs inside Colima using run_pam_integration().
+# Uses a RecordingRegistry that captures session_created / session_stopped
+# events to the shared JSON file so the Mac can observe them.
+# PamNotifyListener.start is monkey-patched to touch a ready flag once the
+# socket is bound (run_pam_integration doesn't expose a readiness hook).
 LISTENER_SCRIPT = """\
-import asyncio, json, os
+import asyncio, contextlib, json, os
 from pathlib import Path
-from undef.terminal.pty.pam_listener import PamEvent, PamNotifyListener
+from undef.terminal.server.models import PamConfig, ServerConfig
+from undef.terminal.server.pam_integration import run_pam_integration
+from undef.terminal.pty.pam_listener import PamNotifyListener
 
 SOCKET = "{socket}"
 LOG = "{log}"
@@ -37,31 +46,60 @@ READY = LOG + ".ready"
 
 events = []
 
-async def handler(event: PamEvent) -> None:
-    events.append({{
-        "event": event.event,
-        "username": event.username,
-        "tty": event.tty,
-        "pid": event.pid,
-        "mode": event.mode,
-    }})
+def _save():
     Path(LOG).write_text(json.dumps(events))
-    print(f"[pam] {{event.event}} user={{event.username}} pid={{event.pid}}", flush=True)
 
-async def run():
-    if os.path.exists(SOCKET): os.unlink(SOCKET)
-    listener = PamNotifyListener(SOCKET)
-    # await start() so the socket is bound before we signal ready
-    await listener.start(handler)
+class _RecordingRuntime:
+    async def stop(self):
+        events.append({{"type": "session_stopped"}})
+        _save()
+        print("[pam] session_stopped", flush=True)
+
+class _RecordingRegistry:
+    def __init__(self):
+        self._runtimes = {{}}
+
+    async def create_session(self, payload):
+        sid = str(payload.get("session_id", ""))
+        events.append({{
+            "type": "session_created",
+            "session_id": sid,
+            "connector_type": str(payload.get("connector_type", "")),
+        }})
+        self._runtimes[sid] = _RecordingRuntime()
+        _save()
+        print(f"[pam] session_created session_id={{sid}}", flush=True)
+
+# Monkey-patch PamNotifyListener.start to signal readiness after socket is bound.
+# run_pam_integration() calls listener.start() internally; we hook that call to
+# write the .ready flag so the Mac knows it's safe to SSH in.
+_orig_start = PamNotifyListener.start
+async def _patched_start(self, handler):
+    await _orig_start(self, handler)
     Path(READY).touch()
-    print("[pam] listener ready at " + SOCKET, flush=True)
+    print("[pam] listener ready at " + self.socket_path, flush=True)
+PamNotifyListener.start = _patched_start
+
+async def main():
+    if os.path.exists(SOCKET):
+        os.unlink(SOCKET)
+    config = ServerConfig(pam=PamConfig(
+        notify_socket=SOCKET,
+        auto_session=True,
+        auto_session_command="/bin/echo",
+    ))
+    registry = _RecordingRegistry()
+    task = asyncio.create_task(run_pam_integration(config, registry))
     try:
         await asyncio.sleep(30)
     except asyncio.CancelledError:
         pass
-    await listener.stop()
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
 
-asyncio.run(run())
+asyncio.run(main())
 """
 
 
@@ -84,6 +122,18 @@ def main() -> None:
         sys.exit(1)
     print(f"PAM line: {pam_line}")
 
+    # Pre-flight: verify undef-terminal is importable inside Colima
+    r2 = _colima(
+        "python3 -c 'from undef.terminal.server.pam_integration import run_pam_integration; print(\"ok\")' 2>&1",
+        capture=True,
+    )
+    if "ok" not in r2.stdout:
+        print("ERROR: undef-terminal not importable inside Colima")
+        print(f"  {r2.stdout.strip()}")
+        print("Run: bash scripts/colima_install_uterm.sh")
+        sys.exit(1)
+    print("undef-terminal importable inside Colima: ok")
+
     # Clean up any stale files
     EVENT_LOG.parent.mkdir(parents=True, exist_ok=True)
     ready_flag = Path(str(EVENT_LOG) + ".ready")
@@ -99,7 +149,7 @@ def main() -> None:
     listener_file = Path.home() / ".colima" / "uterm_listener.py"
     listener_file.write_text(listener_src)
 
-    print("Starting PamNotifyListener inside Colima...")
+    print("Starting run_pam_integration() inside Colima...")
     listener_proc = subprocess.Popen(  # noqa: S603
         ["colima", "ssh", "--", "sh", "-c", f"{COLIMA_PYTHON} {listener_file}"],  # noqa: S607
         stdout=subprocess.PIPE,
@@ -108,13 +158,13 @@ def main() -> None:
     )
 
     # Wait for listener to signal readiness (creates .ready flag file)
-    deadline = time.monotonic() + 10
+    deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
         if ready_flag.exists():
             break
         time.sleep(0.1)
     else:
-        print("ERROR: Listener did not start within 10 seconds")
+        print("ERROR: Listener did not start within 15 seconds")
         listener_proc.terminate()
         sys.exit(1)
 
@@ -146,14 +196,15 @@ def main() -> None:
         sys.exit(1)
     print(f"SSH output: {ssh_result.stdout.strip()}")
 
-    # Wait for close event (PAM fires close after session ends)
+    # Wait for session_stopped event (PAM fires close after session ends;
+    # _on_close calls runtime.stop() which RecordingRuntime records)
     deadline = time.monotonic() + 10
     events: list[dict[str, object]] = []
     while time.monotonic() < deadline:
         if EVENT_LOG.exists():
             try:
                 events = json.loads(EVENT_LOG.read_text())
-                if any(e["event"] == "close" for e in events):
+                if any(e["type"] == "session_stopped" for e in events):
                     break
             except (json.JSONDecodeError, OSError):
                 pass
@@ -175,24 +226,27 @@ def main() -> None:
     print("=" * 60)
     print(f"Events received: {len(events)}")
     for ev in events:
-        print(f"  {ev['event']:6s}  user={ev['username']}  tty={ev['tty']}  pid={ev['pid']}  mode={ev['mode']}")
+        if ev["type"] == "session_created":
+            print(f"  session_created  session_id={ev['session_id']}  connector={ev['connector_type']}")
+        elif ev["type"] == "session_stopped":
+            print("  session_stopped")
     print("=" * 60)
 
     errors: list[str] = []
-    open_events = [e for e in events if e["event"] == "open"]
-    close_events = [e for e in events if e["event"] == "close"]
+    created = [e for e in events if e["type"] == "session_created"]
+    stopped = [e for e in events if e["type"] == "session_stopped"]
 
-    if not open_events:
-        errors.append("FAIL: no 'open' event received")
+    if not created:
+        errors.append("FAIL: no 'session_created' event received (PAM open not dispatched)")
     else:
-        ev = open_events[0]
-        if not ev.get("username"):
-            errors.append("FAIL: open event has no username")
-        if not isinstance(ev.get("pid"), int) or ev["pid"] <= 0:
-            errors.append(f"FAIL: open event has invalid pid={ev.get('pid')}")
+        ev = created[0]
+        if not ev.get("session_id", "").startswith("pam-"):
+            errors.append(f"FAIL: unexpected session_id={ev.get('session_id')}")
+        if ev.get("connector_type") != "pty":
+            errors.append(f"FAIL: expected connector_type=pty, got {ev.get('connector_type')}")
 
-    if not close_events:
-        errors.append("FAIL: no 'close' event received")
+    if not stopped:
+        errors.append("FAIL: no 'session_stopped' event received (PAM close not dispatched)")
 
     print()
     if errors:
@@ -200,8 +254,8 @@ def main() -> None:
             print(err)
         sys.exit(1)
     else:
-        print("PASS: open + close events received")
-        print(f"      username={open_events[0]['username']}  mode={open_events[0]['mode']}")
+        print("PASS: session_created + session_stopped events received via run_pam_integration()")
+        print(f"      session_id={created[0]['session_id']}")
 
 
 if __name__ == "__main__":

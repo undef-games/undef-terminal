@@ -64,8 +64,13 @@ _run "PAM_ARCH_DIR=\$(ls -d /lib/aarch64-linux-gnu/security /lib/x86_64-linux-gn
 echo "==> Verifying .so files are valid ELF..."
 _run "readelf -h $CAP_LIB | grep 'Type:' && readelf -h $PAM_MODULE | grep 'Type:'"
 
+UTERM_PKG="/Users/tim/code/gh/undef-games/undef-terminal/packages/undef-terminal"
+
 echo "==> Installing undef-terminal-pty Python package into Colima system Python..."
 _run "python3 -m pip install -q --break-system-packages -e $PTY_PKG"
+
+echo "==> Installing undef-terminal (server + pam_integration) into Colima system Python..."
+_run "python3 -m pip install -q --break-system-packages pydantic httpx && python3 -m pip install -q --break-system-packages -e $UTERM_PKG"
 
 echo "==> Wiring up /etc/pam.d/sshd (replaces any existing pam_uterm line)..."
 _run "sudo sed -i '/pam_uterm/d' /etc/pam.d/sshd && printf '\n# undef-terminal session capture\n${PAM_LINE}\n' | sudo tee -a /etc/pam.d/sshd > /dev/null"
