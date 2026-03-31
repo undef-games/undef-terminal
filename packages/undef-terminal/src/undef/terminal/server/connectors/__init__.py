@@ -37,5 +37,8 @@ with contextlib.suppress(ImportError):
 
     register_connector("ushell", UshellConnector)
 
+with contextlib.suppress(ImportError):
+    import undef.terminal.pty.connector  # type: ignore[import-untyped]  # registers "pty"
+
 # Derived from the registry — reflects whatever connectors are available in this env.
 KNOWN_CONNECTOR_TYPES: frozenset[str] = registered_types()
