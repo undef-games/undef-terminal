@@ -211,17 +211,63 @@ async def test_owner_typing_resets_warning() -> None:
 
 
 @pytest.mark.asyncio
-async def test_control_request_does_not_crash() -> None:
-    """Control request is accepted without error (placeholder handler)."""
+async def test_control_request_grants_when_no_owner() -> None:
+    """control_request grants control immediately when no owner exists."""
     hub = _FakeHub()
     ws = _FakeWS()
-    await hub.deckmux_on_browser_connect("w1", ws, "operator")
+    await hub.deckmux_on_browser_connect("w1", ws, "admin")
     hub.broadcast.reset_mock()
 
-    msg = {"type": "control_request"}
-    await hub.deckmux_handle_message("w1", ws, msg)
-    # Placeholder — no broadcast expected yet
+    await hub.deckmux_handle_message("w1", ws, {"type": "control_request"})
+
+    hub.broadcast.assert_called_once()
+    _, msg = hub.broadcast.call_args[0]
+    assert msg["type"] == "control_transfer"
+    assert msg["to_user_id"] == str(id(ws))
+    assert msg["from_user_id"] == ""
+
+    store = hub._get_presence_store("w1")
+    owner = store.get_owner()
+    assert owner is not None
+    assert owner.user_id == str(id(ws))
+
+
+@pytest.mark.asyncio
+async def test_control_request_releases_when_already_owner() -> None:
+    """control_request releases control when the requester already owns it."""
+    hub = _FakeHub()
+    ws = _FakeWS()
+    await hub.deckmux_on_browser_connect("w1", ws, "admin")
+    await hub.deckmux_handle_message("w1", ws, {"type": "control_request"})
+    hub.broadcast.reset_mock()
+
+    await hub.deckmux_handle_message("w1", ws, {"type": "control_request"})
+
+    hub.broadcast.assert_called_once()
+    _, msg = hub.broadcast.call_args[0]
+    assert msg["type"] == "control_transfer"
+    assert msg["from_user_id"] == str(id(ws))
+    assert msg["to_user_id"] == ""
+    assert hub._get_presence_store("w1").get_owner() is None
+
+
+@pytest.mark.asyncio
+async def test_control_request_ignored_when_other_owns() -> None:
+    """control_request is silently ignored when another user holds control."""
+    hub = _FakeHub()
+    ws_a = _FakeWS()
+    ws_b = _FakeWS()
+    await hub.deckmux_on_browser_connect("w1", ws_a, "admin")
+    await hub.deckmux_on_browser_connect("w1", ws_b, "admin")
+    await hub.deckmux_handle_message("w1", ws_a, {"type": "control_request"})
+    hub.broadcast.reset_mock()
+
+    await hub.deckmux_handle_message("w1", ws_b, {"type": "control_request"})
+
     hub.broadcast.assert_not_called()
+    owner = hub._get_presence_store("w1").get_owner()
+    assert owner is not None
+    assert owner.user_id == str(id(ws_a))
 
 
 @pytest.mark.asyncio

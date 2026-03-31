@@ -20,6 +20,7 @@ try:
         MSG_CONTROL_REQUEST,
         MSG_PRESENCE_UPDATE,
         MSG_QUEUED_INPUT,
+        make_control_transfer,
         make_presence_leave,
     )
 
@@ -150,8 +151,19 @@ class DeckMuxMixin:
                 await self.broadcast(worker_id, update_msg)  # type: ignore[attr-defined]
 
         elif msg_type == MSG_CONTROL_REQUEST:
-            # Control request handling — forward to transfer manager
-            pass
+            owner = store.get_owner()
+            if owner is None:
+                # No one has control — grant immediately
+                store.set_owner(user_id)
+                tm = self._get_transfer_manager(worker_id)
+                transfer = tm.build_transfer_message("", user_id, "handover")
+                await self.broadcast(worker_id, transfer)  # type: ignore[attr-defined]
+            elif owner.user_id == user_id:
+                # Requester is already the owner — release control
+                store.clear_owner()
+                transfer = make_control_transfer(user_id, "", "handover")
+                await self.broadcast(worker_id, transfer)  # type: ignore[attr-defined]
+            # else: another user owns — ignore the request
 
     def deckmux_cleanup(self, worker_id: str) -> None:
         """Clean up DeckMux state for a session."""
