@@ -274,8 +274,8 @@ class PamConfig(ServerBaseModel):
     mode: Literal["notify", "capture"] = "notify"
     auto_session: bool = False
     auto_session_command: str = "/bin/bash"
-    cf_url: str | None = None  # CF Worker base URL e.g. https://x.workers.dev
-    cf_token: str | None = None  # Bearer token for JWT-gated CF routes
+    relay_url: str | None = None  # Relay service base URL e.g. https://x.workers.dev
+    relay_token: str | None = None  # Bearer token for relay service API
 
 
 class ServerConfig(ServerBaseModel):

@@ -41,9 +41,9 @@ logger = logging.getLogger(__name__)
 _TTY_SLUG_RE = re.compile(r"[^a-zA-Z0-9]+")
 
 
-async def _forward_to_cf(event_json: dict[str, object], cf_url: str, cf_token: str) -> None:
-    """POST PAM event to CF DO /api/pam-events. Best-effort — never raises."""
-    url = cf_url.rstrip("/") + "/api/pam-events"
+async def _forward_to_relay(event_json: dict[str, object], relay_url: str, relay_token: str) -> None:
+    """POST PAM event to relay service /api/pam-events. Best-effort — never raises."""
+    url = relay_url.rstrip("/") + "/api/pam-events"
     try:
         import httpx
 
@@ -51,15 +51,17 @@ async def _forward_to_cf(event_json: dict[str, object], cf_url: str, cf_token: s
             await client.post(
                 url,
                 json=event_json,
-                headers={"Authorization": f"Bearer {cf_token}"},
+                headers={"Authorization": f"Bearer {relay_token}"},
             )
     except Exception as exc:
-        logger.warning("pam_cf_forward_failed url=%s error=%s", url, exc)
+        logger.warning("pam_relay_forward_failed url=%s error=%s", url, exc)
 
 
-async def _create_cf_tunnel(cf_url: str, cf_token: str, session_id: str, display_name: str) -> tuple[str, str] | None:
+async def _create_relay_tunnel(
+    relay_url: str, relay_token: str, session_id: str, display_name: str
+) -> tuple[str, str] | None:
     """POST /api/tunnels → (worker_token, ws_endpoint). Returns None on failure."""
-    url = cf_url.rstrip("/") + "/api/tunnels"
+    url = relay_url.rstrip("/") + "/api/tunnels"
     try:
         import httpx
 
@@ -71,13 +73,13 @@ async def _create_cf_tunnel(cf_url: str, cf_token: str, session_id: str, display
                     "display_name": display_name,
                     "tunnel_type": "terminal",
                 },
-                headers={"Authorization": f"Bearer {cf_token}"},
+                headers={"Authorization": f"Bearer {relay_token}"},
             )
             resp.raise_for_status()
             data = resp.json()
             return str(data["worker_token"]), str(data["ws_endpoint"])
     except Exception as exc:
-        logger.warning("create_cf_tunnel_failed url=%s error=%s", url, exc)
+        logger.warning("create_relay_tunnel_failed url=%s error=%s", url, exc)
         return None
 
 
@@ -171,8 +173,8 @@ async def _on_open(
     session_id = _session_id(ev)
     display_name = f"{ev.username} ({ev.tty or 'pam'})"
 
-    if cfg.cf_url and cfg.cf_token:
-        await _forward_to_cf(
+    if cfg.relay_url and cfg.relay_token:
+        await _forward_to_relay(
             {
                 "event": "open",
                 "username": ev.username,
@@ -180,10 +182,10 @@ async def _on_open(
                 "pid": ev.pid,
                 "mode": ev.mode,
             },
-            cfg.cf_url,
-            cfg.cf_token,
+            cfg.relay_url,
+            cfg.relay_token,
         )
-        result = await _create_cf_tunnel(cfg.cf_url, cfg.cf_token, session_id, display_name)
+        result = await _create_relay_tunnel(cfg.relay_url, cfg.relay_token, session_id, display_name)
         if result is not None and bridges is not None:
             worker_token, ws_endpoint = result
             connector = _get_connector(registry, session_id)
@@ -220,11 +222,11 @@ async def _on_close(
         except Exception as exc:
             logger.debug("pam_bridge_stop_failed session_id=%s error=%s", session_id, exc)
 
-    if cfg.cf_url and cfg.cf_token:
-        await _forward_to_cf(
+    if cfg.relay_url and cfg.relay_token:
+        await _forward_to_relay(
             {"event": "close", "username": ev.username, "tty": ev.tty, "pid": ev.pid},
-            cfg.cf_url,
-            cfg.cf_token,
+            cfg.relay_url,
+            cfg.relay_token,
         )
 
     try:

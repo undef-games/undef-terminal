@@ -284,18 +284,18 @@ def test_pam_config_mode_capture() -> None:
 # ── CF forwarding ─────────────────────────────────────────────────────────────
 
 
-def test_pam_config_cf_fields_default_none() -> None:
+def test_pam_config_relay_fields_default_none() -> None:
     from undef.terminal.server.models import PamConfig
 
     cfg = PamConfig()
-    assert cfg.cf_url is None
-    assert cfg.cf_token is None
+    assert cfg.relay_url is None
+    assert cfg.relay_token is None
 
 
-async def test_forward_to_cf_posts_event() -> None:
+async def test_forward_to_relay_posts_event() -> None:
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from undef.terminal.server.pam_integration import _forward_to_cf
+    from undef.terminal.server.pam_integration import _forward_to_relay
 
     mock_response = MagicMock()
     mock_client = MagicMock()
@@ -304,7 +304,7 @@ async def test_forward_to_cf_posts_event() -> None:
     mock_client.post = AsyncMock(return_value=mock_response)
 
     with patch("httpx.AsyncClient", return_value=mock_client):
-        await _forward_to_cf(
+        await _forward_to_relay(
             {"event": "open", "username": "alice", "pid": 1},
             "https://cf.example.com",
             "tok-abc",
@@ -317,10 +317,10 @@ async def test_forward_to_cf_posts_event() -> None:
     assert call_args[1]["json"]["username"] == "alice"
 
 
-async def test_forward_to_cf_trailing_slash_stripped() -> None:
+async def test_forward_to_relay_trailing_slash_stripped() -> None:
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from undef.terminal.server.pam_integration import _forward_to_cf
+    from undef.terminal.server.pam_integration import _forward_to_relay
 
     mock_client = MagicMock()
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -328,18 +328,18 @@ async def test_forward_to_cf_trailing_slash_stripped() -> None:
     mock_client.post = AsyncMock()
 
     with patch("httpx.AsyncClient", return_value=mock_client):
-        await _forward_to_cf({"event": "close"}, "https://cf.example.com/", "tok")
+        await _forward_to_relay({"event": "close"}, "https://cf.example.com/", "tok")
 
     url = mock_client.post.call_args[0][0]
     assert url == "https://cf.example.com/api/pam-events"
 
 
-async def test_forward_to_cf_swallows_network_error() -> None:
+async def test_forward_to_relay_swallows_network_error() -> None:
     from unittest.mock import AsyncMock, MagicMock, patch
 
     import httpx
 
-    from undef.terminal.server.pam_integration import _forward_to_cf
+    from undef.terminal.server.pam_integration import _forward_to_relay
 
     mock_client = MagicMock()
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -347,13 +347,13 @@ async def test_forward_to_cf_swallows_network_error() -> None:
     mock_client.post = AsyncMock(side_effect=httpx.ConnectError("unreachable"))
 
     with patch("httpx.AsyncClient", return_value=mock_client):
-        await _forward_to_cf({"event": "open"}, "https://x.example.com", "tok")  # must not raise
+        await _forward_to_relay({"event": "open"}, "https://x.example.com", "tok")  # must not raise
 
 
-async def test_create_cf_tunnel_returns_token_and_endpoint() -> None:
+async def test_create_relay_tunnel_returns_token_and_endpoint() -> None:
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from undef.terminal.server.pam_integration import _create_cf_tunnel
+    from undef.terminal.server.pam_integration import _create_relay_tunnel
 
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
@@ -366,7 +366,7 @@ async def test_create_cf_tunnel_returns_token_and_endpoint() -> None:
     mock_client.post = AsyncMock(return_value=mock_response)
 
     with patch("httpx.AsyncClient", return_value=mock_client):
-        result = await _create_cf_tunnel("https://cf.example.com", "tok", "pam-alice-3", "alice (/dev/pts/3)")
+        result = await _create_relay_tunnel("https://cf.example.com", "tok", "pam-alice-3", "alice (/dev/pts/3)")
 
     assert result == ("wt-123", "wss://cf.example.com/tunnel/abc")
     body = mock_client.post.call_args[1]["json"]
@@ -374,12 +374,12 @@ async def test_create_cf_tunnel_returns_token_and_endpoint() -> None:
     assert body["tunnel_type"] == "terminal"
 
 
-async def test_create_cf_tunnel_returns_none_on_error() -> None:
+async def test_create_relay_tunnel_returns_none_on_error() -> None:
     from unittest.mock import AsyncMock, MagicMock, patch
 
     import httpx
 
-    from undef.terminal.server.pam_integration import _create_cf_tunnel
+    from undef.terminal.server.pam_integration import _create_relay_tunnel
 
     mock_client = MagicMock()
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -387,13 +387,13 @@ async def test_create_cf_tunnel_returns_none_on_error() -> None:
     mock_client.post = AsyncMock(side_effect=httpx.ConnectError("unreachable"))
 
     with patch("httpx.AsyncClient", return_value=mock_client):
-        result = await _create_cf_tunnel("https://cf.example.com", "tok", "s1", "name")
+        result = await _create_relay_tunnel("https://cf.example.com", "tok", "s1", "name")
 
     assert result is None
 
 
 async def test_on_open_forwards_to_cf_when_configured() -> None:
-    """_on_open calls _forward_to_cf when cf_url + cf_token are set."""
+    """_on_open calls _forward_to_relay when relay_url + relay_token are set."""
     try:
         from undef.terminal.pty.pam_listener import PamEvent
     except ImportError:
@@ -406,8 +406,8 @@ async def test_on_open_forwards_to_cf_when_configured() -> None:
     ev = PamEvent(event="open", username="alice", tty="/dev/pts/0", pid=42)
     cfg = PamConfig(
         notify_socket="/run/x.sock",
-        cf_url="https://cf.example.com",
-        cf_token="tok",
+        relay_url="https://cf.example.com",
+        relay_token="tok",
     )
     registry = MagicMock()
     registry.create_session = AsyncMock()
@@ -429,7 +429,7 @@ async def test_on_open_forwards_to_cf_when_configured() -> None:
 
 
 async def test_on_close_forwards_to_cf_when_configured() -> None:
-    """_on_close calls _forward_to_cf when cf_url + cf_token are set."""
+    """_on_close calls _forward_to_relay when relay_url + relay_token are set."""
     try:
         from undef.terminal.pty.pam_listener import PamEvent
     except ImportError:
@@ -442,8 +442,8 @@ async def test_on_close_forwards_to_cf_when_configured() -> None:
     ev = PamEvent(event="close", username="alice", tty="/dev/pts/0", pid=42)
     cfg = PamConfig(
         notify_socket="/run/x.sock",
-        cf_url="https://cf.example.com",
-        cf_token="tok",
+        relay_url="https://cf.example.com",
+        relay_token="tok",
     )
     registry = MagicMock()
     registry._runtimes = {}
@@ -604,8 +604,8 @@ async def test_on_open_bridge_start_failure_cleans_up() -> None:
     ev = PamEvent(event="open", username="alice", tty="/dev/pts/0", pid=42)
     cfg = PamConfig(
         notify_socket="/run/x.sock",
-        cf_url="https://cf.example.com",
-        cf_token="tok",
+        relay_url="https://cf.example.com",
+        relay_token="tok",
     )
     registry = MagicMock()
     registry.create_session = AsyncMock()
