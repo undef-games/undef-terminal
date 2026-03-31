@@ -32,7 +32,7 @@ CAP_LIB="/usr/local/lib/libuterm_capture.so"
 # Use arch-specific path as primary; /lib/security is a fallback on some distros
 PAM_MODULE_ARCH="/lib/aarch64-linux-gnu/security/pam_uterm.so"
 PAM_MODULE="/lib/security/pam_uterm.so"
-PAM_LINE="session  optional  pam_uterm.so socket=${NOTIFY_SOCKET} mode=capture lib=${CAP_LIB} cap_dir=/run"
+PAM_LINE="session  optional  pam_uterm.so socket=${NOTIFY_SOCKET} mode=capture lib=${CAP_LIB} cap_dir=/tmp"
 
 _run() {
     colima ssh -- sh -c "$1"

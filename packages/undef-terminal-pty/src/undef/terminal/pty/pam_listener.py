@@ -110,7 +110,12 @@ class PamNotifyListener:
         try:
             while True:
                 try:
-                    line = await reader.readline()
+                    line = await asyncio.wait_for(reader.readline(), timeout=5.0)
+                except TimeoutError:
+                    logger.warning(
+                        "pam_notify_listener readline_timeout — dropping connection"
+                    )
+                    break
                 except Exception:
                     break
                 if not line:

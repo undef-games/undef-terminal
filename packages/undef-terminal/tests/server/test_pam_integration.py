@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -10,6 +11,7 @@ import pytest
 from undef.terminal.server.pam_integration import (
     _on_close,
     _on_open,
+    _session_id,
     _tty_slug,
     run_pam_integration,
 )
@@ -458,3 +460,182 @@ async def test_on_close_forwards_to_cf_when_configured() -> None:
     body = mock_client.post.call_args[1]["json"]
     assert body["event"] == "close"
     assert body["username"] == "alice"
+
+
+# ── _session_id ───────────────────────────────────────────────────────────────
+
+
+def test_session_id_with_tty_uses_slug_only() -> None:
+    try:
+        from undef.terminal.pty.pam_listener import PamEvent
+    except ImportError:
+        pytest.skip("undef-terminal-pty not installed")
+
+    ev = PamEvent(event="open", username="alice", tty="/dev/pts/3", pid=1234)
+    assert _session_id(ev) == "pam-alice-3"
+
+
+def test_session_id_empty_tty_includes_pid() -> None:
+    """Empty TTY must include PID to prevent collision between concurrent sessions."""
+    try:
+        from undef.terminal.pty.pam_listener import PamEvent
+    except ImportError:
+        pytest.skip("undef-terminal-pty not installed")
+
+    ev1 = PamEvent(event="open", username="alice", tty="", pid=100)
+    ev2 = PamEvent(event="open", username="alice", tty="", pid=200)
+    assert _session_id(ev1) != _session_id(ev2)
+    assert _session_id(ev1) == "pam-alice-tty-100"
+    assert _session_id(ev2) == "pam-alice-tty-200"
+
+
+def test_session_id_open_and_close_match_with_same_pid() -> None:
+    """Open and close events with same PID and empty TTY map to the same session_id."""
+    try:
+        from undef.terminal.pty.pam_listener import PamEvent
+    except ImportError:
+        pytest.skip("undef-terminal-pty not installed")
+
+    ev_open = PamEvent(event="open", username="bob", tty="", pid=999)
+    ev_close = PamEvent(event="close", username="bob", tty="", pid=999)
+    assert _session_id(ev_open) == _session_id(ev_close)
+
+
+# ── run_pam_integration event loop ───────────────────────────────────────────
+
+
+async def test_run_pam_integration_dispatches_event_via_real_socket() -> None:
+    """Full integration: real Unix socket → run_pam_integration → handler called."""
+    import asyncio
+    import json
+    import tempfile
+    from pathlib import Path
+
+    try:
+        import undef.terminal.pty.pam_listener  # noqa: F401
+    except ImportError:
+        pytest.skip("undef-terminal-pty not installed")
+
+    from undef.terminal.server.models import PamConfig, ServerConfig
+
+    with tempfile.TemporaryDirectory() as td:
+        sock_path = str(Path(td) / "pam-notify.sock")
+        config = ServerConfig(pam=PamConfig(notify_socket=sock_path, auto_session=True))
+
+        registry = MagicMock()
+        registry.create_session = AsyncMock()
+
+        # Start integration in background task
+        task = asyncio.create_task(run_pam_integration(config, registry))
+        # Give the listener time to bind
+        await asyncio.sleep(0.05)
+
+        # Send a real PAM open event over the socket
+        event_line = (
+            json.dumps(
+                {
+                    "event": "open",
+                    "username": "testuser",
+                    "tty": "/dev/pts/5",
+                    "pid": 7777,
+                }
+            ).encode()
+            + b"\n"
+        )
+        reader, writer = await asyncio.open_unix_connection(sock_path)
+        writer.write(event_line)
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+        # Wait for handler to be called
+        deadline = asyncio.get_event_loop().time() + 2.0
+        while asyncio.get_event_loop().time() < deadline:
+            if registry.create_session.await_count >= 1:
+                break
+            await asyncio.sleep(0.05)
+
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+        registry.create_session.assert_awaited_once()
+        payload = registry.create_session.call_args[0][0]
+        assert payload["session_id"] == "pam-testuser-5"
+        assert payload["connector_config"]["username"] == "testuser"
+
+
+async def test_run_pam_integration_cancelled_cleanly() -> None:
+    """Cancelling run_pam_integration does not raise outside CancelledError."""
+    import asyncio
+    import tempfile
+    from pathlib import Path
+
+    from undef.terminal.server.models import PamConfig, ServerConfig
+
+    with tempfile.TemporaryDirectory() as td:
+        sock_path = str(Path(td) / "pam-cancel.sock")
+        config = ServerConfig(pam=PamConfig(notify_socket=sock_path))
+        registry = MagicMock()
+
+        task = asyncio.create_task(run_pam_integration(config, registry))
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        # Socket should be cleaned up
+        assert not Path(sock_path).exists()
+
+
+# ── bridge error path ─────────────────────────────────────────────────────────
+
+
+async def test_on_open_bridge_start_failure_cleans_up() -> None:
+    """If PamTunnelBridge.start() raises, bridge.stop() is called for cleanup."""
+    try:
+        from undef.terminal.pty.pam_listener import PamEvent
+    except ImportError:
+        pytest.skip("undef-terminal-pty not installed")
+
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from undef.terminal.server.models import PamConfig
+
+    ev = PamEvent(event="open", username="alice", tty="/dev/pts/0", pid=42)
+    cfg = PamConfig(
+        notify_socket="/run/x.sock",
+        cf_url="https://cf.example.com",
+        cf_token="tok",
+    )
+    registry = MagicMock()
+    registry.create_session = AsyncMock()
+    runtime = MagicMock()
+    connector = MagicMock()
+    runtime.connector = connector
+    registry._runtimes = {"pam-alice-0": runtime}
+
+    bridge_mock = MagicMock()
+    bridge_mock.start = AsyncMock(side_effect=RuntimeError("connect failed"))
+    bridge_mock.stop = AsyncMock()
+
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.post = AsyncMock(
+        return_value=MagicMock(
+            raise_for_status=MagicMock(),
+            json=MagicMock(return_value={"worker_token": "t", "ws_endpoint": "wss://x"}),
+        )
+    )
+
+    bridges: dict[str, object] = {}
+    with (
+        patch("httpx.AsyncClient", return_value=mock_client),
+        patch("undef.terminal.server.pam_tunnel.PamTunnelBridge", return_value=bridge_mock),
+    ):
+        await _on_open(ev, cfg, registry, bridges)
+
+    # bridge.start() raised → bridge not stored
+    assert "pam-alice-0" not in bridges
+    # bridge.stop() called to clean up partial state
+    bridge_mock.stop.assert_awaited_once()

@@ -28,6 +28,7 @@ It is fully opt-in: nothing happens unless ``config.pam.notify_socket`` is set.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import re
 from typing import TYPE_CHECKING, cast
@@ -84,6 +85,15 @@ def _tty_slug(tty: str) -> str:
     """'/dev/pts/3' → 'pts-3'."""
     basename = tty.split("/")[-1] if "/" in tty else tty
     return _TTY_SLUG_RE.sub("-", basename).strip("-") or "tty"
+
+
+def _session_id(ev: object) -> str:
+    """Stable session ID for a PAM event.  Includes PID when TTY is absent."""
+    e = cast("PamEvent", ev)
+    slug = _tty_slug(e.tty)
+    if not e.tty:
+        return f"pam-{e.username}-{slug}-{e.pid}"
+    return f"pam-{e.username}-{slug}"
 
 
 async def run_pam_integration(config: object, registry: object) -> None:
@@ -158,8 +168,7 @@ async def _on_open(
     elif cfg.auto_session:
         await _create_notify_session(ev, cfg, registry)
 
-    slug = _tty_slug(ev.tty)
-    session_id = f"pam-{ev.username}-{slug}"
+    session_id = _session_id(ev)
     display_name = f"{ev.username} ({ev.tty or 'pam'})"
 
     if cfg.cf_url and cfg.cf_token:
@@ -185,6 +194,8 @@ async def _on_open(
                     bridges[session_id] = bridge
                 except Exception as exc:
                     logger.warning("pam_tunnel_start_failed session_id=%s error=%s", session_id, exc)
+                    with contextlib.suppress(Exception):
+                        await bridge.stop()
 
 
 async def _on_close(
@@ -197,8 +208,7 @@ async def _on_close(
 
     ev = cast("PamEvent", event)
     cfg: PamConfig = pam_cfg  # type: ignore[assignment]
-    slug = _tty_slug(ev.tty)
-    session_id = f"pam-{ev.username}-{slug}"
+    session_id = _session_id(ev)
 
     # Stop tunnel bridge first
     bridge = bridges.pop(session_id, None) if bridges is not None else None
@@ -238,8 +248,7 @@ async def _create_notify_session(event: object, pam_cfg: object, registry: objec
     ev = cast("PamEvent", event)
     cfg: PamConfig = pam_cfg  # type: ignore[assignment]
 
-    slug = _tty_slug(ev.tty)
-    session_id = f"pam-{ev.username}-{slug}"
+    session_id = _session_id(ev)
     command = cfg.auto_session_command or "/bin/bash"
 
     payload: dict[str, object] = {
@@ -268,8 +277,7 @@ async def _create_capture_session(event: object, registry: object) -> None:
     if ev.capture_socket is None:
         return
 
-    slug = _tty_slug(ev.tty)
-    session_id = f"pam-{ev.username}-{slug}"
+    session_id = _session_id(ev)
 
     payload: dict[str, object] = {
         "session_id": session_id,
