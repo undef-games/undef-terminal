@@ -87,3 +87,42 @@ def test_authenticate_validates_password_no_null_byte() -> None:
     session = PamSession()
     with pytest.raises(ValueError, match="null byte"):
         session.authenticate("alice", "pass\x00word")
+
+
+@pytest.mark.requires_pam
+def test_full_pam_lifecycle() -> None:
+    """authenticate → acct_mgmt → open_session → get_env → close_session."""
+    session = PamSession()
+    session.authenticate("testuser", "testpass123")
+    session.acct_mgmt()
+    session.open_session()
+    env = session.get_env()
+    assert isinstance(env, dict)
+    session.close_session()
+    # idempotent — must not raise
+    session.close_session()
+
+
+@pytest.mark.requires_pam
+def test_context_manager_closes_session() -> None:
+    """Context manager __exit__ calls close_session."""
+    session = PamSession()
+    session.authenticate("testuser", "testpass123")
+    session.open_session()
+    with session as env:
+        assert isinstance(env, dict)
+        assert session._session_open  # type: ignore[attr-defined]
+    assert not session._session_open  # type: ignore[attr-defined]
+
+
+@pytest.mark.requires_pam
+def test_open_session_get_env_copy_is_isolated() -> None:
+    """get_env() returns a copy — mutations don't affect the session."""
+    session = PamSession()
+    session.authenticate("testuser", "testpass123")
+    session.open_session()
+    env = session.get_env()
+    assert isinstance(env, dict)
+    env["injected"] = "val"
+    assert "injected" not in session.get_env()
+    session.close_session()
