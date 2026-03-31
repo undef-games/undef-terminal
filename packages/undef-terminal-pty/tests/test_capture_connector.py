@@ -102,8 +102,8 @@ async def test_stdout_frame_updates_buffer() -> None:
         await asyncio.sleep(0.05)
         msgs = await conn.poll_messages()
         assert len(msgs) == 1
-        assert msgs[0]["type"] == "snapshot"
-        assert "hello" in msgs[0]["screen"]
+        assert msgs[0]["type"] == "term"
+        assert "hello" in msgs[0]["data"]
         await conn.stop()
 
 
@@ -135,6 +135,7 @@ async def test_connect_frame_logs_address() -> None:
 
 
 async def test_buffer_truncated_at_65536_chars() -> None:
+    """Internal scroll-back buffer is capped at 65536; streaming data is unaffected."""
     with tempfile.TemporaryDirectory() as td:
         conn = _make_connector(td)
         await conn.start()
@@ -143,18 +144,19 @@ async def test_buffer_truncated_at_65536_chars() -> None:
             [_make_frame(CHANNEL_STDOUT, b"x" * 70000)],
         )
         await asyncio.sleep(0.05)
-        msgs = await conn.poll_messages()
-        assert len(msgs[0]["screen"]) <= 65536
+        await conn.poll_messages()
+        # After draining, the internal buffer should be capped at 65536
+        snap = await conn.get_snapshot()
+        assert len(snap["data"]) <= 65536
         await conn.stop()
 
 
-async def test_handle_input_returns_snapshot() -> None:
+async def test_handle_input_returns_empty() -> None:
     with tempfile.TemporaryDirectory() as td:
         conn = _make_connector(td)
         await conn.start()
         msgs = await conn.handle_input("ignored input")
-        assert len(msgs) == 1
-        assert msgs[0]["type"] == "snapshot"
+        assert msgs == []
         await conn.stop()
 
 
@@ -163,8 +165,8 @@ async def test_get_snapshot_structure() -> None:
         conn = _make_connector(td)
         await conn.start()
         snap = await conn.get_snapshot()
-        for key in ("type", "screen", "cursor", "cols", "rows", "screen_hash"):
-            assert key in snap, f"missing key: {key}"
+        assert snap["type"] == "term"
+        assert "data" in snap
         await conn.stop()
 
 
@@ -176,18 +178,19 @@ async def test_clear_resets_buffer() -> None:
         await asyncio.sleep(0.05)
         await conn.poll_messages()
         msgs = await conn.clear()
-        assert msgs[0]["screen"] == ""
+        assert msgs[0]["type"] == "term"
+        assert msgs[0]["data"] == ""
         await conn.stop()
 
 
-async def test_set_mode_returns_hello_and_snapshot() -> None:
+async def test_set_mode_returns_hello_and_term() -> None:
     with tempfile.TemporaryDirectory() as td:
         conn = _make_connector(td)
         await conn.start()
         msgs = await conn.set_mode("open")
         types = [m["type"] for m in msgs]
         assert "worker_hello" in types
-        assert "snapshot" in types
+        assert "term" in types
         await conn.stop()
 
 
@@ -202,18 +205,17 @@ async def test_custom_cols_rows() -> None:
     with tempfile.TemporaryDirectory() as td:
         conn = _make_connector(td, cols=120, rows=40)
         await conn.start()
-        snap = await conn.get_snapshot()
+        assert conn._cols == 120  # noqa: SLF001
+        assert conn._rows == 40  # noqa: SLF001
         await conn.stop()
-        assert snap["cols"] == 120
-        assert snap["rows"] == 40
 
 
-async def test_handle_control_returns_snapshot() -> None:
+async def test_handle_control_returns_empty() -> None:
     with tempfile.TemporaryDirectory() as td:
         conn = _make_connector(td)
         await conn.start()
         msgs = await conn.handle_control("any")
-        assert msgs[0]["type"] == "snapshot"
+        assert msgs == []
         await conn.stop()
 
 

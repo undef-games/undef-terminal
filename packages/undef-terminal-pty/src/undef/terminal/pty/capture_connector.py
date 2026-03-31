@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """
-CaptureConnector — read-only session connector fed by libuterm_capture.so.
+CaptureConnector — session connector fed by libuterm_capture.so.
 
 No process is forked.  Instead the connector listens on a Unix socket that
 ``libuterm_capture.so`` (injected via LD_PRELOAD) connects to at shell startup.
@@ -11,17 +11,21 @@ Only CHANNEL_STDOUT (0x01) contributes to the visible screen; CHANNEL_STDIN
 (0x02) and CHANNEL_CONNECT (0x03) frames are recorded in the analysis log.
 
 Config keys accepted in connector_config:
-  socket_path  str   required — path of the Unix socket to listen on
-               (pam_uterm.so writes this as /run/uterm-cap-{pid}.sock)
-  cols         int   terminal width hint (default 80)
-  rows         int   terminal height hint (default 24)
-  connect_timeout_s  float  seconds to wait for capture lib to connect (default 5.0)
+  socket_path       str    required — path of the Unix socket to listen on
+                           (pam_uterm.so writes this as /run/uterm-cap-{pid}.sock)
+  cols              int    terminal width hint (default 80)
+  rows              int    terminal height hint (default 24)
+  connect_timeout_s float  seconds to wait for capture lib to connect (default 5.0)
+  stdin_socket_path str    optional — Unix socket path to forward browser keystrokes
+                           to.  When set, handle_input() writes typed bytes there so
+                           a listener can pipe them into the captured process's stdin.
 """
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
+import socket
 import time
 from typing import Any
 
@@ -32,7 +36,16 @@ from undef.terminal.pty.capture import (
     CaptureSocket,
 )
 
-_VALID_CONFIG_KEYS = frozenset({"socket_path", "cols", "rows", "connect_timeout_s"})
+_VALID_CONFIG_KEYS = frozenset(
+    {
+        "socket_path",
+        "cols",
+        "rows",
+        "connect_timeout_s",
+        "input_mode",
+        "stdin_socket_path",
+    }
+)
 
 
 def _register() -> None:
@@ -70,12 +83,19 @@ class CaptureConnector:
         self._cols: int = int(config.get("cols", 80))
         self._rows: int = int(config.get("rows", 24))
         self._connect_timeout: float = float(config.get("connect_timeout_s", 5.0))
+        self._stdin_socket_path: str | None = (
+            str(config["stdin_socket_path"])
+            if config.get("stdin_socket_path")
+            else None
+        )
 
         self._capture: CaptureSocket | None = None
         self._connected = False
         self._buffer = ""
+        self._pending = ""  # new bytes not yet streamed to the browser
         self._connect_log: list[str] = []
         self._stdin_count = 0
+        self._stdin_sock: socket.socket | None = None
 
     async def start(self) -> None:
         self._capture = CaptureSocket(self._socket_path)
@@ -83,6 +103,12 @@ class CaptureConnector:
         self._connected = True
 
     async def stop(self) -> None:
+        if self._stdin_sock is not None:
+            try:
+                self._stdin_sock.close()
+            except OSError:
+                pass
+            self._stdin_sock = None
         if self._capture is not None:
             await self._capture.stop()
             self._capture = None
@@ -106,6 +132,7 @@ class CaptureConnector:
                 self._buffer += text
                 if len(self._buffer) > 65536:
                     self._buffer = self._buffer[-65536:]
+                self._pending += text
                 changed = True
             elif frame.channel == CHANNEL_STDIN:
                 self._stdin_count += 1
@@ -114,24 +141,54 @@ class CaptureConnector:
                 self._connect_log.append(addr)
                 if len(self._connect_log) > 100:
                     self._connect_log = self._connect_log[-100:]
-        return [self._snapshot()] if changed else []
+        if changed and self._pending:
+            data, self._pending = self._pending, ""
+            return [{"type": "term", "data": data}]
+        return []
 
     async def handle_input(self, data: str) -> list[dict[str, Any]]:
-        # Capture mode is read-only — no input forwarding into the observed shell
-        return [self._snapshot()]
+        if self._stdin_socket_path:
+            self._forward_stdin(data.encode("utf-8", errors="replace"))
+        return []
+
+    def _forward_stdin(self, data: bytes) -> None:
+        """Write to stdin socket; lazy-connect, reconnect and retry once on error."""
+        for _attempt in range(2):
+            if self._stdin_sock is None:
+                try:
+                    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    s.connect(self._stdin_socket_path)  # type: ignore[arg-type]
+                    self._stdin_sock = s
+                except OSError:
+                    return
+            try:
+                self._stdin_sock.sendall(data)
+                return
+            except OSError:
+                try:
+                    self._stdin_sock.close()
+                except OSError:
+                    pass
+                self._stdin_sock = None
 
     async def handle_control(self, action: str) -> list[dict[str, Any]]:
-        return [self._snapshot()]
+        return []
 
     async def get_snapshot(self) -> dict[str, Any]:
-        return self._snapshot()
+        # Return as a "term" dict so xterm processes raw PTY bytes incrementally
+        # instead of clearing and redrawing (which breaks \r\n sequences).
+        return {"type": "term", "data": self._buffer}
 
     async def set_mode(self, mode: str) -> list[dict[str, Any]]:
-        return [{"type": "worker_hello", "input_mode": "open"}, self._snapshot()]
+        return [
+            {"type": "worker_hello", "input_mode": "open"},
+            {"type": "term", "data": self._buffer},
+        ]
 
     async def clear(self) -> list[dict[str, Any]]:
         self._buffer = ""
-        return [self._snapshot()]
+        self._pending = ""
+        return [{"type": "term", "data": ""}]
 
     async def get_analysis(self) -> str:
         return (
