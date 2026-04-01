@@ -452,7 +452,7 @@ class SessionRuntime(_SessionRuntimeIoMixin, _WsHelperMixin, DurableObject):
         if isinstance(_bin, (bytes, bytearray, memoryview)) and role == "worker":
             try:
                 from undef.terminal.cloudflare.api.tunnel_routes import handle_tunnel_message
-            except ImportError:
+            except ImportError:  # pragma: no cover
                 from api.tunnel_routes import handle_tunnel_message  # type: ignore[import-not-found]
 
             await handle_tunnel_message(self, ws, bytes(_bin))
