@@ -217,5 +217,11 @@ also_copy = [
     "packages/undef-terminal-pty/tests",
     "conftest.py",
 ]
-pytest_add_cli_args = ["--timeout=30", "-p", "no:randomly", "-p", "no:hypothesis"]
+pytest_add_cli_args = [
+    "--timeout=30",
+    "-p", "no:randomly",
+    "-p", "no:hypothesis",
+    "--ignore=packages/undef-terminal-pty/tests/test_ld_preload_capture.py",
+    "--ignore=packages/undef-terminal-pty/tests/e2e/",
+]
 debug = true
