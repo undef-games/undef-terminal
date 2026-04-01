@@ -4,7 +4,7 @@
 
 **Goal:** Add pause/edit/forward/drop capability to `uterm inspect`, with browser-togglable intercept mode and proxy on/off control.
 
-**Architecture:** An `InterceptGate` class manages pending requests as `asyncio.Future` objects. The CLI proxy pauses after sending `http_req` when intercept is enabled, awaiting a browser `http_action` response via the tunnel WS. The browser toggle and action buttons send messages on CHANNEL_HTTP (0x03) back through the CF Worker relay. A separate proxy-enable toggle allows pausing/resuming all proxying.
+**Architecture:** An `InterceptGate` class manages pending requests as `asyncio.Future` objects. The CLI proxy pauses after sending `http_req` when intercept is enabled, awaiting a browser `http_action` response via the tunnel WS. The browser toggle and action buttons send messages on CHANNEL_HTTP (0x03) back through the CF Worker relay. A separate inspection toggle controls whether `http_req`/`http_res` frames are sent at all — when off, the proxy forwards silently (pure passthrough).
 
 **Tech Stack:** Python (asyncio, httpx, uvicorn, websockets), TypeScript (vanilla DOM), existing tunnel protocol on channel 0x03.
 
@@ -54,6 +54,7 @@ class TestInterceptGateBasics:
     def test_initial_state_disabled(self) -> None:
         gate = InterceptGate(timeout_s=5.0, timeout_action="forward")
         assert gate.enabled is False
+        assert gate.inspect_enabled is True
         assert gate.pending_count == 0
 
     def test_enable_disable(self) -> None:
@@ -62,6 +63,12 @@ class TestInterceptGateBasics:
         assert gate.enabled is True
         gate.enabled = False
         assert gate.enabled is False
+
+    def test_inspect_toggle(self) -> None:
+        gate = InterceptGate(timeout_s=5.0, timeout_action="forward")
+        assert gate.inspect_enabled is True
+        gate.inspect_enabled = False
+        assert gate.inspect_enabled is False
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -126,6 +133,7 @@ class InterceptGate:
 
     def __init__(self, timeout_s: float = 30.0, timeout_action: str = "forward") -> None:
         self.enabled: bool = False
+        self.inspect_enabled: bool = True  # when False, proxy is silent passthrough
         self.timeout_s: float = max(1.0, timeout_s)
         self.timeout_action: str = timeout_action if timeout_action in ("forward", "drop") else "forward"
         self._pending: dict[str, asyncio.Future[InterceptDecision]] = {}
@@ -436,19 +444,21 @@ In `_proxy_app`, after sending `http_req` frame (line ~196), add the intercept g
         # Add intercepted flag to the request event
         req_event["intercepted"] = gate.enabled
 
-        with suppress(Exception):
-            await ws.send(encode_frame(CHANNEL_HTTP, json.dumps(req_event, separators=(",", ":")).encode()))
+        # Only send inspection frames when inspect is enabled (not silent passthrough)
+        if gate.inspect_enabled:
+            with suppress(Exception):
+                await ws.send(encode_frame(CHANNEL_HTTP, json.dumps(req_event, separators=(",", ":")).encode()))
 
-        print(format_log_line(method, path, None, None, len(req_body)), file=sys.stderr)
-        await ws.send(
-            encode_frame(CHANNEL_DATA, (format_log_line(method, path, None, None, len(req_body)) + "\n").encode())
-        )
+            print(format_log_line(method, path, None, None, len(req_body)), file=sys.stderr)
+            await ws.send(
+                encode_frame(CHANNEL_DATA, (format_log_line(method, path, None, None, len(req_body)) + "\n").encode())
+            )
 
-        # Intercept gate: wait for browser decision if enabled
+        # Intercept gate: wait for browser decision if enabled (requires inspect to be on)
         fwd_headers = {k: v for k, v in req_headers.items() if k.lower() not in ("host", "transfer-encoding")}
         fwd_body = req_body
 
-        if gate.enabled:
+        if gate.enabled and gate.inspect_enabled:
             decision = await gate.await_decision(rid)
             if decision["action"] == "drop":
                 await send({"type": "http.response.start", "status": 502, "headers": [(b"content-type", b"text/plain")]})
@@ -508,6 +518,21 @@ In `_run_inspect`, after starting uvicorn, add a background task that reads from
                             state_msg = {
                                 "type": "http_intercept_state",
                                 "enabled": gate.enabled,
+                                "inspect_enabled": gate.inspect_enabled,
+                                "timeout_s": gate.timeout_s,
+                                "timeout_action": gate.timeout_action,
+                            }
+                            with suppress(Exception):
+                                await ws.send(encode_frame(CHANNEL_HTTP, json.dumps(state_msg).encode()))
+                        elif msg_type == "http_inspect_toggle":
+                            gate.inspect_enabled = bool(msg.get("enabled", True))
+                            if not gate.inspect_enabled:
+                                gate.cancel_all("forward")  # can't intercept without inspect
+                                gate.enabled = False
+                            state_msg = {
+                                "type": "http_intercept_state",
+                                "enabled": gate.enabled,
+                                "inspect_enabled": gate.inspect_enabled,
                                 "timeout_s": gate.timeout_s,
                                 "timeout_action": gate.timeout_action,
                             }
@@ -577,6 +602,16 @@ async def test_http_intercept_toggle_relayed_to_worker() -> None:
     assert runtime._sent[0]["type"] == "http_intercept_toggle"
 
 
+async def test_http_inspect_toggle_relayed_to_worker() -> None:
+    """http_inspect_toggle from browser is forwarded to the worker WS."""
+    runtime = _Runtime(input_mode="open")
+    runtime.worker_ws = _Ws()
+    browser = _Ws()
+    await handle_socket_message(runtime, browser, _raw("http_inspect_toggle", enabled=False), is_worker=False)
+    assert len(runtime._sent) == 1
+    assert runtime._sent[0]["type"] == "http_inspect_toggle"
+
+
 async def test_http_action_dropped_when_no_worker() -> None:
     """http_action silently dropped when worker is not connected."""
     runtime = _Runtime(input_mode="open")
@@ -596,8 +631,8 @@ Expected: FAIL — http_action not handled
 In `handle_socket_message`, add before the `# heartbeat / ping` comment (after the presence_update elif):
 
 ```python
-        elif frame_type in {"http_action", "http_intercept_toggle"}:
-            # Relay intercept commands from browser back to the worker (tunnel agent)
+        elif frame_type in {"http_action", "http_intercept_toggle", "http_inspect_toggle"}:
+            # Relay intercept/inspect commands from browser back to the worker (tunnel agent)
             if runtime.worker_ws is not None:
                 await runtime.send_ws(runtime.worker_ws, frame)
 ```
@@ -751,13 +786,33 @@ const state: InspectState = {
 In the toolbar HTML (after `inspect-status` span):
 
 ```html
+<button id="inspect-inspect-toggle" class="btn-toggle active">Inspect: ON</button>
 <button id="inspect-intercept-toggle" class="btn-toggle">Intercept: OFF</button>
 ```
 
-Wire it up after element queries:
+Wire up both toggles after element queries:
 
 ```typescript
+const inspectToggle = requireElement<HTMLButtonElement>("#inspect-inspect-toggle", root);
 const interceptToggle = requireElement<HTMLButtonElement>("#inspect-intercept-toggle", root);
+
+inspectToggle.addEventListener("click", () => {
+  const newEnabled = !state.interceptEnabled || !state.interceptEnabled; // toggle inspect
+  // Use a separate state field
+  const inspectOn = inspectToggle.classList.contains("active");
+  const newInspect = !inspectOn;
+  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+    state.ws.send(JSON.stringify({ type: "http_inspect_toggle", enabled: newInspect }));
+  }
+  inspectToggle.textContent = `Inspect: ${newInspect ? "ON" : "OFF"}`;
+  inspectToggle.classList.toggle("active", newInspect);
+  if (!newInspect) {
+    // Disable intercept too — can't intercept without inspect
+    state.interceptEnabled = false;
+    interceptToggle.textContent = "Intercept: OFF";
+    interceptToggle.classList.remove("active");
+  }
+});
 
 interceptToggle.addEventListener("click", () => {
   const newEnabled = !state.interceptEnabled;
@@ -871,9 +926,12 @@ In the WS message handler, add after the `http_res` case:
 
 ```typescript
       } else if (type === "http_intercept_state") {
+        const inspectOn = frame.inspect_enabled !== false;
         state.interceptEnabled = Boolean(frame.enabled);
         state.interceptTimeout = Number(frame.timeout_s ?? 30);
         state.interceptTimeoutAction = String(frame.timeout_action ?? "forward");
+        inspectToggle.textContent = `Inspect: ${inspectOn ? "ON" : "OFF"}`;
+        inspectToggle.classList.toggle("active", inspectOn);
         interceptToggle.textContent = `Intercept: ${state.interceptEnabled ? "ON" : "OFF"}`;
         interceptToggle.classList.toggle("active", state.interceptEnabled);
 ```

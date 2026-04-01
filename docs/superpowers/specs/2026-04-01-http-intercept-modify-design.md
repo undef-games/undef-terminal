@@ -64,11 +64,22 @@ Sent when intercept mode changes (startup, toggle, or timeout config change).
 
 ### Browser → Proxy: `http_intercept_toggle`
 
-Sent when the browser toggle is clicked.
+Sent when the browser intercept toggle is clicked.
 
 ```json
 {
   "type": "http_intercept_toggle",
+  "enabled": true
+}
+```
+
+### Browser → Proxy: `http_inspect_toggle`
+
+Sent when the browser inspection toggle is clicked. When disabled, the proxy forwards requests silently without sending `http_req`/`http_res` frames — pure passthrough.
+
+```json
+{
+  "type": "http_inspect_toggle",
   "enabled": true
 }
 ```
