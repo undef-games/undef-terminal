@@ -11,6 +11,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
+from undef.terminal.hijack.coordinator import HijackSession as HijackSession  # noqa: TC001 — runtime re-export
 from undef.terminal.hijack.rest_helpers import MAX_EXPECT_REGEX_LEN
 
 
@@ -43,18 +44,6 @@ except ImportError as _e:  # pragma: no cover
 # ---------------------------------------------------------------------------
 # Internal state (dataclasses — no serialisation overhead needed)
 # ---------------------------------------------------------------------------
-
-
-@dataclass
-class HijackSession:
-    """A live REST hijack lease."""
-
-    hijack_id: str
-    owner: str
-    acquired_at: float
-    lease_expires_at: float
-    last_heartbeat: float
-
 
 VALID_ROLES = frozenset({"viewer", "operator", "admin"})
 
