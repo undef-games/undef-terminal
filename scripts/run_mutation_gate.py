@@ -83,7 +83,7 @@ def _sanitize_mutants_pyproject(path: Path, *, paths_to_mutate: list[str] | None
     if paths_to_mutate:
         encoded = ", ".join(f'"{item}"' for item in paths_to_mutate)
         updated, count = re.subn(
-            r"^paths_to_mutate\s*=\s*\[[^\]]*\]",
+            r"^paths_to_mutate\s*=\s*\[[\s\S]*?\]",
             f"paths_to_mutate = [{encoded}]",
             updated,
             count=1,
