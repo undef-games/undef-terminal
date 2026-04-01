@@ -335,6 +335,30 @@ class TestProcessTreeHelpers:
         proc.terminate.assert_not_called()
         mock_taskkill.assert_awaited_once_with(987)
 
+    def test_try_set_subreaper_linux(self, pm):
+        """_try_set_subreaper calls prctl(PR_SET_CHILD_SUBREAPER) on Linux."""
+        mock_libc = MagicMock()
+        mock_libc.prctl.return_value = 0
+        with (
+            patch.object(process_module.sys, "platform", "linux"),
+            patch("ctypes.CDLL", return_value=mock_libc),
+        ):
+            pm._try_set_subreaper()
+        mock_libc.prctl.assert_called_once_with(36, 1, 0, 0, 0)  # PR_SET_CHILD_SUBREAPER
+
+    def test_try_set_subreaper_non_linux_skips(self, pm):
+        """_try_set_subreaper is a no-op on non-Linux platforms."""
+        with patch.object(process_module.sys, "platform", "darwin"):
+            pm._try_set_subreaper()  # must not raise
+
+    def test_try_set_subreaper_ctypes_error_ignored(self, pm):
+        """_try_set_subreaper swallows exceptions from ctypes."""
+        with (
+            patch.object(process_module.sys, "platform", "linux"),
+            patch("ctypes.CDLL", side_effect=OSError("no libc")),
+        ):
+            pm._try_set_subreaper()  # must not raise
+
     @pytest.mark.asyncio
     async def test_kill_agent_terminates_spawned_child_process_tree(self, pm, manager, tmp_path):
         parent_script = tmp_path / "parent.py"

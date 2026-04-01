@@ -86,6 +86,29 @@ class AgentProcessManager:
         self._spawn_name_style: str = "random"
         self._spawn_name_base: str = ""
         self._last_spawn_config: str | None = None
+        self._try_set_subreaper()
+
+    @staticmethod
+    def _try_set_subreaper() -> None:
+        """Mark this process as a subreaper on Linux.
+
+        When set, orphaned grandchild processes are reparented to us instead of
+        init, ensuring ``_stop_process_tree`` can reap them even if the direct
+        child called ``setsid()`` or otherwise changed its process group.
+        Best-effort — silently ignored on non-Linux or unprivileged systems.
+        """
+        if sys.platform != "linux":
+            return
+        try:
+            import ctypes
+
+            pr_set_child_subreaper = 36
+            libc = ctypes.CDLL("libc.so.6", use_errno=True)
+            rc = libc.prctl(pr_set_child_subreaper, 1, 0, 0, 0)
+            if rc == 0:
+                logger.debug("subreaper_set")
+        except Exception:  # noqa: S110
+            pass  # not available — fall back to killpg-only
 
     @staticmethod
     def _parse_agent_index(agent_id: str) -> int | None:

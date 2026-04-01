@@ -132,6 +132,41 @@ class TestTimeseriesManager:
         mgr.path = tmp_path / "readonly" / "file.jsonl"
         # This should not raise
         mgr.write_sample(_make_status(), reason="test")
+        # File handle should be reset after error
+        assert mgr._fh is None
+
+    def test_write_sample_reuses_file_handle(self, tmp_path):
+        """write_sample keeps file handle open across calls."""
+        mgr = TimeseriesManager(lambda: _make_status(), timeseries_dir=str(tmp_path))
+        mgr.write_sample(_make_status(), reason="first")
+        fh1 = mgr._fh
+        assert fh1 is not None and not fh1.closed
+        mgr.write_sample(_make_status(), reason="second")
+        assert mgr._fh is fh1  # same handle reused
+        rows = mgr.read_tail(10)
+        assert len(rows) == 2
+
+    def test_close_fh_closes_handle(self, tmp_path):
+        """_close_fh closes the persistent handle."""
+        mgr = TimeseriesManager(lambda: _make_status(), timeseries_dir=str(tmp_path))
+        mgr.write_sample(_make_status(), reason="test")
+        assert mgr._fh is not None
+        mgr._close_fh()
+        assert mgr._fh is None
+
+    def test_rotate_closes_and_reopens_handle(self, tmp_path):
+        """Rotation closes the old handle; next write opens a new one."""
+        mgr = TimeseriesManager(lambda: _make_status(), timeseries_dir=str(tmp_path))
+        mgr._max_bytes = 1  # force rotation on next write
+        mgr.write_sample(_make_status(), reason="trigger-rotate")
+        # Rotation closed the handle
+        assert mgr._fh is None or mgr._fh.closed
+        # Reset max_bytes so next write doesn't rotate again
+        mgr._max_bytes = 10_000_000
+        mgr.write_sample(_make_status(), reason="after-rotate")
+        assert mgr._fh is not None and not mgr._fh.closed
+        rows = mgr.read_tail(10)
+        assert len(rows) == 1  # only the post-rotation sample in new file
 
     @pytest.mark.asyncio
     async def test_loop_writes_startup(self, tmp_path):
