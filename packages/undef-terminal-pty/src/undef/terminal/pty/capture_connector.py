@@ -128,7 +128,10 @@ class CaptureConnector:
             except asyncio.QueueEmpty:
                 break
             if frame.channel == CHANNEL_STDOUT:
-                text = frame.data.decode("utf-8", errors="replace")
+                raw = frame.data.decode("utf-8", errors="replace")
+                # Normalize bare \n → \r\n: DYLD capture bypasses the PTY ONLCR
+                # driver, so xterm.js would advance cursor down without a CR.
+                text = raw.replace("\r\n", "\n").replace("\n", "\r\n")
                 self._buffer += text
                 if len(self._buffer) > 65536:
                     self._buffer = self._buffer[-65536:]
@@ -175,15 +178,10 @@ class CaptureConnector:
         return []
 
     async def get_snapshot(self) -> dict[str, Any]:
-        # Return as a "term" dict so xterm processes raw PTY bytes incrementally
-        # instead of clearing and redrawing (which breaks \r\n sequences).
-        return {"type": "term", "data": self._buffer}
+        return self._snapshot()
 
     async def set_mode(self, mode: str) -> list[dict[str, Any]]:
-        return [
-            {"type": "worker_hello", "input_mode": "open"},
-            {"type": "term", "data": self._buffer},
-        ]
+        return [{"type": "worker_hello", "input_mode": "open"}]
 
     async def clear(self) -> list[dict[str, Any]]:
         self._buffer = ""

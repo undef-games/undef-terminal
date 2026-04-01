@@ -147,7 +147,7 @@ async def test_buffer_truncated_at_65536_chars() -> None:
         await conn.poll_messages()
         # After draining, the internal buffer should be capped at 65536
         snap = await conn.get_snapshot()
-        assert len(snap["data"]) <= 65536
+        assert len(snap["screen"]) <= 65536
         await conn.stop()
 
 
@@ -165,8 +165,9 @@ async def test_get_snapshot_structure() -> None:
         conn = _make_connector(td)
         await conn.start()
         snap = await conn.get_snapshot()
-        assert snap["type"] == "term"
-        assert "data" in snap
+        assert snap["type"] == "snapshot"
+        for key in ("screen", "cursor", "cols", "rows", "screen_hash"):
+            assert key in snap, f"missing key: {key}"
         await conn.stop()
 
 
@@ -179,18 +180,17 @@ async def test_clear_resets_buffer() -> None:
         await conn.poll_messages()
         msgs = await conn.clear()
         assert msgs[0]["type"] == "term"
-        assert msgs[0]["data"] == ""
+        assert msgs[0].get("data") == ""
         await conn.stop()
 
 
-async def test_set_mode_returns_hello_and_term() -> None:
+async def test_set_mode_returns_hello() -> None:
     with tempfile.TemporaryDirectory() as td:
         conn = _make_connector(td)
         await conn.start()
         msgs = await conn.set_mode("open")
         types = [m["type"] for m in msgs]
         assert "worker_hello" in types
-        assert "term" in types
         await conn.stop()
 
 
