@@ -51,7 +51,7 @@ dev = [
 ]
 
 [tool.uv.workspace]
-members = ["packages/undef-terminal", "packages/undef-terminal-shell", "packages/undef-terminal-cloudflare", "packages/undef-terminal-deckmux", "packages/undef-terminal-render"]
+members = ["packages/undef-terminal", "packages/undef-terminal-shell", "packages/undef-terminal-cloudflare", "packages/undef-terminal-deckmux", "packages/undef-terminal-render", "packages/undef-terminal-pty"]
 
 [tool.uv.sources]
 undef-terminal = { workspace = true }
@@ -59,6 +59,7 @@ undef-terminal-shell = { workspace = true }
 undef-terminal-cloudflare = { workspace = true }
 undef-terminal-deckmux = { workspace = true }
 undef-terminal-render = { workspace = true }
+undef-terminal-pty = { workspace = true }
 
 [tool.ruff]
 line-length = 120
@@ -179,6 +180,13 @@ paths_to_mutate = [
     "src/undef/terminal/deckmux/_protocol.py",
     "src/undef/terminal/deckmux/_names.py",
     "src/undef/terminal/deckmux/_edge.py",
+    "src/undef/terminal/pty/_validate.py",
+    "src/undef/terminal/pty/uid_map.py",
+    "src/undef/terminal/pty/capture.py",
+    "src/undef/terminal/pty/capture_connector.py",
+    "src/undef/terminal/pty/pam_listener.py",
+    "src/undef/terminal/pty/pam.py",
+    "src/undef/terminal/pty/connector.py",
 ]
 tests_dir = [
     "packages/undef-terminal-shell/tests/shell/test_shell_render.py",
@@ -188,6 +196,13 @@ tests_dir = [
     "packages/undef-terminal-deckmux/tests/deckmux/test_protocol.py",
     "packages/undef-terminal-deckmux/tests/deckmux/test_names.py",
     "packages/undef-terminal-deckmux/tests/deckmux/test_edge.py",
+    "packages/undef-terminal-pty/tests/test_validate.py",
+    "packages/undef-terminal-pty/tests/test_uid_map.py",
+    "packages/undef-terminal-pty/tests/test_capture.py",
+    "packages/undef-terminal-pty/tests/test_capture_connector.py",
+    "packages/undef-terminal-pty/tests/test_pam_listener.py",
+    "packages/undef-terminal-pty/tests/test_pam.py",
+    "packages/undef-terminal-pty/tests/test_connector.py",
 ]
 also_copy = [
     "src",
@@ -197,6 +212,8 @@ also_copy = [
     "packages/undef-terminal-shell/tests",
     "packages/undef-terminal-deckmux/src",
     "packages/undef-terminal-deckmux/tests",
+    "packages/undef-terminal-pty/src",
+    "packages/undef-terminal-pty/tests",
     "conftest.py",
 ]
 pytest_add_cli_args = ["--timeout=30", "-p", "no:randomly", "-p", "no:hypothesis"]

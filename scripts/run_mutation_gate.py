@@ -28,7 +28,10 @@ CONFIG_FILES: Final[tuple[str, ...]] = (
     "pytest.ini",
 )
 MUTMUT_INCOMPATIBLE_PYTEST_ARGS: Final[tuple[str, ...]] = ("--randomly-dont-reorganize",)
-DEFAULT_MUTATION_ROOTS: Final[tuple[str, ...]] = ("packages/undef-terminal/src/undef/terminal/",)
+DEFAULT_MUTATION_ROOTS: Final[tuple[str, ...]] = (
+    "packages/undef-terminal/src/undef/terminal/",
+    "packages/undef-terminal-pty/src/undef/terminal/pty/",
+)
 
 
 def _uv_mutmut_cmd(python_version: str | None, *args: str) -> list[str]:
@@ -64,6 +67,19 @@ def _sanitize_mutants_pyproject(path: Path, *, paths_to_mutate: list[str] | None
     for arg in MUTMUT_INCOMPATIBLE_PYTEST_ARGS:
         updated = updated.replace(f'"{arg}",\n', "")
         updated = updated.replace(f'"{arg}"', "")
+    # Strip uv workspace config — mutants/ doesn't contain workspace members
+    updated = re.sub(
+        r"^\[tool\.uv\.workspace\]\n(?:.*\n)*?\n",
+        "\n",
+        updated,
+        flags=re.MULTILINE,
+    )
+    updated = re.sub(
+        r"^\[tool\.uv\.sources\]\n(?:.*\n)*?\n",
+        "\n",
+        updated,
+        flags=re.MULTILINE,
+    )
     if paths_to_mutate:
         encoded = ", ".join(f'"{item}"' for item in paths_to_mutate)
         updated, count = re.subn(
@@ -147,7 +163,13 @@ def run_mutation_gate(
         children = max_children if attempt == 1 else 1
         print(f"Running mutation attempt {attempt}/{attempts} with max-children={children}")
 
-        _run(_uv_mutmut_cmd(python_version, "run", "--max-children", str(children)), env=mutation_env)
+        # mutmut returns 0 = all killed, 1 = survivors exist, 2+ = error.
+        # Survivors are expected (equivalent mutants); only fail on real errors.
+        cmd = _uv_mutmut_cmd(python_version, "run", "--max-children", str(children))
+        print("+", " ".join(cmd))
+        mutmut_result = subprocess.run(cmd, check=False, env=mutation_env)  # noqa: S603
+        if mutmut_result.returncode > 1:
+            raise RuntimeError(f"mutmut crashed (exit {mutmut_result.returncode})")
         _run(_uv_mutmut_cmd(python_version, "export-cicd-stats"), env=mutation_env)
         last_stats = _read_stats(stats_path)
         score = _mutation_score(last_stats)

@@ -47,7 +47,8 @@
       "Bash(java -jar /opt/homebrew/Cellar/plantuml/*/libexec/plantuml.jar -version)",
       "Bash(do echo:*)",
       "Bash(plantuml -tsvg \"$f\")",
-      "Bash(do plantuml:*)"
+      "Bash(do plantuml:*)",
+      "Bash(docker run --rm undef-pty-test bash -c ':*)"
     ],
     "additionalDirectories": [
       "/Users/tim/code/gh/undef-games"

@@ -76,7 +76,7 @@ class PamTunnelBridge:
             logger.warning("tunnel_to_pty_error: %s", exc)
 
     async def _capture_to_tunnel_loop(self) -> None:
-        from undef.terminal.pty.capture import CHANNEL_STDOUT  # type: ignore[import-untyped]
+        from undef.terminal.pty.capture import CHANNEL_STDOUT
 
         capture_socket = self._connector._capture
         try:

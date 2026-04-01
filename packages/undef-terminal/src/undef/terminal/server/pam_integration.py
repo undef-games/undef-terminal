@@ -34,7 +34,7 @@ import re
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from undef.terminal.pty.pam_listener import PamEvent  # type: ignore[import-untyped]
+    from undef.terminal.pty.pam_listener import PamEvent
 
 logger = logging.getLogger(__name__)
 

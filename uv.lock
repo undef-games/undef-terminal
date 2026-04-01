@@ -13,6 +13,7 @@ members = [
     "undef-terminal",
     "undef-terminal-cloudflare",
     "undef-terminal-deckmux",
+    "undef-terminal-pty",
     "undef-terminal-render",
     "undef-terminal-shell",
     "undef-terminal-workspace",
@@ -3252,6 +3253,35 @@ terminal = [
 [package.metadata]
 requires-dist = [{ name = "undef-terminal", marker = "extra == 'terminal'", editable = "packages/undef-terminal" }]
 provides-extras = ["terminal"]
+
+[[package]]
+name = "undef-terminal-pty"
+source = { editable = "packages/undef-terminal-pty" }
+
+[package.optional-dependencies]
+dev = [
+    { name = "bandit" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+terminal = [
+    { name = "undef-terminal" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "bandit", marker = "extra == 'dev'", specifier = ">=1.9" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.19" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15" },
+    { name = "undef-terminal", marker = "extra == 'terminal'", editable = "packages/undef-terminal" },
+]
+provides-extras = ["terminal", "dev"]
 
 [[package]]
 name = "undef-terminal-render"
