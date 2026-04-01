@@ -1,0 +1,152 @@
+#
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+"""TelnetSession — telnet client + pyte emulator satisfying the Session protocol.
+
+Combines :class:`~undef.terminal.transports.telnet_client.TelnetClient` with
+:class:`~undef.terminal.emulator.TerminalEmulator` to provide a ready-to-use
+:class:`~undef.terminal.io.Session`-compliant object.
+
+Requires the ``emulator`` extra::
+
+    pip install 'undef-terminal[emulator]'
+
+Example::
+
+    session = await connect_telnet("localhost", 2102)
+    snap = session.snapshot()
+    print(snap["screen"])
+    await session.send("Hello\\r")
+    await session.close()
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+from typing import Any
+
+from undef.terminal.emulator import TerminalEmulator
+from undef.terminal.transports.telnet_client import TelnetClient
+
+
+async def connect_telnet(
+    host: str,
+    port: int,
+    *,
+    cols: int = 80,
+    rows: int = 25,
+    connect_timeout: float = 30.0,
+) -> TelnetSession:
+    """Connect to a telnet server and return a Session-protocol-compliant object.
+
+    Args:
+        host: Hostname or IP address.
+        port: TCP port number.
+        cols: Terminal width (default 80).
+        rows: Terminal height (default 25).
+        connect_timeout: TCP connect timeout in seconds.
+
+    Returns:
+        A :class:`TelnetSession` that satisfies :class:`~undef.terminal.io.Session`.
+    """
+    session = TelnetSession(host, port, cols=cols, rows=rows, connect_timeout=connect_timeout)
+    await session.connect()
+    return session
+
+
+class TelnetSession:
+    """Telnet client with pyte terminal emulation.
+
+    Satisfies the :class:`~undef.terminal.io.Session` protocol:
+    ``snapshot()``, ``send()``, ``wait_for_update()``.
+
+    Use :func:`connect_telnet` for a convenient factory, or construct
+    directly and call :meth:`connect`.
+    """
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        *,
+        cols: int = 80,
+        rows: int = 25,
+        connect_timeout: float = 30.0,
+    ) -> None:
+        self._client = TelnetClient(host, port, connect_timeout=connect_timeout)
+        self._emulator = TerminalEmulator(cols, rows)
+        self._read_task: asyncio.Task[None] | None = None
+        self._update_event = asyncio.Event()
+        self._connected = False
+
+    async def connect(self) -> None:
+        """Open the TCP connection and start the background reader."""
+        await self._client.connect()
+        self._connected = True
+        self._read_task = asyncio.create_task(self._reader_loop())
+
+    async def close(self) -> None:
+        """Close the connection and stop the background reader."""
+        self._connected = False
+        if self._read_task is not None:
+            self._read_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._read_task
+            self._read_task = None
+        await self._client.close()
+
+    async def __aenter__(self) -> TelnetSession:
+        await self.connect()
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.close()
+
+    # ── Session protocol ──────────────────────────────────────────────────
+
+    def snapshot(self) -> dict[str, Any]:
+        """Return the current emulated screen state."""
+        return self._emulator.get_snapshot()
+
+    async def send(self, data: str) -> None:
+        """Send a string to the telnet server."""
+        self._client.write(data.encode("cp437", errors="replace"))
+        await self._client.drain()
+
+    async def wait_for_update(self, *, timeout_ms: int, since: int | None = None) -> bool:  # noqa: ARG002
+        """Wait until new bytes arrive from the server, or timeout.
+
+        Args:
+            timeout_ms: Maximum wait time in milliseconds.
+            since: Ignored (kept for protocol compatibility).
+
+        Returns:
+            ``True`` if new data arrived, ``False`` on timeout.
+        """
+        self._update_event.clear()
+        try:
+            await asyncio.wait_for(self._update_event.wait(), timeout=timeout_ms / 1000.0)
+            return True
+        except TimeoutError:
+            return False
+
+    def is_connected(self) -> bool:
+        """Return ``True`` if the session is connected."""
+        return self._connected
+
+    # ── Internal ──────────────────────────────────────────────────────────
+
+    async def _reader_loop(self) -> None:
+        """Background task: read from telnet, feed into emulator."""
+        try:
+            while self._connected:
+                data = await self._client.read(4096)
+                if not data:
+                    self._connected = False
+                    break
+                self._emulator.process(data)
+                self._update_event.set()
+        except (asyncio.CancelledError, ConnectionResetError, OSError):
+            self._connected = False
