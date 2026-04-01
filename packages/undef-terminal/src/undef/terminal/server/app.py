@@ -288,6 +288,7 @@ def create_server_app(config: ServerConfig, hub_class: type[TermHub] | None = No
         worker_token=config.auth.worker_bearer_token,
         resume_store=InMemoryResumeStore(),
         on_resume=_on_resume,
+        browser_rate_limit_per_sec=config.browser_rate_limit_per_sec,
     )
     webhook_manager = WebhookManager()
     registry = SessionRegistry(

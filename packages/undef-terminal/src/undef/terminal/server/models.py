@@ -292,6 +292,7 @@ class ServerConfig(ServerBaseModel):
     sessions: list[SessionDefinition] = Field(default_factory=list)
     session_idle_timeout_s: int = 0  # 0 = disabled, >0 = seconds of inactivity before auto-cleanup
     session_retention_s: int = 0  # 0 = disabled, >0 = auto-delete stopped sessions older than N seconds
+    browser_rate_limit_per_sec: float = 300  # WS messages/sec per browser connection (keystrokes)
 
 
 ServerModel: TypeAlias = (
