@@ -473,3 +473,37 @@ async def test_control_request_send_failure_removes_owner() -> None:
     runtime.send_ws = _failing_send  # type: ignore[assignment]
     await handle_socket_message(runtime, sender, _raw("control_request"), is_worker=False)
     assert owner_key not in runtime.browser_sockets
+
+
+# ---------------------------------------------------------------------------
+# Intercept relay — http_action / http_intercept_toggle / http_inspect_toggle
+# ---------------------------------------------------------------------------
+
+
+async def test_http_action_relayed_to_worker() -> None:
+    runtime = _Runtime(input_mode="open")
+    runtime.worker_ws = _Ws()
+    await handle_socket_message(runtime, _Ws(), _raw("http_action", id="r1", action="forward"), is_worker=False)
+    assert len(runtime._sent) == 1
+    assert runtime._sent[0]["type"] == "http_action"
+
+
+async def test_http_intercept_toggle_relayed() -> None:
+    runtime = _Runtime(input_mode="open")
+    runtime.worker_ws = _Ws()
+    await handle_socket_message(runtime, _Ws(), _raw("http_intercept_toggle", enabled=True), is_worker=False)
+    assert runtime._sent[0]["type"] == "http_intercept_toggle"
+
+
+async def test_http_inspect_toggle_relayed() -> None:
+    runtime = _Runtime(input_mode="open")
+    runtime.worker_ws = _Ws()
+    await handle_socket_message(runtime, _Ws(), _raw("http_inspect_toggle", enabled=False), is_worker=False)
+    assert runtime._sent[0]["type"] == "http_inspect_toggle"
+
+
+async def test_http_action_dropped_no_worker() -> None:
+    runtime = _Runtime(input_mode="open")
+    runtime.worker_ws = None
+    await handle_socket_message(runtime, _Ws(), _raw("http_action", id="r1", action="drop"), is_worker=False)
+    assert not runtime._sent

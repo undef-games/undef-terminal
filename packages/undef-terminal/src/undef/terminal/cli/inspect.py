@@ -96,6 +96,10 @@ def _cmd_inspect(args: argparse.Namespace) -> None:
     display_name: str = getattr(args, "display_name", None) or f"http:{target_port}"
     token = _read_token(args)
 
+    intercept = getattr(args, "intercept", False)
+    intercept_timeout = getattr(args, "intercept_timeout", 30.0)
+    intercept_timeout_action = getattr(args, "intercept_timeout_action", "forward")
+
     tunnel_info = _create_tunnel(server, display_name, token, target_port)
     ws_endpoint = tunnel_info.get("ws_endpoint", "")
     worker_token = tunnel_info.get("worker_token", "")
@@ -116,11 +120,28 @@ def _cmd_inspect(args: argparse.Namespace) -> None:
     print("\nConnected. Press Ctrl+C to stop.")
 
     with suppress(KeyboardInterrupt):
-        asyncio.run(_run_inspect(ws_endpoint, worker_token, target_port, listen_port))
+        asyncio.run(
+            _run_inspect(
+                ws_endpoint,
+                worker_token,
+                target_port,
+                listen_port,
+                intercept=intercept,
+                intercept_timeout=intercept_timeout,
+                intercept_timeout_action=intercept_timeout_action,
+            )
+        )
 
 
 async def _run_inspect(
-    ws_endpoint: str, worker_token: str, target_port: int, listen_port: int
+    ws_endpoint: str,
+    worker_token: str,
+    target_port: int,
+    listen_port: int,
+    *,
+    intercept: bool = False,
+    intercept_timeout: float = 30.0,
+    intercept_timeout_action: str = "forward",
 ) -> None:  # pragma: no cover — integration; tested via E2E
     """Connect to tunnel WS and start an HTTP reverse proxy with inspection."""
     import time
@@ -152,6 +173,22 @@ async def _run_inspect(
         )
     )
 
+    from undef.terminal.tunnel.intercept import InterceptGate, parse_action_message
+
+    gate = InterceptGate(timeout_s=intercept_timeout, timeout_action=intercept_timeout_action)
+    gate.enabled = intercept
+
+    # Send initial intercept state
+    _state_msg = {
+        "type": "http_intercept_state",
+        "enabled": gate.enabled,
+        "inspect_enabled": gate.inspect_enabled,
+        "timeout_s": gate.timeout_s,
+        "timeout_action": gate.timeout_action,
+    }
+    with suppress(Exception):
+        await ws.send(encode_frame(CHANNEL_HTTP, json.dumps(_state_msg).encode()))
+
     req_counter = 0
 
     async def _proxy_app(scope: dict[str, Any], receive: Any, send: Any) -> None:
@@ -182,51 +219,84 @@ async def _run_inspect(
         req_counter += 1
         rid = f"r{req_counter}"
 
-        # Send http_req on channel 0x03
-        req_event: dict[str, Any] = {
-            "type": "http_req",
-            "id": rid,
-            "ts": time.time(),
-            "method": method,
-            "url": f"{path}?{qs}" if qs else path,
-            "headers": req_headers,
-            **encode_body(req_body, req_ct),
-        }
-        with suppress(Exception):
-            await ws.send(encode_frame(CHANNEL_HTTP, json.dumps(req_event, separators=(",", ":")).encode()))
+        # Send http_req on channel 0x03 (only when inspect is enabled)
+        if gate.inspect_enabled:
+            req_event: dict[str, Any] = {
+                "type": "http_req",
+                "id": rid,
+                "ts": time.time(),
+                "method": method,
+                "url": f"{path}?{qs}" if qs else path,
+                "headers": req_headers,
+                "intercepted": gate.enabled,
+                **encode_body(req_body, req_ct),
+            }
+            with suppress(Exception):
+                await ws.send(encode_frame(CHANNEL_HTTP, json.dumps(req_event, separators=(",", ":")).encode()))
 
-        print(format_log_line(method, path, None, None, len(req_body)), file=sys.stderr)
-        await ws.send(
-            encode_frame(CHANNEL_DATA, (format_log_line(method, path, None, None, len(req_body)) + "\n").encode())
-        )
+            print(format_log_line(method, path, None, None, len(req_body)), file=sys.stderr)
+            await ws.send(
+                encode_frame(CHANNEL_DATA, (format_log_line(method, path, None, None, len(req_body)) + "\n").encode())
+            )
+
+        # Intercept gate: pause for browser decision if enabled
+        fwd_headers = {k: v for k, v in req_headers.items() if k.lower() not in ("host", "transfer-encoding")}
+        fwd_body = req_body
+
+        if gate.enabled and gate.inspect_enabled:
+            decision = await gate.await_decision(rid)
+            if decision["action"] == "drop":
+                await send(
+                    {"type": "http.response.start", "status": 502, "headers": [(b"content-type", b"text/plain")]}
+                )
+                await send({"type": "http.response.body", "body": b"Request dropped by interceptor"})
+                # Send synthetic http_res so browser shows the drop
+                drop_event: dict[str, Any] = {
+                    "type": "http_res",
+                    "id": rid,
+                    "ts": time.time(),
+                    "status": 502,
+                    "status_text": "Dropped",
+                    "headers": {},
+                    "body_size": 0,
+                    "duration_ms": 0,
+                }
+                with suppress(Exception):
+                    await ws.send(encode_frame(CHANNEL_HTTP, json.dumps(drop_event, separators=(",", ":")).encode()))
+                return
+            if decision["action"] == "modify":
+                if decision["headers"] is not None:
+                    fwd_headers = decision["headers"]
+                if decision["body"] is not None:
+                    fwd_body = decision["body"]
 
         # Forward to target
         t0 = time.monotonic()
         try:
             async with httpx.AsyncClient() as client:
-                fwd_headers = {k: v for k, v in req_headers.items() if k.lower() not in ("host", "transfer-encoding")}
-                upstream = await client.request(method, target_url, headers=fwd_headers, content=req_body)
+                upstream = await client.request(method, target_url, headers=fwd_headers, content=fwd_body)
                 resp_body = upstream.content
                 duration_ms = (time.monotonic() - t0) * 1000
                 resp_ct = upstream.headers.get("content-type", "")
 
-                # Send http_res on channel 0x03
-                res_event: dict[str, Any] = {
-                    "type": "http_res",
-                    "id": rid,
-                    "ts": time.time(),
-                    "status": upstream.status_code,
-                    "status_text": upstream.reason_phrase,
-                    "headers": dict(upstream.headers),
-                    "duration_ms": round(duration_ms, 1),
-                    **encode_body(resp_body, resp_ct),
-                }
-                with suppress(Exception):
-                    await ws.send(encode_frame(CHANNEL_HTTP, json.dumps(res_event, separators=(",", ":")).encode()))
+                # Send http_res on channel 0x03 (only when inspect is enabled)
+                if gate.inspect_enabled:
+                    res_event: dict[str, Any] = {
+                        "type": "http_res",
+                        "id": rid,
+                        "ts": time.time(),
+                        "status": upstream.status_code,
+                        "status_text": upstream.reason_phrase,
+                        "headers": dict(upstream.headers),
+                        "duration_ms": round(duration_ms, 1),
+                        **encode_body(resp_body, resp_ct),
+                    }
+                    with suppress(Exception):
+                        await ws.send(encode_frame(CHANNEL_HTTP, json.dumps(res_event, separators=(",", ":")).encode()))
 
-                log_line = format_log_line(method, path, upstream.status_code, duration_ms, len(resp_body))
-                print(log_line, file=sys.stderr)
-                await ws.send(encode_frame(CHANNEL_DATA, (log_line + "\n").encode()))
+                    log_line = format_log_line(method, path, upstream.status_code, duration_ms, len(resp_body))
+                    print(log_line, file=sys.stderr)
+                    await ws.send(encode_frame(CHANNEL_DATA, (log_line + "\n").encode()))
 
                 # Send response back to local client
                 resp_headers = [
@@ -241,6 +311,55 @@ async def _run_inspect(
             log.warning("inspect_proxy_error url=%s error=%s", target_url, exc)
             await send({"type": "http.response.start", "status": 502, "headers": [(b"content-type", b"text/plain")]})
             await send({"type": "http.response.body", "body": f"Bad Gateway: {exc}".encode()})
+
+    async def _ws_action_receiver() -> None:
+        """Read http_action/toggle messages from the tunnel WS."""
+        from undef.terminal.tunnel.protocol import decode_frame
+
+        try:
+            async for raw in ws:
+                if not isinstance(raw, bytes) or len(raw) <= 2:
+                    continue
+                frame = decode_frame(raw)
+                if frame.channel != CHANNEL_HTTP:
+                    continue
+                try:
+                    msg = json.loads(frame.payload)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    continue
+                msg_type = msg.get("type")
+                if msg_type == "http_action":
+                    decision = parse_action_message(msg)
+                    rid = str(msg.get("id", ""))
+                    if not gate.resolve(rid, decision):
+                        log.warning("intercept_unknown_id id=%s", rid)
+                elif msg_type == "http_intercept_toggle":
+                    gate.enabled = bool(msg.get("enabled", False))
+                    if not gate.enabled:
+                        gate.cancel_all("forward")
+                    _broadcast_state()
+                elif msg_type == "http_inspect_toggle":
+                    gate.inspect_enabled = bool(msg.get("enabled", True))
+                    if not gate.inspect_enabled:
+                        gate.cancel_all("forward")
+                        gate.enabled = False
+                    _broadcast_state()
+        except Exception:
+            gate.cancel_all("forward")
+
+    def _broadcast_state() -> None:
+        state = {
+            "type": "http_intercept_state",
+            "enabled": gate.enabled,
+            "inspect_enabled": gate.inspect_enabled,
+            "timeout_s": gate.timeout_s,
+            "timeout_action": gate.timeout_action,
+        }
+        with suppress(Exception):
+            _t = asyncio.create_task(ws.send(encode_frame(CHANNEL_HTTP, json.dumps(state).encode())))
+            _t.add_done_callback(lambda _: None)
+
+    _receiver = asyncio.create_task(_ws_action_receiver())  # noqa: RUF006
 
     bind_port = listen_port or 0
     config = uvicorn.Config(_proxy_app, host="127.0.0.1", port=bind_port, log_level="warning")
@@ -297,5 +416,24 @@ def add_inspect_subcommand(subparsers: Any) -> None:
         metavar="NAME",
         default=None,
         help="override display name (default: http:<port>)",
+    )
+    inspect_p.add_argument(
+        "--intercept",
+        action="store_true",
+        default=False,
+        help="enable HTTP request interception (pause before forwarding)",
+    )
+    inspect_p.add_argument(
+        "--intercept-timeout",
+        type=float,
+        metavar="SECONDS",
+        default=30.0,
+        help="seconds to wait for browser action (default: 30)",
+    )
+    inspect_p.add_argument(
+        "--intercept-timeout-action",
+        choices=["forward", "drop"],
+        default="forward",
+        help="action on timeout: forward (default) or drop",
     )
     inspect_p.set_defaults(func=_cmd_inspect)
