@@ -86,9 +86,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --group dev
-      - name: Run PTY unit tests (no PAM/root)
-        run: uv run pytest packages/undef-terminal-pty/tests/ -q --no-cov --timeout=10
+      - run: uv pip install -e "packages/undef-terminal-pty/[dev]"
+      - name: Run PTY unit tests (no PAM/root/native)
+        run: uv run pytest packages/undef-terminal-pty/tests/ -q --no-cov --timeout=10 --ignore=packages/undef-terminal-pty/tests/e2e -o "addopts="
 
   pty-docker:
     runs-on: ubuntu-latest
