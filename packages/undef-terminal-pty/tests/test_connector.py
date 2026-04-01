@@ -243,6 +243,33 @@ def test_register_import_error_silently_returns() -> None:
         _register()  # must not raise
 
 
+def test_register_no_refresh_when_connectors_module_absent() -> None:
+    """_register() succeeds without refreshing when connectors module absent."""
+    from types import ModuleType
+
+    from undef.terminal.pty.connector import _register
+
+    fake_registry = ModuleType("undef.terminal.server.connectors.registry")
+
+    def _fake_register(name: str, cls: object) -> None:
+        pass
+
+    def _fake_registered_types() -> frozenset:
+        return frozenset({"pty"})
+
+    fake_registry.register_connector = _fake_register  # type: ignore[attr-defined]
+    fake_registry.registered_types = _fake_registered_types  # type: ignore[attr-defined]
+
+    with patch.dict(
+        sys.modules,
+        {
+            "undef.terminal.server.connectors.registry": fake_registry,
+            "undef.terminal.server.connectors": None,  # module absent from sys.modules
+        },
+    ):
+        _register()  # must not raise
+
+
 def test_register_refreshes_known_connector_types() -> None:
     """_register() updates KNOWN_CONNECTOR_TYPES on connectors module when present."""
     from types import ModuleType
@@ -293,6 +320,18 @@ async def test_start_with_run_as_uid_sets_env() -> None:
     await conn.stop()
 
 
+async def test_start_inject_no_lib_path_skips_env_var() -> None:
+    """start() with inject=True but no lib path skips LD_PRELOAD/DYLD env vars."""
+    mock_cap = AsyncMock()
+    with (
+        patch("undef.terminal.pty.connector.get_capture_lib_path", return_value=None),
+        patch("undef.terminal.pty.connector.CaptureSocket", return_value=mock_cap),
+    ):
+        conn = make_connector("/bin/echo", ["x"], inject=True)
+        await conn.start()
+        await conn.stop()
+
+
 async def test_start_inject_sets_lib_env_when_lib_present() -> None:
     """start() with inject=True and present lib sets DYLD_INSERT_LIBRARIES (macOS)."""
     fake_lib = Path("/fake/libuterm_capture.dylib")
@@ -301,7 +340,9 @@ async def test_start_inject_sets_lib_env_when_lib_present() -> None:
     with (
         patch(_cap_lib_path, return_value=fake_lib),
         patch("undef.terminal.pty.connector.CaptureSocket", return_value=mock_cap),
+        patch("undef.terminal.pty.connector.sys") as mock_sys,
     ):
+        mock_sys.platform = "darwin"
         conn = make_connector("/bin/echo", ["x"], inject=True)
         await conn.start()
         await conn.stop()
@@ -344,9 +385,15 @@ async def test_start_pam_path_mocked_as_root() -> None:
 async def test_stop_handles_dead_child_pid() -> None:
     """stop() handles ProcessLookupError + ChildProcessError from dead child."""
     conn = make_connector("/bin/echo", ["done"])
-    await conn.start()
+    # Set state directly to avoid forking — TIOCSCTTY fails in Docker without a tty
+    conn._connected = True  # noqa: SLF001
     conn._child_pid = 999999999  # dead/invalid PID  # noqa: SLF001
+    r_fd, w_fd = os.pipe()
+    conn._master_fd = r_fd  # noqa: SLF001
+    os.close(w_fd)
     await conn.stop()  # must not raise
+    assert conn._child_pid is None  # noqa: SLF001
+    assert conn._master_fd is None  # noqa: SLF001
 
 
 async def test_stop_handles_oserror_on_master_close() -> None:
@@ -400,6 +447,15 @@ async def test_read_master_oserror_marks_disconnected() -> None:
     assert result == b""
     assert not conn._connected  # noqa: SLF001
     conn._master_fd = None  # noqa: SLF001  # prevent double-close in stop()
+    await conn.stop()
+
+
+async def test_start_pam_requires_root_mocked() -> None:
+    """start() raises PermissionError when geteuid returns non-zero (mocked)."""
+    with patch("undef.terminal.pty.connector.os.geteuid", return_value=1000):
+        conn = make_connector("/bin/echo", username="nobody", password="pass")  # noqa: S106
+        with pytest.raises(PermissionError, match="root"):
+            await conn.start()
     await conn.stop()
 
 

@@ -243,6 +243,29 @@ def test_capture_register_import_error_silently_returns() -> None:
         _register()  # must not raise
 
 
+def test_capture_register_success() -> None:
+    """_register() calls register_connector when server package is available."""
+    from types import ModuleType
+
+    from undef.terminal.pty.capture_connector import CaptureConnector, _register
+
+    fake_registry = ModuleType("undef.terminal.server.connectors.registry")
+    registered: dict[str, object] = {}
+
+    def _fake_register(name: str, cls: object) -> None:
+        registered[name] = cls
+
+    fake_registry.register_connector = _fake_register  # type: ignore[attr-defined]
+
+    with patch.dict(
+        sys.modules,
+        {"undef.terminal.server.connectors.registry": fake_registry},
+    ):
+        _register()
+
+    assert registered.get("pty_capture") is CaptureConnector
+
+
 async def test_stop_closes_stdin_sock() -> None:
     """stop() closes _stdin_sock when it is set."""
     with tempfile.TemporaryDirectory() as td:
