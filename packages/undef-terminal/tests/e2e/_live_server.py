@@ -23,7 +23,7 @@ from typing import Any
 
 import uvicorn
 
-from undef.terminal.hijack.hub import EventBus
+from undef.terminal.bridge.hub import EventBus
 from undef.terminal.server.app import create_server_app
 from undef.terminal.server.config import config_from_mapping
 

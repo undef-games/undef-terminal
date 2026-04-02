@@ -26,10 +26,10 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from playwright.sync_api import Page
 from starlette.staticfiles import StaticFiles
-from undef.terminal.deckmux._hub_mixin import DeckMuxMixin
 
 from tests.conftest import WorkerController
-from undef.terminal.hijack.hub import TermHub
+from undef.terminal.bridge.hub import TermHub
+from undef.terminal.deckmux._hub_mixin import DeckMuxMixin
 
 SCREENSHOTS_DIR = Path("packages/undef-terminal/tests/playwright/screenshots")
 

@@ -79,7 +79,7 @@ def _fastapi_server():
     import uvicorn
     from fastapi import FastAPI
 
-    from undef.terminal.hijack.hub.core import TermHub
+    from undef.terminal.bridge.hub.core import TermHub
 
     logging.getLogger("undef").setLevel(logging.CRITICAL)
 

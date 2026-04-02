@@ -24,7 +24,7 @@ from starlette.requests import HTTPConnection  # noqa: TC002
 from starlette.staticfiles import StaticFiles
 from undef.telemetry import TelemetryMiddleware, get_logger
 
-from undef.terminal.hijack.hub import InMemoryResumeStore, ResumeSession, TermHub
+from undef.terminal.bridge.hub import InMemoryResumeStore, ResumeSession, TermHub
 from undef.terminal.server.api_keys import ApiKeyStore
 from undef.terminal.server.auth import (
     Principal,

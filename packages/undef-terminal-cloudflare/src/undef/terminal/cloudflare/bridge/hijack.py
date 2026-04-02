@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Hijack coordinator — re-exported from shared undef.terminal.hijack.coordinator."""
+"""Hijack coordinator — re-exported from shared undef.terminal.bridge.coordinator."""
 
 try:
-    from undef.terminal.hijack.coordinator import (
+    from undef.terminal.bridge.coordinator import (
         AcquireResult,
         HijackCoordinator,
         HijackSession,

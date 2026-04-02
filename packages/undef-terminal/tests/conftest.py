@@ -43,7 +43,7 @@ if not _os.environ.get("MUTANT_UNDER_TEST"):
                 if name == "undef" or name.startswith("undef."):
                     del sys.modules[name]
 
-from undef.terminal.hijack.hub import TermHub
+from undef.terminal.bridge.hub import TermHub
 from undef.terminal.server import create_server_app, default_server_config
 
 if TYPE_CHECKING:

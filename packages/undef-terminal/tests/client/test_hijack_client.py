@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock
 from fastapi import FastAPI
 from httpx import ASGITransport
 
+from undef.terminal.bridge.hub import TermHub
+from undef.terminal.bridge.models import HijackSession, WorkerTermState
 from undef.terminal.client.hijack import HijackClient
-from undef.terminal.hijack.hub import TermHub
-from undef.terminal.hijack.models import HijackSession, WorkerTermState
 
 # ---------------------------------------------------------------------------
 # Helpers

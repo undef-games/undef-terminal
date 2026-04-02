@@ -17,8 +17,8 @@ from fastapi import FastAPI
 from fastmcp import FastMCP
 from httpx import ASGITransport
 
-from undef.terminal.hijack.hub import TermHub
-from undef.terminal.hijack.models import WorkerTermState
+from undef.terminal.bridge.hub import TermHub
+from undef.terminal.bridge.models import WorkerTermState
 from undef.terminal.mcp.server import create_mcp_app
 
 # ---------------------------------------------------------------------------

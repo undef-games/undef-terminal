@@ -163,7 +163,7 @@ pytest_add_cli_args_test_selection = [
     "-m",
     "not playwright",
     "--ignore=tests/example/test_server_e2e.py",
-    "--ignore=tests/hijack/test_hypothesis.py",
-    "--ignore=tests/hijack/test_hypothesis_ordering.py",
+    "--ignore=tests/bridge/test_hypothesis.py",
+    "--ignore=tests/bridge/test_hypothesis_ordering.py",
     "--ignore=tests/e2e",
 ]

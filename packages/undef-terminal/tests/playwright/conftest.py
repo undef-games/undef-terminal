@@ -19,8 +19,8 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from playwright.sync_api import Page
 
+from undef.terminal.bridge.hub import TermHub
 from undef.terminal.control_channel import encode_control
-from undef.terminal.hijack.hub import TermHub
 
 
 def pytest_collection_modifyitems(items: list) -> None:

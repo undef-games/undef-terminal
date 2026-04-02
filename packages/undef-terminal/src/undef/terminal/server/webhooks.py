@@ -33,7 +33,7 @@ import httpx
 from undef.telemetry import get_logger
 
 if TYPE_CHECKING:
-    from undef.terminal.hijack.hub import EventBus
+    from undef.terminal.bridge.hub import EventBus
 
 logger = get_logger(__name__)
 

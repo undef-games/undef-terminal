@@ -14,8 +14,8 @@ import uvicorn
 from fastapi import FastAPI
 from websockets.exceptions import ConnectionClosedError
 
+from undef.terminal.bridge.hub import TermHub
 from undef.terminal.client import connect_async_ws
-from undef.terminal.hijack.hub import TermHub
 
 from .conftest import _wait_for_server, _ws_url
 

@@ -24,7 +24,7 @@ try:
 except ImportError as _e:  # pragma: no cover
     raise ImportError("fastapi is required: pip install 'undef-terminal[websocket]'") from _e
 
-from undef.terminal.hijack.frames import (
+from undef.terminal.bridge.frames import (
     make_term_frame,
     make_worker_connected_frame,
     make_worker_disconnected_frame,
@@ -37,7 +37,7 @@ from undef.terminal.tunnel.protocol import (
 )
 
 if TYPE_CHECKING:
-    from undef.terminal.hijack.hub import TermHub
+    from undef.terminal.bridge.hub import TermHub
 
 logger = get_logger(__name__)
 _HIJACK_CLEANUP_INTERVAL_S = 1.0

@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
     from pathlib import Path
 
-    from undef.terminal.hijack.hub import TermHub
+    from undef.terminal.bridge.hub import TermHub
 
 
 class SessionValidationError(ValueError):

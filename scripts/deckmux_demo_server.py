@@ -31,8 +31,8 @@ sys.path.insert(0, "packages/undef-terminal/src")
 sys.path.insert(0, "packages/undef-terminal-deckmux/src")
 
 import undef.terminal.server.connectors.ssh  # noqa: F401  — registers "ssh" connector
+from undef.terminal.bridge.hub import TermHub
 from undef.terminal.deckmux._hub_mixin import DeckMuxMixin
-from undef.terminal.hijack.hub import TermHub
 from undef.terminal.server import create_server_app
 from undef.terminal.server.models import (
     AuthConfig,

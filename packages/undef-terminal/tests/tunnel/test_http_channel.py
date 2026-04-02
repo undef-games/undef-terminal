@@ -12,7 +12,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from undef.terminal.hijack.hub import TermHub
+from undef.terminal.bridge.hub import TermHub
 from undef.terminal.tunnel.protocol import CHANNEL_DATA, CHANNEL_HTTP, encode_frame
 
 
