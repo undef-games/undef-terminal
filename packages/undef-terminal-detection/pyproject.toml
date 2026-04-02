@@ -39,6 +39,10 @@ addopts = [
     "--strict-markers",
     "--tb=short",
     "-ra",
+    "--cov=undef.terminal.detection",
+    "--cov-branch",
+    "--cov-report=term-missing",
+    "--cov-fail-under=100",
 ]
 
 [tool.ruff]

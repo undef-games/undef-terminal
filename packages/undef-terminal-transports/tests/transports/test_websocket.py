@@ -52,6 +52,18 @@ class TestWebSocketStreamReader:
         data = await reader.read(1)
         assert data == b""
 
+    async def test_disconnect_with_partial_buffer(self) -> None:
+        """Disconnect mid-read returns buffered data before closing."""
+        from fastapi import WebSocketDisconnect
+
+        ws = _make_ws()
+        ws.receive_text.side_effect = ["AB", WebSocketDisconnect()]
+        reader = WebSocketStreamReader(ws)
+        # Request 5 bytes — gets "AB" (2 bytes), then disconnect
+        data = await reader.read(5)
+        assert data == b"AB"
+        assert reader._closed is True  # noqa: SLF001
+
     async def test_read_non_ascii_utf8_roundtrip(self) -> None:
         """Non-ASCII text from the browser must survive the encode step intact."""
         ws = _make_ws()
