@@ -19,8 +19,15 @@ from undef.terminal.manager.config import ManagerConfig
 
 def _make_status() -> SimpleNamespace:
     return SimpleNamespace(
-        total_agents=5, running=3, completed=1, errors=0, stopped=1, uptime_seconds=100.0,
+        total_agents=5,
+        running=3,
+        completed=1,
+        errors=0,
+        stopped=1,
+        uptime_seconds=100.0,
     )
+
+
 from undef.terminal.manager.core import AgentManager
 from undef.terminal.manager.models import AgentStatusBase
 
@@ -56,7 +63,9 @@ class TestCoreLoadStateSkipsBadAgent:
 
     def test_load_state_skips_already_known_agent(self, manager, tmp_path):
         """arc 223->221: agent_id already in agents → skip the if block, state not overwritten."""
-        manager.agents["agent_known"] = AgentStatusBase(agent_id="agent_known", state="running")
+        manager.agents["agent_known"] = AgentStatusBase(
+            agent_id="agent_known", state="running"
+        )
         state = {
             "agents": {
                 "agent_known": {"agent_id": "agent_known", "state": "stopped"},
@@ -82,7 +91,10 @@ class TestCoreRunMethod:
         mock_server = AsyncMock()
         mock_server.serve = AsyncMock()
 
-        with patch("uvicorn.Config", return_value=MagicMock()), patch("uvicorn.Server", return_value=mock_server):
+        with (
+            patch("uvicorn.Config", return_value=MagicMock()),
+            patch("uvicorn.Server", return_value=mock_server),
+        ):
             await mgr.run()
             mock_server.serve.assert_awaited_once()
 
@@ -101,7 +113,10 @@ class TestCoreRunMethod:
         mock_server = AsyncMock()
         mock_server.serve = AsyncMock()
 
-        with patch("uvicorn.Config", return_value=MagicMock()), patch("uvicorn.Server", return_value=mock_server):
+        with (
+            patch("uvicorn.Config", return_value=MagicMock()),
+            patch("uvicorn.Server", return_value=mock_server),
+        ):
             await mgr.run()
 
         mock_hub.shutdown.assert_awaited_once()
@@ -159,30 +174,166 @@ class TestCleanupOldWorkerLogs:
 
         assert _cleanup_old_worker_logs(pm) == 0
 
+    def test_subdirectory_skipped(self, tmp_path: Path) -> None:
+        """Line 96: continue when path is not a file (subdirectory)."""
+        import os
+
+        from undef.terminal.manager._monitor import _cleanup_old_worker_logs
+
+        log_dir = tmp_path / "logs" / "workers"
+        log_dir.mkdir(parents=True)
+        # Create a subdirectory — not a file → line 96 continue
+        (log_dir / "subdir").mkdir()
+        # Create a stale orphan log so we exercise the rest of the loop too
+        orphan = log_dir / "agent_99.log"
+        orphan.write_text("orphan")
+        os.utime(orphan, (0, 0))
+
+        pm = MagicMock()
+        pm._log_dir = str(log_dir)
+        pm.manager.agents = {}
+        deleted = _cleanup_old_worker_logs(pm)
+        assert deleted == 1
+        assert (log_dir / "subdir").is_dir()
+
+    def test_stat_oserror_continues(self, tmp_path: Path) -> None:
+        """Lines 99-100: OSError from stat() → continue."""
+        from undef.terminal.manager._monitor import _cleanup_old_worker_logs
+
+        log_dir = tmp_path / "logs" / "workers"
+        log_dir.mkdir(parents=True)
+        bad_file = log_dir / "agent_bad.log"
+        bad_file.write_text("data")
+
+        pm = MagicMock()
+        pm._log_dir = str(log_dir)
+        pm.manager.agents = {}
+
+        orig_stat = Path.stat
+        call_count: dict[str, int] = {}
+
+        def broken_stat(self_path, *a, **kw):
+            if self_path.name == "agent_bad.log":
+                count = call_count.get("agent_bad.log", 0)
+                call_count["agent_bad.log"] = count + 1
+                # First call is from is_file(); second is the explicit stat()
+                if count >= 1:
+                    raise OSError("stat failed")
+            return orig_stat(self_path, *a, **kw)
+
+        with patch.object(Path, "stat", broken_stat):
+            deleted = _cleanup_old_worker_logs(pm)
+        assert deleted == 0
+
+    def test_recent_prev_not_deleted(self, tmp_path: Path) -> None:
+        """Line 103->94: recent .prev file loops back without deletion."""
+        from undef.terminal.manager._monitor import _cleanup_old_worker_logs
+
+        log_dir = tmp_path / "logs" / "workers"
+        log_dir.mkdir(parents=True)
+        # Create a recent .prev file — mtime is now, so mtime >= cutoff
+        recent_prev = log_dir / "agent_0.log.prev"
+        recent_prev.write_text("recent prev")
+
+        pm = MagicMock()
+        pm._log_dir = str(log_dir)
+        pm.manager.agents = {}
+        deleted = _cleanup_old_worker_logs(pm)
+        assert deleted == 0
+        assert recent_prev.exists()
+
+    def test_old_active_agent_log_not_deleted(self, tmp_path: Path) -> None:
+        """Line 103->94: old .log file for an active agent — condition is False, loops back."""
+        import os
+
+        from undef.terminal.manager._monitor import _cleanup_old_worker_logs
+
+        log_dir = tmp_path / "logs" / "workers"
+        log_dir.mkdir(parents=True)
+        # Old log file but agent is active → stem in active_ids → not deleted
+        active_log = log_dir / "agent_1.log"
+        active_log.write_text("active agent log")
+        os.utime(active_log, (0, 0))  # old mtime
+
+        pm = MagicMock()
+        pm._log_dir = str(log_dir)
+        pm.manager.agents = {"agent_1": MagicMock()}
+        deleted = _cleanup_old_worker_logs(pm)
+        assert deleted == 0
+        assert active_log.exists()
+
+    def test_no_stale_files_returns_zero(self, tmp_path: Path) -> None:
+        """Line 106->108: deleted==0 branch — no cleanup log emitted."""
+        from undef.terminal.manager._monitor import _cleanup_old_worker_logs
+
+        log_dir = tmp_path / "logs" / "workers"
+        log_dir.mkdir(parents=True)
+        # Only recent files, all belonging to active agents
+        recent = log_dir / "agent_1.log"
+        recent.write_text("recent")
+
+        pm = MagicMock()
+        pm._log_dir = str(log_dir)
+        pm.manager.agents = {"agent_1": MagicMock()}
+        deleted = _cleanup_old_worker_logs(pm)
+        assert deleted == 0
+
 
 class TestLogRotation:
-    def test_oversized_log_rotated(self, tmp_path: Path) -> None:
-        """process.py:277-281 — oversized log file rotated to .prev."""
+    def test_oversized_log_rotated_via_spawn_process(self, tmp_path: Path) -> None:
+        """process.py:277-281 — _spawn_process rotates oversized log to .prev."""
+        import subprocess
+
         from undef.terminal.manager.constants import WORKER_LOG_MAX_BYTES
+        from undef.terminal.manager.process import AgentProcessManager
 
         log_dir = tmp_path / "logs" / "workers"
         log_dir.mkdir(parents=True)
         log_file = log_dir / "agent_0.log"
         log_file.write_bytes(b"x" * (WORKER_LOG_MAX_BYTES + 1))
 
-        # The rotation happens inside _spawn_agent_subprocess before opening log
-        # Simulate by calling the rotation logic directly
-        import contextlib
+        mgr_mock = MagicMock()
+        pm = AgentProcessManager.__new__(AgentProcessManager)
+        pm.manager = mgr_mock
+        pm._log_dir = str(log_dir)
 
-        if log_file.is_file():
-            with contextlib.suppress(OSError):
-                if log_file.stat().st_size > WORKER_LOG_MAX_BYTES:
-                    prev = log_dir / "agent_0.log.prev"
-                    prev.unlink(missing_ok=True)
-                    log_file.rename(prev)
+        mock_proc = MagicMock(spec=subprocess.Popen)
+        mock_proc.pid = 12345
 
-        assert not log_file.exists()
+        with patch("subprocess.Popen", return_value=mock_proc):
+            pm._spawn_process("agent_0", ["echo", "test"], {})
+
+        # The old oversized log should have been rotated to .prev
         assert (log_dir / "agent_0.log.prev").exists()
+        # A new log file was opened (created by _spawn_process)
+        assert (log_dir / "agent_0.log").exists()
+
+    def test_small_log_not_rotated(self, tmp_path: Path) -> None:
+        """process.py:278->282 — existing log that is NOT oversized is not rotated."""
+        import subprocess
+
+        from undef.terminal.manager.process import AgentProcessManager
+
+        log_dir = tmp_path / "logs" / "workers"
+        log_dir.mkdir(parents=True)
+        log_file = log_dir / "agent_0.log"
+        log_file.write_text("small")  # well under WORKER_LOG_MAX_BYTES
+
+        mgr_mock = MagicMock()
+        pm = AgentProcessManager.__new__(AgentProcessManager)
+        pm.manager = mgr_mock
+        pm._log_dir = str(log_dir)
+
+        mock_proc = MagicMock(spec=subprocess.Popen)
+        mock_proc.pid = 12345
+
+        with patch("subprocess.Popen", return_value=mock_proc):
+            pm._spawn_process("agent_0", ["echo", "test"], {})
+
+        # No .prev file should be created
+        assert not (log_dir / "agent_0.log.prev").exists()
+        # The log file is still there (overwritten by open("w"))
+        assert log_file.exists()
 
 
 class TestTimeseriesCleanup:
@@ -209,6 +360,54 @@ class TestTimeseriesCleanup:
         # Point path to nonexistent file — stat() raises OSError
         mgr.path = tmp_path / "nonexistent.jsonl"
         mgr._rotate_if_needed()  # should not raise
+
+    def test_cleanup_skips_current_path(self, tmp_path: Path) -> None:
+        """Line 169: if f == self.path: continue — skip the active file."""
+        import os
+
+        from undef.terminal.manager.timeseries.manager import TimeseriesManager
+
+        mgr = TimeseriesManager(lambda: _make_status(), timeseries_dir=str(tmp_path))
+        # Make the current path file old so it would be deleted if not skipped
+        mgr.path.write_text("{}")
+        os.utime(mgr.path, (0, 0))
+        mgr._cleanup_old(1.0)
+        # Current path must survive
+        assert mgr.path.exists()
+
+    def test_cleanup_skips_recent_file(self, tmp_path: Path) -> None:
+        """Line 171->167: recent file (mtime >= cutoff) is not deleted."""
+        from undef.terminal.manager.timeseries.manager import TimeseriesManager
+
+        mgr = TimeseriesManager(lambda: _make_status(), timeseries_dir=str(tmp_path))
+        # Create a recent timeseries file — default mtime is now
+        recent = tmp_path / "swarm_timeseries_20990101_000000.jsonl"
+        recent.write_text("{}")
+        mgr._cleanup_old(1.0)
+        assert recent.exists()
+
+    def test_cleanup_oserror_on_stat(self, tmp_path: Path) -> None:
+        """Lines 174-175: OSError during stat() → continue."""
+        import os
+
+        from undef.terminal.manager.timeseries.manager import TimeseriesManager
+
+        mgr = TimeseriesManager(lambda: _make_status(), timeseries_dir=str(tmp_path))
+        bad_file = tmp_path / "swarm_timeseries_20200101_000000.jsonl"
+        bad_file.write_text("{}")
+        os.utime(bad_file, (0, 0))
+
+        orig_stat = Path.stat
+
+        def broken_stat(self_path, *a, **kw):
+            if self_path.name == bad_file.name:
+                raise OSError("stat failed")
+            return orig_stat(self_path, *a, **kw)
+
+        with patch.object(Path, "stat", broken_stat):
+            mgr._cleanup_old(1.0)
+        # File still exists because stat() failed → continue
+        assert bad_file.exists()
 
 
 class TestSubreaperBranchMiss:
