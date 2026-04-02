@@ -12,10 +12,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 from undef.terminal.bridge.hub import TermHub
-from undef.terminal.tunnel.fastapi_routes import register_tunnel_routes as _tunnel_registrar
 from undef.terminal.control_channel import ControlChannelDecoder
+
+from undef.terminal.tunnel.fastapi_routes import (
+    register_tunnel_routes as _tunnel_registrar,
+)
 from undef.terminal.tunnel.protocol import (
     CHANNEL_CONTROL,
     CHANNEL_DATA,
@@ -79,7 +81,9 @@ class TestTunnelConnect:
         """Tunnel rejects connection when bearer token doesn't match."""
         hub = TermHub(worker_token="secret-token-123")
         app = FastAPI()
-        app.include_router(hub.create_router(extra_route_registrars=[_tunnel_registrar]))
+        app.include_router(
+            hub.create_router(extra_route_registrars=[_tunnel_registrar])
+        )
         tc = TestClient(app)
         with tc.websocket_connect(
             "/tunnel/test-auth",
@@ -92,7 +96,9 @@ class TestTunnelConnect:
         """Global worker_bearer_token accepted → line 70 covered."""
         hub = TermHub(worker_token="global-secret")
         app = FastAPI()
-        app.include_router(hub.create_router(extra_route_registrars=[_tunnel_registrar]))
+        app.include_router(
+            hub.create_router(extra_route_registrars=[_tunnel_registrar])
+        )
         app.state.uterm_registry = MagicMock(set_tunnel_connected=AsyncMock())
         tc = TestClient(app)
         with tc.websocket_connect(
@@ -104,7 +110,9 @@ class TestTunnelConnect:
     def test_tunnel_accepts_per_session_worker_token(self) -> None:
         hub = TermHub(worker_token="global-token")
         app = FastAPI()
-        app.include_router(hub.create_router(extra_route_registrars=[_tunnel_registrar]))
+        app.include_router(
+            hub.create_router(extra_route_registrars=[_tunnel_registrar])
+        )
         app.state.uterm_tunnel_tokens = {"test-auth": {"worker_token": "session-token"}}
         app.state.uterm_registry = MagicMock(set_tunnel_connected=AsyncMock())
         tc = TestClient(app)
@@ -141,13 +149,22 @@ class TestTunnelControl:
     def test_open_message(self, client: TestClient) -> None:
         """Control open message sets up the tunnel."""
         with client.websocket_connect("/tunnel/test-ctrl") as ws:
-            ctrl = encode_control({"type": "open", "channel": 1, "tunnel_type": "terminal", "term_size": [80, 24]})
+            ctrl = encode_control(
+                {
+                    "type": "open",
+                    "channel": 1,
+                    "tunnel_type": "terminal",
+                    "term_size": [80, 24],
+                }
+            )
             ws.send_bytes(ctrl)
 
     def test_resize_message(self, client: TestClient) -> None:
         """Control resize message is handled without error."""
         with client.websocket_connect("/tunnel/test-resize") as ws:
-            ctrl = encode_control({"type": "resize", "channel": 1, "cols": 120, "rows": 40})
+            ctrl = encode_control(
+                {"type": "resize", "channel": 1, "cols": 120, "rows": 40}
+            )
             ws.send_bytes(ctrl)
 
     def test_close_message(self, client: TestClient) -> None:
@@ -178,6 +195,50 @@ class TestTunnelControlExtra:
         """Snapshot control message updates hub snapshot."""
         with client.websocket_connect("/tunnel/test-snap") as ws:
             ctrl = encode_control({"type": "snapshot", "screen": "hello screen"})
+            ws.send_bytes(ctrl)
+
+
+class TestTunnelBranchCoverage:
+    """Cover remaining branch misses in fastapi_routes.py."""
+
+    def test_data_frame_empty_payload_loops(self, client: TestClient) -> None:
+        """Line 120->93: data frame with empty payload (no EOF) loops back."""
+        with client.websocket_connect("/tunnel/test-empty-payload") as ws:
+            # Send a data frame with empty payload — no EOF flag
+            ws.send_bytes(encode_frame(CHANNEL_DATA, b""))
+            # Send a real frame after to prove the loop continued
+            ws.send_bytes(encode_frame(CHANNEL_DATA, b"still alive"))
+
+    def test_should_broadcast_false_on_replaced_worker(
+        self, hub: TermHub, app: FastAPI
+    ) -> None:
+        """Line 137->147: should_broadcast=False when worker was replaced."""
+        tc = TestClient(app)
+        # First tunnel connects
+        with tc.websocket_connect("/tunnel/test-replaced") as ws1:
+            ws1.send_bytes(encode_frame(CHANNEL_DATA, b"first"))
+            # Second tunnel connects to the same worker_id, replacing the first
+            with tc.websocket_connect("/tunnel/test-replaced") as ws2:
+                ws2.send_bytes(encode_frame(CHANNEL_DATA, b"second"))
+            # ws2 disconnects here — it was the active worker, so should_broadcast=True
+        # ws1 disconnects here — it was replaced, so should_broadcast=False (137->147)
+
+    def test_open_with_invalid_input_mode(self, client: TestClient) -> None:
+        """Line 167->169: open message with input_mode not in ('hijack', 'open')."""
+        with client.websocket_connect("/tunnel/test-bad-mode") as ws:
+            ctrl = encode_control(
+                {
+                    "type": "open",
+                    "input_mode": "invalid_mode",
+                    "tunnel_type": "terminal",
+                }
+            )
+            ws.send_bytes(ctrl)
+
+    def test_unknown_control_msg_type(self, client: TestClient) -> None:
+        """Line 179->exit: control message with unrecognized type falls through."""
+        with client.websocket_connect("/tunnel/test-unknown-type") as ws:
+            ctrl = encode_control({"type": "totally_unknown"})
             ws.send_bytes(ctrl)
 
 

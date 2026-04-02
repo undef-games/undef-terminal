@@ -245,6 +245,17 @@ class TestTtyProxy:
                 os.close(slave)
 
 
+class TestTtyProxyBranchCoverage:
+    def test_close_active_with_no_old_attrs(self) -> None:
+        """149->exit: close() active, _fd set, _old_attrs is None."""
+        proxy = TtyProxy()
+        proxy._active = True
+        proxy._fd = 1  # any valid int
+        proxy._old_attrs = None
+        proxy.close()  # should skip the tcsetattr branch
+        assert not proxy.active
+
+
 class TestSigwinchHandler:
     def test_install_handler(self) -> None:
         called = []
