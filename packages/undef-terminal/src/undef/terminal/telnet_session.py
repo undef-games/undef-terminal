@@ -2,9 +2,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-"""TelnetSession — telnet client + pyte emulator satisfying the Session protocol.
+"""TelnetSession — telnet transport + pyte emulator satisfying the Session protocol.
 
-Combines :class:`~undef.terminal.transports.telnet_client.TelnetClient` with
+Combines :class:`~undef.terminal.transports.telnet_transport.TelnetTransport`
+(full RFC 854 with IAC negotiation, NAWS, TTYPE) with
 :class:`~undef.terminal.emulator.TerminalEmulator` to provide a ready-to-use
 :class:`~undef.terminal.io.Session`-compliant object.
 
@@ -20,7 +21,6 @@ Example::
     await session.send("Hello\\r")
     await session.close()
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -28,7 +28,7 @@ import contextlib
 from typing import Any
 
 from undef.terminal.emulator import TerminalEmulator
-from undef.terminal.transports.telnet_client import TelnetClient
+from undef.terminal.transports.telnet_transport import TelnetTransport
 
 
 async def connect_telnet(
@@ -37,30 +37,38 @@ async def connect_telnet(
     *,
     cols: int = 80,
     rows: int = 25,
+    term: str = "ANSI",
     connect_timeout: float = 30.0,
 ) -> TelnetSession:
     """Connect to a telnet server and return a Session-protocol-compliant object.
+
+    Uses :class:`TelnetTransport` for proper RFC 854 negotiation (IAC, NAWS,
+    TTYPE) so it works with BBS servers that require telnet handshakes.
 
     Args:
         host: Hostname or IP address.
         port: TCP port number.
         cols: Terminal width (default 80).
         rows: Terminal height (default 25).
+        term: Terminal type string (default ``"ANSI"``).
         connect_timeout: TCP connect timeout in seconds.
 
     Returns:
         A :class:`TelnetSession` that satisfies :class:`~undef.terminal.io.Session`.
     """
-    session = TelnetSession(host, port, cols=cols, rows=rows, connect_timeout=connect_timeout)
+    session = TelnetSession(host, port, cols=cols, rows=rows, term=term, connect_timeout=connect_timeout)
     await session.connect()
     return session
 
 
 class TelnetSession:
-    """Telnet client with pyte terminal emulation.
+    """Telnet transport with pyte terminal emulation.
 
     Satisfies the :class:`~undef.terminal.io.Session` protocol:
     ``snapshot()``, ``send()``, ``wait_for_update()``.
+
+    Uses :class:`TelnetTransport` (not raw :class:`TelnetClient`) for full
+    RFC 854 IAC negotiation — required by TWGS and other BBS servers.
 
     Use :func:`connect_telnet` for a convenient factory, or construct
     directly and call :meth:`connect`.
@@ -73,17 +81,28 @@ class TelnetSession:
         *,
         cols: int = 80,
         rows: int = 25,
+        term: str = "ANSI",
         connect_timeout: float = 30.0,
     ) -> None:
-        self._client = TelnetClient(host, port, connect_timeout=connect_timeout)
+        self._host = host
+        self._port = port
+        self._cols = cols
+        self._rows = rows
+        self._term = term
+        self._connect_timeout = connect_timeout
+        self._transport = TelnetTransport()
         self._emulator = TerminalEmulator(cols, rows)
         self._read_task: asyncio.Task[None] | None = None
         self._update_event = asyncio.Event()
         self._connected = False
 
     async def connect(self) -> None:
-        """Open the TCP connection and start the background reader."""
-        await self._client.connect()
+        """Open the TCP connection with IAC negotiation and start the background reader."""
+        await self._transport.connect(
+            self._host, self._port,
+            cols=self._cols, rows=self._rows, term=self._term,
+            timeout=self._connect_timeout,
+        )
         self._connected = True
         self._read_task = asyncio.create_task(self._reader_loop())
 
@@ -95,7 +114,7 @@ class TelnetSession:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self._read_task
             self._read_task = None
-        await self._client.close()
+        await self._transport.disconnect()
 
     async def __aenter__(self) -> TelnetSession:
         await self.connect()
@@ -112,8 +131,7 @@ class TelnetSession:
 
     async def send(self, data: str) -> None:
         """Send a string to the telnet server."""
-        self._client.write(data.encode("cp437", errors="replace"))
-        await self._client.drain()
+        await self._transport.send(data.encode("cp437", errors="replace"))
 
     async def wait_for_update(self, *, timeout_ms: int, since: int | None = None) -> bool:  # noqa: ARG002
         """Wait until new bytes arrive from the server, or timeout.
@@ -139,14 +157,12 @@ class TelnetSession:
     # ── Internal ──────────────────────────────────────────────────────────
 
     async def _reader_loop(self) -> None:
-        """Background task: read from telnet, feed into emulator."""
+        """Background task: read from transport (IAC-stripped), feed into emulator."""
         try:
             while self._connected:
-                data = await self._client.read(4096)
-                if not data:
-                    self._connected = False
-                    break
-                self._emulator.process(data)
-                self._update_event.set()
-        except (asyncio.CancelledError, ConnectionResetError, OSError):
+                data = await self._transport.receive(4096, timeout_ms=500)
+                if data:
+                    self._emulator.process(data)
+                    self._update_event.set()
+        except (asyncio.CancelledError, ConnectionResetError, OSError, ConnectionError):
             self._connected = False
