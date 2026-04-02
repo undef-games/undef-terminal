@@ -155,7 +155,7 @@ async def _run_inspect(
         import httpx
         import uvicorn
         import websockets
-    except ImportError as exc:
+    except ImportError as exc:  # pragma: no cover — can't test without uninstalling deps
         print(
             f"error: missing dependency — {exc}\ninstall the cli extra: pip install 'undef-terminal[cli]'",
             file=sys.stderr,
