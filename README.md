@@ -2,7 +2,7 @@
 
 Shared terminal I/O primitives and WebSocket proxy infrastructure for the undef ecosystem.
 
-**Highlights:** WebSocket ↔ telnet/SSH proxy · bridge control plane (hijack/observe) · browser role system (viewer/operator/admin) · open/shared input mode · WS session resumption (role + hijack survive reconnect) · quick-connect ephemeral sessions (`GET /app/connect`, `POST /api/connect`) · `ShellSessionConnector` for in-process shell sessions · built-in Python REPL (`ushell`) · HTTP inspection & interception (`uterm inspect --intercept`) · tunnel sharing · DeckMux collaborative presence · JWT auth · 5800+ tests at 100% branch coverage across 12 packages
+**Highlights:** WebSocket ↔ telnet/SSH proxy · bridge control plane (hijack/observe) · browser role system (viewer/operator/admin) · open/shared input mode · WS session resumption (role + hijack survive reconnect) · quick-connect ephemeral sessions (`GET /app/connect`, `POST /api/connect`) · `ShellSessionConnector` for in-process shell sessions · built-in Python REPL (`ushell`) · HTTP inspection & interception (`uterm inspect --intercept`) · tunnel sharing · DeckMux collaborative presence · JWT auth · 6100+ tests at 100% branch coverage across 14 packages
 
 For Cloudflare Workers deployment, see [`undef-terminal-cloudflare`](https://github.com/undef-games/undef-terminal/blob/main/packages/undef-terminal-cloudflare/README.md) — a companion package that runs the control plane on Durable Objects with CF Access JWT support.
 
@@ -446,7 +446,9 @@ FastAPI on `:27780`, CF worker on `:27788`.
 
 | Package | Description | Tests |
 |---------|-------------|-------|
-| `undef-terminal` | Core: bridge hub, server, CLI, client, MCP | 3,265 |
+| `undef-terminal` | Core: bridge hub, server, CLI | 3,000+ |
+| `undef-terminal-ai` | AI/MCP integration (16 tools for session control) | 189 |
+| `undef-terminal-client` | HTTP/WS client library (HijackClient) | 88 |
 | `undef-terminal-detection` | Prompt detection and screen parsing | 199 |
 | `undef-terminal-manager` | Agent swarm management | 579 |
 | `undef-terminal-transports` | Telnet, SSH, WebSocket protocols | 408 |
