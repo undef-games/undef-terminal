@@ -5,7 +5,7 @@
 
 import type { AppBootstrap } from "./api/types";
 
-const VALID_PAGE_KINDS = new Set(["dashboard", "session", "operator", "replay", "connect"]);
+const VALID_PAGE_KINDS = new Set(["dashboard", "session", "operator", "replay", "connect", "inspect"]);
 
 export function readBootstrap(): AppBootstrap {
   const script = document.getElementById("app-bootstrap");
