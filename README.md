@@ -438,6 +438,28 @@ FastAPI on `:27780`, CF worker on `:27788`.
 - [Production Readiness Gates](https://github.com/undef-games/undef-terminal/blob/main/docs/production-readiness-pass2.md)
 - [Release Governance](https://github.com/undef-games/undef-terminal/blob/main/docs/release-governance.md)
 - [Cloudflare Companion Package](https://github.com/undef-games/undef-terminal/blob/main/packages/undef-terminal-cloudflare/README.md)
+- [HTTP Inspection & Interception](https://github.com/undef-games/undef-terminal/blob/main/docs/inspect.md)
+
+---
+
+## Package Ecosystem
+
+| Package | Description | Tests |
+|---------|-------------|-------|
+| `undef-terminal` | Core: bridge hub, server, CLI, client, MCP | 3,265 |
+| `undef-terminal-detection` | Prompt detection and screen parsing | 199 |
+| `undef-terminal-manager` | Agent swarm management | 579 |
+| `undef-terminal-transports` | Telnet, SSH, WebSocket protocols | 408 |
+| `undef-terminal-tunnel` | Tunnel protocol, HTTP inspect/intercept | 470 |
+| `undef-terminal-gateway` | Protocol conversion (Telnet↔WS, SSH↔WS) | 122 |
+| `undef-terminal-pty` | PTY connector, PAM, LD_PRELOAD capture | 192 |
+| `undef-terminal-shell` | Python REPL shell | 261 |
+| `undef-terminal-render` | ANSI color rendering primitives | 97 |
+| `undef-terminal-deckmux` | Collaborative presence (Deck Mux) | 177 |
+| `undef-terminal-cloudflare` | CF Worker + Durable Object adapter | 886 |
+| `undef-terminal-frontend` | Browser UI (vanilla TypeScript) | 472 |
+
+All packages at 100% branch+line coverage.
 
 ---
 
