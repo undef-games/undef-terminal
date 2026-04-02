@@ -2,7 +2,7 @@
 
 Shared terminal I/O primitives and WebSocket proxy infrastructure for the undef ecosystem.
 
-**Highlights:** WebSocket ↔ telnet/SSH proxy · hijack/observe control plane · browser role system (viewer/operator/admin) · open/shared input mode · WS session resumption (role + hijack survive reconnect) · quick-connect ephemeral sessions (`GET /app/connect`, `POST /api/connect`) · `ShellSessionConnector` for in-process shell sessions · built-in Python REPL (`ushell`) · JWT auth · 4000+ tests at 100% branch coverage
+**Highlights:** WebSocket ↔ telnet/SSH proxy · bridge control plane (hijack/observe) · browser role system (viewer/operator/admin) · open/shared input mode · WS session resumption (role + hijack survive reconnect) · quick-connect ephemeral sessions (`GET /app/connect`, `POST /api/connect`) · `ShellSessionConnector` for in-process shell sessions · built-in Python REPL (`ushell`) · HTTP inspection & interception (`uterm inspect --intercept`) · tunnel sharing · DeckMux collaborative presence · JWT auth · 5800+ tests at 100% branch coverage across 12 packages
 
 For Cloudflare Workers deployment, see [`undef-terminal-cloudflare`](https://github.com/undef-games/undef-terminal/blob/main/packages/undef-terminal-cloudflare/README.md) — a companion package that runs the control plane on Durable Objects with CF Access JWT support.
 
