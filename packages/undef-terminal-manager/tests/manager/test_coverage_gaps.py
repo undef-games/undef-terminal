@@ -15,6 +15,8 @@ from fastapi.testclient import TestClient
 
 from undef.terminal.manager.app import create_manager_app
 from undef.terminal.manager.config import ManagerConfig
+from undef.terminal.manager.core import AgentManager
+from undef.terminal.manager.models import AgentStatusBase
 
 
 def _make_status() -> SimpleNamespace:
@@ -26,10 +28,6 @@ def _make_status() -> SimpleNamespace:
         stopped=1,
         uptime_seconds=100.0,
     )
-
-
-from undef.terminal.manager.core import AgentManager
-from undef.terminal.manager.models import AgentStatusBase
 
 
 @pytest.fixture
@@ -62,7 +60,7 @@ class TestCoreLoadStateSkipsBadAgent:
         assert "agent_bad" not in manager.agents
 
     def test_load_state_skips_already_known_agent(self, manager, tmp_path):
-        """arc 223->221: agent_id already in agents → skip the if block, state not overwritten."""
+        """arc 223->221: known agent_id skips load, not overwritten."""
         manager.agents["agent_known"] = AgentStatusBase(
             agent_id="agent_known", state="running"
         )
