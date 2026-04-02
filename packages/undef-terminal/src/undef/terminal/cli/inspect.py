@@ -147,7 +147,7 @@ async def _run_inspect(
     intercept: bool = False,
     intercept_timeout: float = 30.0,
     intercept_timeout_action: str = "forward",
-) -> None:  # pragma: no cover — integration; tested via E2E
+) -> None:
     """Connect to tunnel WS and start an HTTP reverse proxy with inspection."""
     import time
 
