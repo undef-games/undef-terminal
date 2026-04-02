@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from undef.terminal.bridge.hub import TermHub
+from undef.terminal.tunnel.fastapi_routes import register_tunnel_routes as _tunnel_registrar
 from undef.terminal.tunnel.protocol import CHANNEL_DATA, CHANNEL_HTTP, encode_frame
 
 
@@ -20,7 +21,7 @@ from undef.terminal.tunnel.protocol import CHANNEL_DATA, CHANNEL_HTTP, encode_fr
 def client():
     hub = TermHub()
     app = FastAPI()
-    app.include_router(hub.create_router())
+    app.include_router(hub.create_router(extra_route_registrars=[_tunnel_registrar]))
     return TestClient(app)
 
 

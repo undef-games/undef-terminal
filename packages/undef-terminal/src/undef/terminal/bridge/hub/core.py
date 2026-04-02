@@ -501,14 +501,19 @@ class TermHub(_PollingMixin, _HijackOwnershipMixin, _ConnectionMixin):
                 return []
             return list(st.events)[-max(1, min(limit, 500)) :]
 
-    def create_router(self) -> APIRouter:
-        """Create and return a FastAPI ``APIRouter`` with all terminal routes registered."""
+    def create_router(self, *, extra_route_registrars: list[Any] | None = None) -> APIRouter:
+        """Create and return a FastAPI ``APIRouter`` with all terminal routes registered.
+
+        *extra_route_registrars* is a list of callables ``(hub, router) -> None``
+        that register additional routes (e.g. tunnel routes). This avoids a hard
+        import dependency on the tunnel package.
+        """
         from undef.terminal.bridge.routes.rest import register_rest_routes
         from undef.terminal.bridge.routes.websockets import register_ws_routes
-        from undef.terminal.tunnel.fastapi_routes import register_tunnel_routes
 
         router = APIRouter()
         register_rest_routes(self, router)
         register_ws_routes(self, router)
-        register_tunnel_routes(self, router)
+        for registrar in extra_route_registrars or []:
+            registrar(self, router)
         return router

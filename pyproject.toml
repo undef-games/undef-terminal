@@ -52,7 +52,7 @@ dev = [
 ]
 
 [tool.uv.workspace]
-members = ["packages/undef-terminal", "packages/undef-terminal-shell", "packages/undef-terminal-cloudflare", "packages/undef-terminal-deckmux", "packages/undef-terminal-render", "packages/undef-terminal-pty"]
+members = ["packages/undef-terminal", "packages/undef-terminal-shell", "packages/undef-terminal-cloudflare", "packages/undef-terminal-deckmux", "packages/undef-terminal-render", "packages/undef-terminal-pty", "packages/undef-terminal-detection"]
 
 [tool.uv.sources]
 undef-terminal = { workspace = true }
@@ -61,6 +61,7 @@ undef-terminal-cloudflare = { workspace = true }
 undef-terminal-deckmux = { workspace = true }
 undef-terminal-render = { workspace = true }
 undef-terminal-pty = { workspace = true }
+undef-terminal-detection = { workspace = true }
 
 [tool.ruff]
 line-length = 120
