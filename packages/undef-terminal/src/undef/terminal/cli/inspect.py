@@ -100,10 +100,13 @@ def _cmd_inspect(args: argparse.Namespace) -> None:
     intercept_timeout = getattr(args, "intercept_timeout", 30.0)
     intercept_timeout_action = getattr(args, "intercept_timeout_action", "forward")
 
+    print("Creating tunnel...", end=" ", flush=True)
     tunnel_info = _create_tunnel(server, display_name, token, target_port)
     ws_endpoint = tunnel_info.get("ws_endpoint", "")
     worker_token = tunnel_info.get("worker_token", "")
     share_url = tunnel_info.get("share_url", "")
+    tunnel_id = tunnel_info.get("tunnel_id", tunnel_info.get("session_id", ""))
+    print(f"done ({tunnel_id})" if tunnel_id else "done")
 
     if not ws_endpoint:
         print("error: server response missing ws_endpoint", file=sys.stderr)
@@ -114,10 +117,12 @@ def _cmd_inspect(args: argparse.Namespace) -> None:
         ws_base = server.rstrip("/").replace("http://", "ws://").replace("https://", "wss://")
         ws_endpoint = f"{ws_base}{ws_endpoint}"
 
-    print(f"Inspecting HTTP traffic on localhost:{target_port}...")
+    print(f"Inspecting HTTP traffic on localhost:{target_port}")
     if share_url:
         print(f"  Share: {share_url}")
-    print("\nConnected. Press Ctrl+C to stop.")
+    if intercept:
+        print(f"  Intercept: ON (timeout: {intercept_timeout}s, action: {intercept_timeout_action})")
+    print("Press Ctrl+C to stop.\n")
 
     with suppress(KeyboardInterrupt):
         asyncio.run(
@@ -318,14 +323,24 @@ async def _run_inspect(
 
         try:
             async for raw in ws:
-                if not isinstance(raw, bytes) or len(raw) <= 2:
-                    continue
-                frame = decode_frame(raw)
-                if frame.channel != CHANNEL_HTTP:
-                    continue
-                try:
-                    msg = json.loads(frame.payload)
-                except (json.JSONDecodeError, UnicodeDecodeError):
+                # Binary frames: tunnel protocol (CHANNEL_HTTP)
+                if isinstance(raw, bytes) and len(raw) > 2:
+                    frame = decode_frame(raw)
+                    if frame.channel != CHANNEL_HTTP:
+                        continue
+                    try:
+                        msg = json.loads(frame.payload)
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        continue
+                elif isinstance(raw, str):
+                    # Text frames: direct JSON (FastAPI relay path)
+                    try:
+                        msg = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+                    if msg.get("type") not in ("http_action", "http_intercept_toggle", "http_inspect_toggle"):
+                        continue
+                else:
                     continue
                 msg_type = msg.get("type")
                 if msg_type == "http_action":
