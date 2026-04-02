@@ -14,10 +14,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from undef.terminal.control_channel import encode_control, encode_data
 from undef.terminal.gateway._gateway import (
-    TelnetWsGateway,
     _delete_token,
     _handle_ws_control,
     _handle_ws_control_frame,
+    _make_no_auth_server_class,
     _normalize_crlf,
     _pipe_ws,
     _read_token,
@@ -30,6 +30,35 @@ from undef.terminal.gateway._gateway import (
     _ws_to_ssh,
     _ws_to_tcp,
 )
+
+
+# ---------------------------------------------------------------------------
+# Async iterator helper for mocking `async for message in ws`
+# ---------------------------------------------------------------------------
+
+
+class _AsyncIter:
+    """Wrap a list of items into an async iterator."""
+
+    def __init__(self, items: list[Any]) -> None:
+        self._items = iter(items)
+
+    def __aiter__(self) -> _AsyncIter:
+        return self
+
+    async def __anext__(self) -> Any:
+        try:
+            return next(self._items)
+        except StopIteration:
+            raise StopAsyncIteration from None
+
+
+def _mock_ws(messages: list[Any]) -> MagicMock:
+    """Create a mock WS that yields *messages* via ``async for``."""
+    ws = MagicMock()
+    ws.__aiter__ = lambda self: _AsyncIter(messages)  # noqa: ARG005
+    ws.send = AsyncMock()
+    return ws
 
 
 # ---------------------------------------------------------------------------
@@ -117,40 +146,30 @@ class TestStripIac:
             assert _strip_iac(data) == b"A"
 
     def test_subneg_stripped(self) -> None:
-        # IAC SB <payload> IAC SE
         data = bytes([0xFF, 0xFA, 0x01, 0x02, 0xFF, 0xF0, 0x41])
         assert _strip_iac(data) == b"A"
 
     def test_ip_becomes_ctrl_c(self) -> None:
-        data = bytes([0xFF, 0xF4])  # IAC IP
-        assert _strip_iac(data) == bytes([0x03])
+        assert _strip_iac(bytes([0xFF, 0xF4])) == bytes([0x03])
 
     def test_break_becomes_ctrl_c(self) -> None:
-        data = bytes([0xFF, 0xF3])  # IAC BREAK
-        assert _strip_iac(data) == bytes([0x03])
+        assert _strip_iac(bytes([0xFF, 0xF3])) == bytes([0x03])
 
     def test_eof_becomes_ctrl_d(self) -> None:
-        data = bytes([0xFF, 0xEC])  # IAC EOF (236)
-        assert _strip_iac(data) == bytes([0x04])
+        assert _strip_iac(bytes([0xFF, 0xEC])) == bytes([0x04])
 
     def test_unknown_command_skipped(self) -> None:
-        # IAC followed by unknown command (e.g. AO=245) → just skip 2 bytes
         data = bytes([0xFF, 0xF5, 0x41])
         assert _strip_iac(data) == b"A"
 
     def test_truncated_iac_at_end(self) -> None:
-        data = bytes([0x41, 0xFF])
-        assert _strip_iac(data) == b"A"
+        assert _strip_iac(bytes([0x41, 0xFF])) == b"A"
 
     def test_truncated_will_at_end(self) -> None:
-        # IAC WILL but no option byte
-        data = bytes([0x41, 0xFF, 0xFB])
-        assert _strip_iac(data) == b"A"
+        assert _strip_iac(bytes([0x41, 0xFF, 0xFB])) == b"A"
 
     def test_empty_after_iac_strip(self) -> None:
-        # Only IAC negotiation, no payload
-        data = bytes([0xFF, 0xFB, 0x01])
-        assert _strip_iac(data) == b""
+        assert _strip_iac(bytes([0xFF, 0xFB, 0x01])) == b""
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +179,7 @@ class TestStripIac:
 
 class TestRequireWebsockets:
     def test_succeeds_when_available(self) -> None:
-        _require_websockets()  # should not raise
+        _require_websockets()
 
     def test_raises_when_missing(self) -> None:
         import builtins
@@ -190,9 +209,7 @@ class TestHandleWsControlFrame:
         tf = tmp_path / "token"
         write_fn = AsyncMock()
         result = await _handle_ws_control_frame(
-            {"type": "session_token", "token": "tok123"},
-            tf,
-            write_fn,
+            {"type": "session_token", "token": "tok123"}, tf, write_fn
         )
         assert result is True
         assert tf.read_text() == "tok123"
@@ -200,9 +217,7 @@ class TestHandleWsControlFrame:
     async def test_session_token_no_file(self) -> None:
         write_fn = AsyncMock()
         result = await _handle_ws_control_frame(
-            {"type": "session_token", "token": "tok123"},
-            None,
-            write_fn,
+            {"type": "session_token", "token": "tok123"}, None, write_fn
         )
         assert result is False
 
@@ -241,9 +256,7 @@ class TestHandleWsControlFrame:
         assert result is False
 
     async def test_attribute_error_on_data(self) -> None:
-        """Edge: data is not a dict-like object that supports .get()."""
         write_fn = AsyncMock()
-        # A list has no .get() → triggers AttributeError guard
         result = await _handle_ws_control_frame([1, 2, 3], None, write_fn)  # type: ignore[arg-type]
         assert result is False
 
@@ -264,26 +277,52 @@ class TestHandleWsControl:
         assert result is False
 
     async def test_plain_json_fallback(self, tmp_path: Path) -> None:
+        """Trigger the ControlChannelProtocolError → JSON fallback path."""
         tf = tmp_path / "token"
         write_fn = AsyncMock()
-        msg = json.dumps({"type": "session_token", "token": "xyz"})
-        result = await _handle_ws_control(msg, tf, write_fn)
+        # \x10\x02 (DLE+STX) starts a control frame, but invalid hex causes ProtocolError,
+        # then the fallback JSON parse tries the whole string. We need something that
+        # triggers ProtocolError AND is valid JSON. Instead, mock the decoder to raise.
+        with patch(
+            "undef.terminal.gateway._gateway.ControlChannelDecoder"
+        ) as mock_cls:
+            from undef.terminal.control_channel import ControlChannelProtocolError
+
+            instance = mock_cls.return_value
+            instance.feed.side_effect = ControlChannelProtocolError("test")
+            msg = json.dumps({"type": "session_token", "token": "xyz"})
+            result = await _handle_ws_control(msg, tf, write_fn)
         assert result is True
         assert tf.read_text() == "xyz"
 
-    async def test_plain_json_non_dict(self) -> None:
+    async def test_plain_json_non_dict_fallback(self) -> None:
+        """Fallback path: valid JSON but not a dict."""
         write_fn = AsyncMock()
-        result = await _handle_ws_control(json.dumps([1, 2]), None, write_fn)
+        with patch(
+            "undef.terminal.gateway._gateway.ControlChannelDecoder"
+        ) as mock_cls:
+            from undef.terminal.control_channel import ControlChannelProtocolError
+
+            instance = mock_cls.return_value
+            instance.feed.side_effect = ControlChannelProtocolError("test")
+            result = await _handle_ws_control(json.dumps([1, 2]), None, write_fn)
         assert result is False
 
-    async def test_invalid_json_returns_false(self) -> None:
+    async def test_invalid_json_fallback_returns_false(self) -> None:
+        """Fallback path: not valid JSON either."""
         write_fn = AsyncMock()
-        result = await _handle_ws_control("not json at all {{{", None, write_fn)
+        with patch(
+            "undef.terminal.gateway._gateway.ControlChannelDecoder"
+        ) as mock_cls:
+            from undef.terminal.control_channel import ControlChannelProtocolError
+
+            instance = mock_cls.return_value
+            instance.feed.side_effect = ControlChannelProtocolError("test")
+            result = await _handle_ws_control("not json {{{", None, write_fn)
         assert result is False
 
     async def test_empty_events(self) -> None:
         write_fn = AsyncMock()
-        # An empty string that the decoder accepts but produces no events
         result = await _handle_ws_control("", None, write_fn)
         assert result is False
 
@@ -310,19 +349,16 @@ class TestTcpToWs:
 
     async def test_strips_iac_when_telnet(self) -> None:
         reader = AsyncMock(spec=asyncio.StreamReader)
-        # IAC WILL 0x01 followed by real data
         data = bytes([0xFF, 0xFB, 0x01]) + b"X"
         reader.read = AsyncMock(side_effect=[data, b""])
         ws = AsyncMock()
         await _tcp_to_ws(reader, ws, telnet=True)
         assert ws.send.call_count == 1
-        # The sent data should contain "X" but not the IAC bytes
         sent = ws.send.call_args[0][0]
         assert "X" in sent
 
     async def test_skips_empty_after_iac_strip(self) -> None:
         reader = AsyncMock(spec=asyncio.StreamReader)
-        # Only IAC negotiation, no payload → stripped to empty → skip
         data = bytes([0xFF, 0xFB, 0x01])
         reader.read = AsyncMock(side_effect=[data, b""])
         ws = AsyncMock()
@@ -340,26 +376,22 @@ class TestWsToTcp:
         writer = MagicMock(spec=asyncio.StreamWriter)
         writer.drain = AsyncMock()
         msg = encode_data("hi")
-        ws = AsyncMock()
-        ws.__aiter__ = MagicMock(return_value=iter([msg]))
+        ws = _mock_ws([msg])
         await _ws_to_tcp(ws, writer, color_mode="passthrough")
         assert writer.write.called
 
     async def test_forwards_binary_messages(self) -> None:
         writer = MagicMock(spec=asyncio.StreamWriter)
         writer.drain = AsyncMock()
-        ws = AsyncMock()
-        ws.__aiter__ = MagicMock(return_value=iter([b"hello\n"]))
+        ws = _mock_ws([b"hello\n"])
         await _ws_to_tcp(ws, writer, color_mode="passthrough")
-        # Binary should be written after CRLF normalization
         written = writer.write.call_args[0][0]
         assert b"\r\n" in written
 
     async def test_del_to_bs_conversion(self) -> None:
         writer = MagicMock(spec=asyncio.StreamWriter)
         writer.drain = AsyncMock()
-        ws = AsyncMock()
-        ws.__aiter__ = MagicMock(return_value=iter([b"\x7f"]))
+        ws = _mock_ws([b"\x7f"])
         await _ws_to_tcp(ws, writer, color_mode="passthrough")
         written = writer.write.call_args[0][0]
         assert b"\x08" in written
@@ -369,29 +401,46 @@ class TestWsToTcp:
         writer = MagicMock(spec=asyncio.StreamWriter)
         writer.drain = AsyncMock()
         msg = encode_control({"type": "session_token", "token": "t1"})
-        ws = AsyncMock()
-        ws.__aiter__ = MagicMock(return_value=iter([msg]))
+        ws = _mock_ws([msg])
         await _ws_to_tcp(ws, writer, token_file=tf, color_mode="passthrough")
         assert tf.read_text() == "t1"
 
     async def test_protocol_error_skipped(self) -> None:
         writer = MagicMock(spec=asyncio.StreamWriter)
         writer.drain = AsyncMock()
-        ws = AsyncMock()
-        # A string that causes protocol error in the decoder (invalid control channel framing)
-        ws.__aiter__ = MagicMock(return_value=iter(["not valid control channel"]))
-        # Should not raise
+        # Use DLE+STX with bad header to trigger protocol error in the decoder
+        bad_msg = "\x10\x02" + "000000xx:bad"
+        ws = _mock_ws([bad_msg])
         await _ws_to_tcp(ws, writer, color_mode="passthrough")
 
     async def test_color_mode_applied(self) -> None:
         writer = MagicMock(spec=asyncio.StreamWriter)
         writer.drain = AsyncMock()
         msg = encode_data("\x1b[38;2;255;0;0mRed")
-        ws = AsyncMock()
-        ws.__aiter__ = MagicMock(return_value=iter([msg]))
+        ws = _mock_ws([msg])
         await _ws_to_tcp(ws, writer, color_mode="256")
         written = writer.write.call_args[0][0]
         assert b"38;5;" in written
+
+    async def test_del_to_bs_in_text_data(self) -> None:
+        writer = MagicMock(spec=asyncio.StreamWriter)
+        writer.drain = AsyncMock()
+        msg = encode_data("\x7f")
+        ws = _mock_ws([msg])
+        await _ws_to_tcp(ws, writer, color_mode="passthrough")
+        written = writer.write.call_args[0][0]
+        assert b"\x08" in written
+
+    async def test_resume_ok_calls_write_fn(self) -> None:
+        """Cover the _write_fn closure (lines 237-238)."""
+        writer = MagicMock(spec=asyncio.StreamWriter)
+        writer.drain = AsyncMock()
+        msg = encode_control({"type": "resume_ok"})
+        ws = _mock_ws([msg])
+        await _ws_to_tcp(ws, writer, color_mode="passthrough")
+        # _write_fn writes b"\r\n[Session resumed]\r\n"
+        writer.write.assert_called_once_with(b"\r\n[Session resumed]\r\n")
+        writer.drain.assert_called()
 
 
 # ---------------------------------------------------------------------------
@@ -399,7 +448,7 @@ class TestWsToTcp:
 # ---------------------------------------------------------------------------
 
 
-def _make_ws_context(ws_mock: AsyncMock) -> MagicMock:
+def _make_ws_context(ws_mock: MagicMock) -> MagicMock:
     """Build a fake websockets.connect() async context manager."""
     ctx = MagicMock()
     ctx.__aenter__ = AsyncMock(return_value=ws_mock)
@@ -408,15 +457,13 @@ def _make_ws_context(ws_mock: AsyncMock) -> MagicMock:
 
 
 class TestPipeWs:
-    async def test_opens_ws_and_pipes(self, tmp_path: Path) -> None:
+    async def test_opens_ws_and_pipes(self) -> None:
         reader = AsyncMock(spec=asyncio.StreamReader)
         reader.read = AsyncMock(return_value=b"")
         writer = MagicMock(spec=asyncio.StreamWriter)
         writer.drain = AsyncMock()
 
-        ws_mock = AsyncMock()
-        ws_mock.__aiter__ = MagicMock(return_value=iter([]))
-        ws_mock.send = AsyncMock()
+        ws_mock = _mock_ws([])
 
         mock_ws_mod = MagicMock()
         mock_ws_mod.connect.return_value = _make_ws_context(ws_mock)
@@ -433,16 +480,13 @@ class TestPipeWs:
         writer = MagicMock(spec=asyncio.StreamWriter)
         writer.drain = AsyncMock()
 
-        ws_mock = AsyncMock()
-        ws_mock.__aiter__ = MagicMock(return_value=iter([]))
-        ws_mock.send = AsyncMock()
+        ws_mock = _mock_ws([])
 
         mock_ws_mod = MagicMock()
         mock_ws_mod.connect.return_value = _make_ws_context(ws_mock)
 
         with patch.dict("sys.modules", {"websockets": mock_ws_mod}):
             await _pipe_ws(reader, writer, "ws://test", token_file=tf, telnet=False)
-            # First call should be the resume message
             first_send = ws_mock.send.call_args_list[0][0][0]
             assert "resume" in first_send
             assert "mytoken" in first_send
@@ -455,15 +499,35 @@ class TestPipeWs:
         writer = MagicMock(spec=asyncio.StreamWriter)
         writer.drain = AsyncMock()
 
-        ws_mock = AsyncMock()
-        ws_mock.__aiter__ = MagicMock(return_value=iter([]))
-        ws_mock.send = AsyncMock()
+        ws_mock = _mock_ws([])
 
         mock_ws_mod = MagicMock()
         mock_ws_mod.connect.return_value = _make_ws_context(ws_mock)
 
         with patch.dict("sys.modules", {"websockets": mock_ws_mod}):
             await _pipe_ws(reader, writer, "ws://test", token_file=tf, telnet=False)
+
+    async def test_cancels_pending_task(self) -> None:
+        """Cover line 285: task.cancel() when one pump finishes first."""
+
+        async def slow_read(_n: int = 4096) -> bytes:
+            await asyncio.sleep(100)
+            return b""
+
+        reader = AsyncMock(spec=asyncio.StreamReader)
+        reader.read = slow_read
+        writer = MagicMock(spec=asyncio.StreamWriter)
+        writer.drain = AsyncMock()
+
+        # ws yields one message then ends → _ws_to_tcp finishes quickly
+        msg = encode_data("x")
+        ws_mock = _mock_ws([msg])
+
+        mock_ws_mod = MagicMock()
+        mock_ws_mod.connect.return_value = _make_ws_context(ws_mock)
+
+        with patch.dict("sys.modules", {"websockets": mock_ws_mod}):
+            await _pipe_ws(reader, writer, "ws://test", telnet=False)
 
 
 # ---------------------------------------------------------------------------
@@ -515,16 +579,14 @@ class TestWsToSsh:
         process = MagicMock()
         process.stdout = MagicMock()
         msg = encode_data("hi")
-        ws = AsyncMock()
-        ws.__aiter__ = MagicMock(return_value=iter([msg]))
+        ws = _mock_ws([msg])
         await _ws_to_ssh(ws, process, color_mode="passthrough")
         assert process.stdout.write.called
 
     async def test_forwards_binary_messages(self) -> None:
         process = MagicMock()
         process.stdout = MagicMock()
-        ws = AsyncMock()
-        ws.__aiter__ = MagicMock(return_value=iter([b"hello"]))
+        ws = _mock_ws([b"hello"])
         await _ws_to_ssh(ws, process, color_mode="passthrough")
         assert process.stdout.write.called
 
@@ -533,27 +595,45 @@ class TestWsToSsh:
         process = MagicMock()
         process.stdout = MagicMock()
         msg = encode_control({"type": "session_token", "token": "t2"})
-        ws = AsyncMock()
-        ws.__aiter__ = MagicMock(return_value=iter([msg]))
+        ws = _mock_ws([msg])
         await _ws_to_ssh(ws, process, token_file=tf, color_mode="passthrough")
         assert tf.read_text() == "t2"
 
     async def test_protocol_error_skipped(self) -> None:
         process = MagicMock()
         process.stdout = MagicMock()
-        ws = AsyncMock()
-        ws.__aiter__ = MagicMock(return_value=iter(["invalid control stuff"]))
+        bad_msg = "\x10\x02" + "000000xx:bad"
+        ws = _mock_ws([bad_msg])
         await _ws_to_ssh(ws, process, color_mode="passthrough")
 
     async def test_color_mode_applied(self) -> None:
         process = MagicMock()
         process.stdout = MagicMock()
         msg = encode_data("\x1b[38;2;255;0;0mRed")
-        ws = AsyncMock()
-        ws.__aiter__ = MagicMock(return_value=iter([msg]))
+        ws = _mock_ws([msg])
         await _ws_to_ssh(ws, process, color_mode="256")
         written = process.stdout.write.call_args[0][0]
         assert "38;5;" in written
+
+    async def test_color_mode_applied_binary(self) -> None:
+        process = MagicMock()
+        process.stdout = MagicMock()
+        ws = _mock_ws([b"\x1b[38;2;255;0;0mRed"])
+        await _ws_to_ssh(ws, process, color_mode="256")
+        written = process.stdout.write.call_args[0][0]
+        assert "38;5;" in written
+
+    async def test_resume_ok_calls_write_fn(self) -> None:
+        """Cover the _write_fn closure (line 320)."""
+        process = MagicMock()
+        process.stdout = MagicMock()
+        msg = encode_control({"type": "resume_ok"})
+        ws = _mock_ws([msg])
+        await _ws_to_ssh(ws, process, color_mode="passthrough")
+        # _write_fn decodes bytes to utf-8 and writes to stdout
+        process.stdout.write.assert_called_once()
+        written = process.stdout.write.call_args[0][0]
+        assert "Session resumed" in written
 
 
 # ---------------------------------------------------------------------------
@@ -563,9 +643,9 @@ class TestWsToSsh:
 
 class TestMakeNoAuthServerClass:
     def test_returns_class(self) -> None:
-        cls = _make_no_auth_server_class()
         import asyncssh
 
+        cls = _make_no_auth_server_class()
         assert issubclass(cls, asyncssh.SSHServer)
 
     def test_begin_auth_returns_false(self) -> None:

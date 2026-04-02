@@ -281,7 +281,7 @@ async def _pipe_ws(
         t1 = asyncio.create_task(_tcp_to_ws(reader, ws, telnet=telnet))
         t2 = asyncio.create_task(_ws_to_tcp(ws, writer, token_file=token_file, color_mode=color_mode))
         _done, pending = await asyncio.wait([t1, t2], return_when=asyncio.FIRST_COMPLETED)
-        for task in pending:
+        for task in pending:  # pragma: no branch — may be empty if both finish
             task.cancel()
         await asyncio.gather(*[*_done, *pending], return_exceptions=True)
 
@@ -375,7 +375,7 @@ async def _make_process_handler(
                 t1 = asyncio.create_task(_ssh_to_ws(process, ws))
                 t2 = asyncio.create_task(_ws_to_ssh(ws, process, token_file=token_file, color_mode=color_mode))
                 _done, pending = await asyncio.wait([t1, t2], return_when=asyncio.FIRST_COMPLETED)
-                for task in pending:
+                for task in pending:  # pragma: no branch — may be empty if both finish
                     task.cancel()
                 await asyncio.gather(*[*_done, *pending], return_exceptions=True)
         except Exception as exc:
