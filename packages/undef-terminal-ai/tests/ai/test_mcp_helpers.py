@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from undef.terminal.mcp.server import TOOL_COUNT, _clean_snapshot, _unescape_keys, create_mcp_app
+from undef.terminal.ai.server import TOOL_COUNT, _clean_snapshot, _unescape_keys, create_mcp_app
 
 _ANSI_SNAPSHOT: dict[str, Any] = {
     "screen": "\x1b[1;31mHello\x1b[0m World",
@@ -220,7 +220,7 @@ class TestUnescapeKeys:
 
 class TestCLI:
     def test_parser_basic(self) -> None:
-        from undef.terminal.mcp.cli import _build_parser
+        from undef.terminal.ai.cli import _build_parser
 
         parser = _build_parser()
         args = parser.parse_args(["--url", "http://localhost:8780"])
@@ -229,7 +229,7 @@ class TestCLI:
         assert args.headers == []
 
     def test_parser_all_options(self) -> None:
-        from undef.terminal.mcp.cli import _build_parser
+        from undef.terminal.ai.cli import _build_parser
 
         parser = _build_parser()
         args = parser.parse_args(
@@ -249,11 +249,11 @@ class TestCLI:
         assert len(args.headers) == 2
 
     def test_main_creates_and_runs(self) -> None:
-        from undef.terminal.mcp.cli import main
+        from undef.terminal.ai.cli import main
 
         mock_app = MagicMock()
         with patch(
-            "undef.terminal.mcp.server.create_mcp_app",
+            "undef.terminal.ai.server.create_mcp_app",
             return_value=mock_app,
         ) as mock_create:
             main(["--url", "http://localhost:8780"])
@@ -266,11 +266,11 @@ class TestCLI:
         mock_app.run.assert_called_once_with(transport="stdio")
 
     def test_main_with_headers_and_prefix(self) -> None:
-        from undef.terminal.mcp.cli import main
+        from undef.terminal.ai.cli import main
 
         mock_app = MagicMock()
         with patch(
-            "undef.terminal.mcp.server.create_mcp_app",
+            "undef.terminal.ai.server.create_mcp_app",
             return_value=mock_app,
         ) as mock_create:
             main(
@@ -292,11 +292,11 @@ class TestCLI:
         mock_app.run.assert_called_once_with(transport="stdio")
 
     def test_main_multiple_headers(self) -> None:
-        from undef.terminal.mcp.cli import main
+        from undef.terminal.ai.cli import main
 
         mock_app = MagicMock()
         with patch(
-            "undef.terminal.mcp.server.create_mcp_app",
+            "undef.terminal.ai.server.create_mcp_app",
             return_value=mock_app,
         ) as mock_create:
             main(
@@ -325,7 +325,7 @@ class TestLifespan:
         from unittest.mock import AsyncMock
 
         with patch(
-            "undef.terminal.mcp.server.HijackClient",
+            "undef.terminal.ai.server.HijackClient",
         ) as mock_client_cls:
             mock_instance = mock_client_cls.return_value
             mock_instance.__aexit__ = AsyncMock()

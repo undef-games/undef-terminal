@@ -345,3 +345,29 @@ class TestTransportErrors:
 
         assert ok is False
         assert "error" in data
+
+
+class TestCustomTimeout:
+    async def test_request_with_custom_timeout(self) -> None:
+        """hijack.py:120 — timeout kwarg passed to httpx."""
+        from undef.terminal.client.hijack import HijackClient
+
+        async with HijackClient("http://127.0.0.1:1") as c:
+            # watch_session_events passes a custom timeout — covers line 120
+            ok, data = await c.watch_session_events("test-session", timeout_ms=100)
+        assert ok is False  # connection refused
+
+
+class TestWatchEventsParams:
+    async def test_watch_session_events_with_event_types_and_pattern(self) -> None:
+        """hijack.py:319-324 — event_types + pattern params."""
+        from undef.terminal.client.hijack import HijackClient
+
+        async with HijackClient("http://127.0.0.1:1") as c:
+            ok, data = await c.watch_session_events(
+                "test-session",
+                event_types="output,error",
+                pattern="ERROR.*",
+                timeout_ms=100,
+            )
+        assert ok is False

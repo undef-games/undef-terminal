@@ -48,7 +48,7 @@ def main(argv: list[str] | None = None) -> None:
         key, _, value = h.partition(":")
         headers[key.strip()] = value.strip()
 
-    from undef.terminal.mcp.server import create_mcp_app
+    from undef.terminal.ai.server import create_mcp_app
 
     app = create_mcp_app(
         args.url,

@@ -2,6 +2,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 MindTenet LLC. All rights reserved.
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-from undef.terminal.mcp.server import create_mcp_app
+from undef.terminal.ai.server import create_mcp_app
 
 __all__ = ["create_mcp_app"]

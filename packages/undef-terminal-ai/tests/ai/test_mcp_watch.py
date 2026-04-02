@@ -16,7 +16,7 @@ from fastmcp import FastMCP
 from httpx import ASGITransport, AsyncClient
 
 from undef.terminal.bridge.hub import EventBus, TermHub
-from undef.terminal.mcp.server import TOOL_COUNT, create_mcp_app
+from undef.terminal.ai.server import TOOL_COUNT, create_mcp_app
 from undef.terminal.server.config import config_from_mapping
 from undef.terminal.server.models import RecordingConfig
 from undef.terminal.server.registry import SessionRegistry

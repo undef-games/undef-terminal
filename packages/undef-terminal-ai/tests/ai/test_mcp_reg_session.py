@@ -19,7 +19,7 @@ from httpx import ASGITransport
 
 from undef.terminal.bridge.hub import TermHub
 from undef.terminal.bridge.models import WorkerTermState
-from undef.terminal.mcp.server import create_mcp_app
+from undef.terminal.ai.server import create_mcp_app
 
 # ---------------------------------------------------------------------------
 # Helpers

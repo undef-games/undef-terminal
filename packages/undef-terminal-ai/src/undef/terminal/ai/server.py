@@ -10,7 +10,7 @@ worker control.
 
 Usage::
 
-    from undef.terminal.mcp import create_mcp_app
+    from undef.terminal.ai import create_mcp_app
 
     app = create_mcp_app("http://localhost:8780")
     app.run(transport="stdio")
