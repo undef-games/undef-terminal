@@ -243,7 +243,7 @@ class TestCleanupOldWorkerLogs:
         assert recent_prev.exists()
 
     def test_old_active_agent_log_not_deleted(self, tmp_path: Path) -> None:
-        """Line 103->94: old .log file for an active agent — condition is False, loops back."""
+        """Line 103->94: old active agent .log not deleted."""
         import os
 
         from undef.terminal.manager._monitor import _cleanup_old_worker_logs
