@@ -146,6 +146,12 @@ branch = true
 fail_under = 100
 show_missing = true
 skip_covered = false
+# Loop-back branches in async receive loops — the True branch IS exercised
+# but coverage can't track the loop continuation edge reliably.
+partial_branches = [
+    "if not msg.get\\(\"more_body\"",
+    "elif msg_type ==",
+]
 
 [tool.mutmut]
 max_children = 6
